@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   FlexBox,
   ComboBox,
@@ -18,8 +18,18 @@ import {
 } from '@ui5/webcomponents-react'
 import { getDomainValues, getSapErrorMessage } from '../services/sapApi'
 import { getDomainKey } from '../utils/recordHelpers'
+import { FieldMeta } from '../types'
 
 const SEARCH_DEBOUNCE_MS = 350
+
+interface DomainValueHelpProps {
+  configUuid: string;
+  field: FieldMeta;
+  value: string;
+  onChange: (value: string) => void;
+  readonly: boolean;
+  inputId?: string;
+}
 
 export default function DomainValueHelp({
   configUuid,
@@ -28,9 +38,9 @@ export default function DomainValueHelp({
   onChange,
   readonly,
   inputId
-}) {
+}: DomainValueHelpProps) {
   const domainKey = getDomainKey(field)
-  const [options, setOptions] = useState([])
+  const [options, setOptions] = useState<Array<{ value: string; description: string }>>([])
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [helpOpen, setHelpOpen] = useState(false)
@@ -38,11 +48,11 @@ export default function DomainValueHelp({
   const [comboOpen, setComboOpen] = useState(false)
   const [filterText, setFilterText] = useState('')
 
-  const debounceRef = useRef(null)
+  const debounceRef = useRef<any>(null)
   const requestIdRef = useRef(0)
 
   const searchApi = useCallback(
-    async (searchString) => {
+    async (searchString: string) => {
       if (!configUuid || !domainKey) return
       const reqId = ++requestIdRef.current
       setLoading(true)
@@ -52,7 +62,7 @@ export default function DomainValueHelp({
         if (reqId !== requestIdRef.current) return
         setOptions(rows)
         setComboOpen(true)
-      } catch (e) {
+      } catch (e: any) {
         if (reqId !== requestIdRef.current) return
         setLoadError(getSapErrorMessage(e))
         setOptions([])
@@ -64,7 +74,7 @@ export default function DomainValueHelp({
   )
 
   const debouncedSearch = useCallback(
-    (text) => {
+    (text: string) => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
       debounceRef.current = setTimeout(() => {
         searchApi(text)
@@ -90,7 +100,7 @@ export default function DomainValueHelp({
     debouncedSearch(helpSearch)
   }, [helpSearch, helpOpen])
 
-  function selectValue(val) {
+  function selectValue(val: string) {
     onChange(val)
     setHelpOpen(false)
     setHelpSearch('')
@@ -98,7 +108,7 @@ export default function DomainValueHelp({
     setComboOpen(false)
   }
 
-  function handleComboInput(e) {
+  function handleComboInput(e: any) {
     const text = e.target.value ?? ''
     setFilterText(text)
     if (!text) onChange('')
@@ -129,7 +139,7 @@ export default function DomainValueHelp({
           }}
           onClose={() => setComboOpen(false)}
           onInput={handleComboInput}
-          onSelectionChange={e => {
+          onSelectionChange={(e: any) => {
             const selected = e.detail.item
             if (selected) {
               selectValue(selected.value ?? '')
@@ -145,7 +155,7 @@ export default function DomainValueHelp({
           ))}
         </ComboBox>
         <Button
-          icon="value-help"
+          icon={"value-help" as any}
           design="Transparent"
           title="Value help (F4)"
           disabled={loading || !domainKey}
@@ -182,13 +192,13 @@ export default function DomainValueHelp({
           Domain: {domainKey}
         </Text>
         <Input
-          icon="search"
+          icon={"search" as any}
           placeholder="Type to search (calls API)..."
           value={helpSearch}
-          onInput={e => setHelpSearch(e.target.value)}
+          onInput={(e: any) => setHelpSearch(e.target.value)}
           style={{ width: '100%', marginBottom: '0.75rem' }}
         />
-        {loading && <BusyIndicator active size="Medium" />}
+        {loading && <BusyIndicator active size="M" />}
         {!loading && (
           <Table
             style={{ maxHeight: '320px' }}
@@ -201,7 +211,7 @@ export default function DomainValueHelp({
           >
             {options.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={2}>
+                <TableCell {...({ colSpan: 2 } as any)}>
                   <Text>No values found</Text>
                 </TableCell>
               </TableRow>

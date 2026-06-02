@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   ShellBar,
   SideNavigation,
@@ -61,8 +61,27 @@ import {
 import { formatCellValue } from './utils/displayHelpers'
 import RecordDialog from './components/RecordDialog'
 import AuditLogPanel from './components/AuditLogPanel'
+import { SessionUser, FieldMeta, TableConfig, TableRowData } from './types'
 
-function clearAppData(setters) {
+interface AppSetters {
+  setTables: React.Dispatch<React.SetStateAction<TableConfig[]>>;
+  setSelectedTable: React.Dispatch<React.SetStateAction<TableConfig | null>>;
+  setAllFields: React.Dispatch<React.SetStateAction<FieldMeta[]>>;
+  setFields: React.Dispatch<React.SetStateAction<FieldMeta[]>>;
+  setData: React.Dispatch<React.SetStateAction<TableRowData[]>>;
+  setTableDataJson: React.Dispatch<React.SetStateAction<string>>;
+  setEtagMap: React.Dispatch<React.SetStateAction<Record<string, { field: string; value: string }>>>;
+  setEditSessionEtag: React.Dispatch<React.SetStateAction<any>>;
+  setError: React.Dispatch<React.SetStateAction<string>>;
+  setSuccessMsg: React.Dispatch<React.SetStateAction<string>>;
+  setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
+  setRecordDialogOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setEditingRow: React.Dispatch<React.SetStateAction<TableRowData | null>>;
+  setDeleteDialogOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setDeletingRow: React.Dispatch<React.SetStateAction<TableRowData | null>>;
+}
+
+function clearAppData(setters: AppSetters) {
   const {
     setTables,
     setSelectedTable,
@@ -98,27 +117,33 @@ function clearAppData(setters) {
   clearDomainCache()
 }
 
-export default function App({ credentials, onLogout }) {
-  const [tables, setTables] = useState([])
-  const [selectedTable, setSelectedTable] = useState(null)
-  const [allFields, setAllFields] = useState([])
-  const [fields, setFields] = useState([])
-  const [data, setData] = useState([])
+interface AppProps {
+  credentials: SessionUser | null;
+  onLogout?: () => void;
+}
+
+export default function App({ credentials, onLogout }: AppProps) {
+  const [tables, setTables] = useState<TableConfig[]>([])
+  const [selectedTable, setSelectedTable] = useState<TableConfig | null>(null)
+  const [allFields, setAllFields] = useState<FieldMeta[]>([])
+  const [fields, setFields] = useState<FieldMeta[]>([])
+  const [data, setData] = useState<TableRowData[]>([])
   const [tableDataJson, setTableDataJson] = useState('')
-  const [etagMap, setEtagMap] = useState({})
-  const [editSessionEtag, setEditSessionEtag] = useState(null)
+  const [etagMap, setEtagMap] = useState<Record<string, { field: string; value: string }>>({})
+  const [editSessionEtag, setEditSessionEtag] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [dataLoading, setDataLoading] = useState(false)
   const [error, setError] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const latestActiveTableUuidRef = useRef<string | null>(null)
 
   const [recordDialogOpen, setRecordDialogOpen] = useState(false)
-  const [recordDialogMode, setRecordDialogMode] = useState('create')
-  const [editingRow, setEditingRow] = useState(null)
+  const [recordDialogMode, setRecordDialogMode] = useState<'create' | 'edit'>('create')
+  const [editingRow, setEditingRow] = useState<TableRowData | null>(null)
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [deletingRow, setDeletingRow] = useState(null)
+  const [deletingRow, setDeletingRow] = useState<TableRowData | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
 
   const [optimisticLockOpen, setOptimisticLockOpen] = useState(false)
@@ -158,12 +183,12 @@ export default function App({ credentials, onLogout }) {
     return () => clearTimeout(timer)
   }, [successMsg])
 
-  function showError(message) {
+  function showError(message: string) {
     setSuccessMsg('')
     setError(message)
   }
 
-  function showSuccess(message) {
+  function showSuccess(message: string) {
     setError('')
     setSuccessMsg(message)
   }
@@ -173,46 +198,29 @@ export default function App({ credentials, onLogout }) {
       setLoading(true)
       const result = await getTables()
       setTables(result)
-    } catch (e) {
+    } catch (e: any) {
       showError(getFriendlyErrorMessage(e))
     } finally {
       setLoading(false)
     }
   }
 
-  async function reloadTableData(table, fieldConfig = null) {
-    setDataLoading(true)
-    try {
-      const dataResult = await getTableData(table.ConfigUuid, table.TableName)
-      const dataJson = dataResult.data_json || ''
-      const fieldsForEtag = fieldConfig || allFields
-      if (dataJson) {
-        const rows = parseTableDataJson(dataJson, fieldsForEtag)
-        setData(rows)
-        setTableDataJson(dataJson)
-        setEtagMap(buildEtagMap(dataJson, fieldsForEtag, rows))
-      } else {
-        setData([])
-        setTableDataJson('')
-        setEtagMap({})
-      }
-    } catch (e) {
-      showError(getFriendlyErrorMessage(e))
-      setData([])
-      setTableDataJson('')
-      setEtagMap({})
-    } finally {
-      setDataLoading(false)
-    }
-  }
+  async function handleSelectTable(table: TableConfig) {
+    const normalizedUuid = normalizeConfigUuid(table.ConfigUuid)
+    latestActiveTableUuidRef.current = normalizedUuid
 
-  async function handleSelectTable(table) {
+    // Clear old data immediately to avoid displaying stale data while loading
+    setAllFields([])
+    setFields([])
+    setData([])
+    setTableDataJson('')
+    setEtagMap({})
+
     try {
       setLoading(true)
       setDataLoading(true)
       setError('')
       setSuccessMsg('')
-      const normalizedUuid = normalizeConfigUuid(table.ConfigUuid)
       setSelectedTable({ ...table, ConfigUuid: normalizedUuid })
       setSearchQuery('')
       clearDomainCache()
@@ -221,6 +229,10 @@ export default function App({ credentials, onLogout }) {
         normalizedUuid,
         table.TableName
       )
+
+      if (latestActiveTableUuidRef.current !== normalizedUuid) {
+        return
+      }
 
       setAllFields(fieldMeta)
       setFields(fieldMeta.filter(f => !f.is_hidden && f.HiddenFlag !== 'X'))
@@ -233,18 +245,22 @@ export default function App({ credentials, onLogout }) {
       // Fetch domain values in the background to prevent blocking table rendering
       const domainFields = fieldMeta.filter(f => f.fe_type === 'domain' && f.domain_name)
       Promise.all(
-        domainFields.map(f => getDomainValues(normalizedUuid, f.domain_name, ''))
+        domainFields.map(f => getDomainValues(normalizedUuid, f.domain_name || '', ''))
       ).catch(e => console.warn('Background domain prefetch error:', e))
-    } catch (e) {
-      showError(getFriendlyErrorMessage(e))
-      setAllFields([])
-      setFields([])
-      setData([])
-      setTableDataJson('')
-      setEtagMap({})
+    } catch (e: any) {
+      if (latestActiveTableUuidRef.current === normalizedUuid) {
+        showError(getFriendlyErrorMessage(e))
+        setAllFields([])
+        setFields([])
+        setData([])
+        setTableDataJson('')
+        setEtagMap({})
+      }
     } finally {
-      setLoading(false)
-      setDataLoading(false)
+      if (latestActiveTableUuidRef.current === normalizedUuid) {
+        setLoading(false)
+        setDataLoading(false)
+      }
     }
   }
 
@@ -284,7 +300,7 @@ export default function App({ credentials, onLogout }) {
     setRecordDialogOpen(true)
   }
 
-  function openEditDialog(row) {
+  function openEditDialog(row: TableRowData) {
     setRecordDialogMode('edit')
     setEditingRow(row)
     const recordKey = buildKeyRecord(allFields, row)
@@ -296,12 +312,12 @@ export default function App({ credentials, onLogout }) {
     setRecordDialogOpen(true)
   }
 
-  function openDeleteDialog(row) {
+  function openDeleteDialog(row: TableRowData) {
     setDeletingRow(row)
     setDeleteDialogOpen(true)
   }
 
-  async function fetchRowByKey(table, recordKey) {
+  async function fetchRowByKey(table: TableConfig, recordKey: TableRowData) {
     const dataResult = await getTableData(table.ConfigUuid, table.TableName)
     const dataJson = dataResult.data_json || ''
     const rows = parseTableDataJson(dataJson, allFields)
@@ -310,9 +326,11 @@ export default function App({ credentials, onLogout }) {
     return { row, dataJson }
   }
 
-  async function updateRecordWithEtag(recordKey, fullRecord, etagInfo) {
+  async function updateRecordWithEtag(recordKey: TableRowData, fullRecord: TableRowData, etagInfo: any) {
     const { field, value, candidates } = etagInfo
     const etagValue = value || candidates?.[0] || ''
+
+    if (!selectedTable) return { success: false, message: 'No table selected' }
 
     return updateRecord(
       selectedTable.ConfigUuid,
@@ -325,13 +343,17 @@ export default function App({ credentials, onLogout }) {
   }
 
   async function saveEditWithMerge(
-    formValues,
-    dirtyFieldNames,
+    formValues: Record<string, any>,
+    dirtyFieldNames: string[],
     retryOnLock = true,
-    baselineRow = null,
-    sessionEtag = null
-  ) {
+    baselineRow: TableRowData | null = null,
+    sessionEtag: any = null
+  ): Promise<{ ok: boolean; message?: string }> {
+    if (!selectedTable) return { ok: false, message: 'No table selected' }
+
     const baseline = baselineRow || editingRow
+    if (!baseline) return { ok: false, message: 'No editing baseline' }
+
     const recordKey = buildKeyRecord(allFields, baseline)
     const { row: freshRow, dataJson } = await fetchRowByKey(selectedTable, recordKey)
     if (!freshRow) {
@@ -405,7 +427,7 @@ export default function App({ credentials, onLogout }) {
     return { ok: true }
   }
 
-  async function handleSaveRecord(formValues, dirtyFieldNames = []) {
+  async function handleSaveRecord(formValues: Record<string, any>, dirtyFieldNames: string[] = []): Promise<{ ok: boolean; message?: string }> {
     if (!selectedTable) return { ok: false, message: 'No table selected' }
     try {
       if (recordDialogMode === 'create') {
@@ -431,7 +453,7 @@ export default function App({ credentials, onLogout }) {
         return { ok: false, message: editResult.message }
       }
       return editResult ?? { ok: true }
-    } catch (e) {
+    } catch (e: any) {
       const message = getFriendlyErrorMessage(e)
       showError(message)
       return { ok: false, message }
@@ -462,7 +484,7 @@ export default function App({ credentials, onLogout }) {
       setDeletingRow(null)
       showSuccess(result.message || 'Record deleted')
       await handleSelectTable(selectedTable)
-    } catch (e) {
+    } catch (e: any) {
       showError(getFriendlyErrorMessage(e))
     } finally {
       setDeleteLoading(false)
@@ -482,13 +504,13 @@ export default function App({ credentials, onLogout }) {
   const dataTable = (
     <>
       <Toolbar design="Solid">
-        <Button design="Emphasized" icon="add" onClick={openCreateDialog}>
+        <Button design="Emphasized" icon={"add" as any} onClick={openCreateDialog}>
           Create
         </Button>
         <ToolbarSeparator />
         <Button
-          icon="refresh"
-          onClick={() => handleSelectTable(selectedTable)}
+          icon={"refresh" as any}
+          onClick={() => selectedTable && handleSelectTable(selectedTable)}
           disabled={dataLoading}
         >
           Refresh
@@ -496,9 +518,9 @@ export default function App({ credentials, onLogout }) {
         <ToolbarSpacer />
         <Input
           placeholder="Search..."
-          icon="search"
+          icon={"search" as any}
           value={searchQuery}
-          onInput={e => setSearchQuery(e.target.value)}
+          onInput={(e: any) => setSearchQuery(e.target.value)}
           style={{ width: '250px' }}
         />
         <Text style={{ fontSize: '13px', color: '#6a7075', marginLeft: '0.5rem' }}>
@@ -508,10 +530,9 @@ export default function App({ credentials, onLogout }) {
 
       {dataLoading && (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '0.5rem' }}>
-          <BusyIndicator active size="Small" />
+          <BusyIndicator active size="S" />
         </div>
       )}
-
 
 
       <Table
@@ -533,7 +554,7 @@ export default function App({ credentials, onLogout }) {
       >
         {filteredData.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={fields.length + 1}>
+            <TableCell {...({ colSpan: fields.length + 1 } as any)}>
               <Text>No data available</Text>
             </TableCell>
           </TableRow>
@@ -551,13 +572,13 @@ export default function App({ credentials, onLogout }) {
               <TableCell>
                 <Button
                   design="Transparent"
-                  icon="edit"
+                  icon={"edit" as any}
                   accessibleName="Edit record"
                   onClick={() => openEditDialog(row)}
                 />
                 <Button
                   design="Transparent"
-                  icon="delete"
+                  icon={"delete" as any}
                   accessibleName="Delete record"
                   onClick={() => openDeleteDialog(row)}
                 />
@@ -584,7 +605,7 @@ export default function App({ credentials, onLogout }) {
           alignItems="Center"
           style={{ padding: '0 1rem', borderLeft: '1px solid #e5e5e5' }}
         >
-          <Button icon="log" design="Transparent" onClick={handleLogout}>
+          <Button icon={"log" as any} design="Transparent" onClick={handleLogout}>
             Logout
           </Button>
         </FlexBox>
@@ -601,7 +622,7 @@ export default function App({ credentials, onLogout }) {
               <SideNavigationItem
                 key={t.ConfigUuid}
                 text={t.TableName}
-                icon="table-view"
+                icon={"table-view" as any}
                 selected={selectedTable?.ConfigUuid === t.ConfigUuid}
                 onClick={() => handleSelectTable(t)}
               />
@@ -613,7 +634,7 @@ export default function App({ credentials, onLogout }) {
 
           {loading && !selectedTable && (
             <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
-              <BusyIndicator active size="Medium" />
+              <BusyIndicator active size="M" />
             </div>
           )}
 
@@ -648,38 +669,40 @@ export default function App({ credentials, onLogout }) {
 
           {selectedTable && (
             <DynamicPage
-              headerTitle={
-                <DynamicPageTitle
-                  heading={<Title>{selectedTable.TableName}</Title>}
-                  subheading={<Text>{selectedTable.Description}</Text>}
-                />
-              }
-              headerContent={
-                <DynamicPageHeader>
-                  <FlexBox gap="2rem" alignItems="Center">
-                    <FlexBox direction="Column" gap="4px">
-                      <Label>Table Name</Label>
-                      <Text>{selectedTable.TableName}</Text>
+              {...({
+                headerTitle: (
+                  <DynamicPageTitle
+                    heading={<Title>{selectedTable.TableName}</Title>}
+                    subheading={<Text>{selectedTable.Description}</Text>}
+                  />
+                ),
+                headerContent: (
+                  <DynamicPageHeader>
+                    <FlexBox gap="2rem" alignItems="Center">
+                      <FlexBox direction="Column" gap="4px">
+                        <Label>Table Name</Label>
+                        <Text>{selectedTable.TableName}</Text>
+                      </FlexBox>
+                      <FlexBox direction="Column" gap="4px">
+                        <Label>Records</Label>
+                        <Text>{filteredData.length}</Text>
+                      </FlexBox>
+                      <FlexBox direction="Column" gap="4px">
+                        <Label>Status</Label>
+                        <Tag colorScheme={selectedTable.ActiveFlag === 'X' ? '8' : '2'}>
+                          {selectedTable.ActiveFlag === 'X' ? 'Active' : 'Inactive'}
+                        </Tag>
+                      </FlexBox>
+                      <FlexBox direction="Column" gap="4px">
+                        <Label>Approval Required</Label>
+                        <Tag colorScheme={selectedTable.ApprovalRequired === 'X' ? '6' : '1'}>
+                          {selectedTable.ApprovalRequired === 'X' ? 'Yes' : 'No'}
+                        </Tag>
+                      </FlexBox>
                     </FlexBox>
-                    <FlexBox direction="Column" gap="4px">
-                      <Label>Records</Label>
-                      <Text>{filteredData.length}</Text>
-                    </FlexBox>
-                    <FlexBox direction="Column" gap="4px">
-                      <Label>Status</Label>
-                      <Tag colorScheme={selectedTable.ActiveFlag === 'X' ? '8' : '2'}>
-                        {selectedTable.ActiveFlag === 'X' ? 'Active' : 'Inactive'}
-                      </Tag>
-                    </FlexBox>
-                    <FlexBox direction="Column" gap="4px">
-                      <Label>Approval Required</Label>
-                      <Tag colorScheme={selectedTable.ApprovalRequired === 'X' ? '6' : '1'}>
-                        {selectedTable.ApprovalRequired === 'X' ? 'Yes' : 'No'}
-                      </Tag>
-                    </FlexBox>
-                  </FlexBox>
-                </DynamicPageHeader>
-              }
+                  </DynamicPageHeader>
+                )
+              } as any)}
             >
               <TabContainer>
                 <Tab text="Table Data" selected>
@@ -719,7 +742,7 @@ export default function App({ credentials, onLogout }) {
                   >
                     {allFields.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7}>
+                        <TableCell {...({ colSpan: 7 } as any)}>
                           <Text>No field metadata loaded.</Text>
                         </TableCell>
                       </TableRow>
@@ -772,11 +795,11 @@ export default function App({ credentials, onLogout }) {
       <RecordDialog
         open={recordDialogOpen}
         mode={recordDialogMode}
-        configUuid={selectedTable?.ConfigUuid}
+        configUuid={selectedTable?.ConfigUuid || ''}
         allFields={allFields}
         initialRow={editingRow}
-        tableName={selectedTable?.TableName}
-        username={credentials?.username}
+        tableName={selectedTable?.TableName || ''}
+        username={credentials?.username || ''}
         onSave={handleSaveRecord}
         onClose={() => {
           setRecordDialogOpen(false)
@@ -785,35 +808,37 @@ export default function App({ credentials, onLogout }) {
       />
 
       <Dialog
-        open={deleteDialogOpen}
-        headerText="Delete Record"
-        onAfterClose={() => !deleteLoading && setDeletingRow(null)}
-        footer={
-          <Bar
-            design="Footer"
-            endContent={
-              <>
-                <Button
-                  design="Transparent"
-                  onClick={() => setDeleteDialogOpen(false)}
-                  disabled={deleteLoading}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  design="Negative"
-                  icon="delete"
-                  onClick={handleConfirmDelete}
-                  disabled={deleteLoading}
-                >
-                  Delete
-                </Button>
-              </>
-            }
-          />
-        }
+        {...({
+          open: deleteDialogOpen,
+          headerText: "Delete Record",
+          onAfterClose: () => !deleteLoading && setDeletingRow(null),
+          footer: (
+            <Bar
+              design="Footer"
+              endContent={
+                <>
+                  <Button
+                    design="Transparent"
+                    onClick={() => setDeleteDialogOpen(false)}
+                    disabled={deleteLoading}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    design="Negative"
+                    icon={"delete" as any}
+                    onClick={handleConfirmDelete}
+                    disabled={deleteLoading}
+                  >
+                    Delete
+                  </Button>
+                </>
+              }
+            />
+          )
+        } as any)}
       >
-        {deleteLoading && <BusyIndicator active size="Medium" />}
+        {deleteLoading && <BusyIndicator active size="M" />}
         <Text style={{ whiteSpace: 'pre-line' }}>
           Are you sure you want to delete this record?
           {'\n\n'}
@@ -825,7 +850,7 @@ export default function App({ credentials, onLogout }) {
         open={optimisticLockOpen}
         type={MessageBoxType.Error}
         titleText="Concurrent Modification"
-        actions={[MessageBoxAction.CANCEL, 'Refresh']}
+        actions={[MessageBoxAction.Cancel, 'Refresh']}
         emphasizedAction="Refresh"
         onClose={(action) => {
           if (action === 'Refresh') {

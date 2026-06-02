@@ -11,6 +11,7 @@ import {
   normalizeFieldMetaRow,
   buildFieldMetaFromFieldList
 } from '../utils/fieldMeta'
+import { Credentials, FieldMeta, TableConfig, AuditLogEntry, TableRowData } from '../types'
 
 export const SAP_SERVICE = '/sap/opu/odata4/sap/zsb_tbl_config/srvd/sap/zsd_tbl_config/0001'
 export const SAP_CLIENT = '324'
@@ -23,9 +24,9 @@ const api = axios.create({
 })
 
 let csrfToken = ''
-let credentials = null
+let credentials: Credentials | null = null
 
-function encodeBasicAuth(username, password) {
+function encodeBasicAuth(username: string, password: string): string {
   const raw = `${username}:${password}`
   const bytes = new TextEncoder().encode(raw)
   let binary = ''
@@ -34,7 +35,7 @@ function encodeBasicAuth(username, password) {
 }
 
 /** Remove SAP session cookies stored on localhost by the dev proxy */
-export function clearSapCookies() {
+export function clearSapCookies(): void {
   const names = document.cookie.split(';').map(c => c.split('=')[0].trim()).filter(Boolean)
   for (const name of names) {
     const lower = name.toLowerCase()
@@ -49,13 +50,13 @@ export function clearSapCookies() {
   }
 }
 
-export function setCredentials(username, password) {
+export function setCredentials(username: string, password: string): void {
   const token = encodeBasicAuth(username, password)
-  credentials = { username, password, token }
+  credentials = { username, token }
   api.defaults.headers.common.Authorization = `Basic ${token}`
 }
 
-export function clearCredentials() {
+export function clearCredentials(): void {
   credentials = null
   delete api.defaults.headers.common.Authorization
   csrfToken = ''
@@ -69,11 +70,11 @@ api.interceptors.request.use(config => {
   return config
 })
 
-export function getCredentials() {
+export function getCredentials(): Credentials | null {
   return credentials
 }
 
-function readCsrfHeader(headers) {
+function readCsrfHeader(headers: any): string {
   if (!headers) return ''
   return (
     headers['x-csrf-token'] ||
@@ -83,7 +84,7 @@ function readCsrfHeader(headers) {
   )
 }
 
-export function isCsrfError(error) {
+export function isCsrfError(error: any): boolean {
   const data = error?.response?.data?.error
   const category = data?.['@SAP__common.ExceptionCategory'] || data?.ExceptionCategory
   if (category === 'CSRF_Token_Missing') return true
@@ -102,7 +103,7 @@ api.interceptors.response.use(
   }
 )
 
-export async function testLogin(username, password) {
+export async function testLogin(username: string, password: string): Promise<{ success: boolean; username?: string; message?: string }> {
   clearCredentials()
 
   const token = encodeBasicAuth(username, password)
@@ -150,7 +151,7 @@ export async function testLogin(username, password) {
   }
 }
 
-export function getSapErrorMessage(error) {
+export function getSapErrorMessage(error: any): string {
   const data = error?.response?.data
   const sapMsg = data?.error?.message
   if (typeof sapMsg === 'string') return sapMsg
@@ -159,7 +160,7 @@ export function getSapErrorMessage(error) {
   return error?.message || 'Unknown error'
 }
 
-export function formatActionErrorMessage(message) {
+export function formatActionErrorMessage(message: string): string {
   const msg = String(message || '')
   if (isJsonFormatError(msg)) {
     console.error('[ABAP JSON format]', msg)
@@ -168,7 +169,7 @@ export function formatActionErrorMessage(message) {
   return msg
 }
 
-export function getFriendlyErrorMessage(error) {
+export function getFriendlyErrorMessage(error: any): string {
   if (!error?.response) {
     return 'Cannot connect to SAP system. Please check your connection.'
   }
@@ -188,7 +189,7 @@ export function getFriendlyErrorMessage(error) {
   return formatActionErrorMessage(getSapErrorMessage(error))
 }
 
-export function parseFKErrorMessage(message) {
+export function parseFKErrorMessage(message: string): string {
   if (!message) return 'Cannot delete this record due to related data in another table.'
   const match = String(message).match(/referenced by table\s+(\w+)/i)
   if (match) {
@@ -197,15 +198,15 @@ export function parseFKErrorMessage(message) {
   return message
 }
 
-export function isOptimisticLockError(message) {
+export function isOptimisticLockError(message: string): boolean {
   return /optimistic lock/i.test(String(message || ''))
 }
 
-export function isFKReferenceError(message) {
+export function isFKReferenceError(message: string): boolean {
   return /referenced by table/i.test(String(message || ''))
 }
 
-export async function fetchCsrfToken() {
+export async function fetchCsrfToken(): Promise<string> {
   const res = await api.get('/', {
     headers: { 'X-CSRF-Token': 'Fetch' },
     params: { 'sap-client': SAP_CLIENT }
@@ -214,7 +215,7 @@ export async function fetchCsrfToken() {
   return csrfToken
 }
 
-async function apiPostWithCsrf(url, body, config = {}) {
+async function apiPostWithCsrf(url: string, body: any, config: any = {}): Promise<any> {
   if (!csrfToken) {
     await fetchCsrfToken()
   }
@@ -236,7 +237,7 @@ async function apiPostWithCsrf(url, body, config = {}) {
 }
 
 /** Fix unquoted timestamps before JSON.parse */
-export function fixJson(jsonStr) {
+export function fixJson(jsonStr: string): string {
   if (!jsonStr) return jsonStr
   let fixed = jsonStr
   fixed = fixed.replace(
@@ -259,7 +260,7 @@ export function fixJson(jsonStr) {
   return fixed
 }
 
-export function parseTableDataJson(dataJson, fieldMeta = null) {
+export function parseTableDataJson(dataJson: string, fieldMeta: FieldMeta[] | null = null): TableRowData[] {
   if (!dataJson || dataJson.trim() === '[]') return []
   const fixed = fixJson(dataJson)
   if (fieldMeta?.length) {
@@ -270,7 +271,7 @@ export function parseTableDataJson(dataJson, fieldMeta = null) {
 }
 
 /** Ensure UUID has dashes: 8b95f36a-4f27-1fe1-9582-026ba9aed02e */
-export function normalizeConfigUuid(configUuid) {
+export function normalizeConfigUuid(configUuid: string): string {
   if (!configUuid) return ''
   const s = String(configUuid).trim()
   if (s.includes('-')) return s
@@ -281,12 +282,12 @@ export function normalizeConfigUuid(configUuid) {
   return s
 }
 
-function actionUrl(configUuid, action) {
+function actionUrl(configUuid: string, action: string): string {
   const uuid = normalizeConfigUuid(configUuid)
   return `/TableConfig(ConfigUuid=${uuid},IsActiveEntity=true)/com.sap.gateway.srvd.zsd_tbl_config.v0001.${action}`
 }
 
-function parseDomainValuesJson(valuesJson) {
+function parseDomainValuesJson(valuesJson: string): Array<{ value: string; description: string }> {
   if (!valuesJson) return []
   try {
     const fixed = fixJson(valuesJson)
@@ -298,13 +299,13 @@ function parseDomainValuesJson(valuesJson) {
         item.description ?? item.Description ?? item.ddtext ?? item.value ?? item.VALUE ?? ''
       )
     }))
-  } catch (e) {
+  } catch (e: any) {
     console.error('parseDomainValuesJson error:', e.message)
     return []
   }
 }
 
-export async function getTables() {
+export async function getTables(): Promise<TableConfig[]> {
   const res = await api.get('/TableConfig', {
     params: {
       'sap-client': SAP_CLIENT,
@@ -314,7 +315,7 @@ export async function getTables() {
   return res.data.value
 }
 
-function extractActionResponseBody(data) {
+function extractActionResponseBody(data: any): any {
   if (!data) return {}
   if (data.meta_json != null || data.MetaJson != null || data.data_json != null) {
     return data
@@ -326,7 +327,7 @@ function extractActionResponseBody(data) {
 }
 
 /** SM30-style metadata from getFieldMeta action (meta_json) */
-export async function getFieldMeta(configUuid, tableName) {
+export async function getFieldMeta(configUuid: string, tableName: string): Promise<FieldMeta[]> {
   const res = await apiPostWithCsrf(
     actionUrl(configUuid, 'getFieldMeta'),
     {
@@ -346,29 +347,35 @@ export async function getFieldMeta(configUuid, tableName) {
 }
 
 /** getFieldMeta → fallback FieldConfig OData */
-export async function loadFieldMetaForTable(configUuid, tableName) {
+export async function loadFieldMetaForTable(configUuid: string, tableName: string): Promise<FieldMeta[]> {
   try {
     const meta = await getFieldMeta(configUuid, tableName)
     if (meta.length > 0) return meta
-  } catch (e) {
+  } catch (e: any) {
     console.warn('[loadFieldMetaForTable] getFieldMeta:', e.message)
   }
 
   try {
     const legacy = await getFieldConfig(tableName)
     if (legacy.length > 0) return legacy
-  } catch (e) {
+  } catch (e: any) {
     console.warn('[loadFieldMetaForTable] getFieldConfig:', e.message)
   }
 
   return []
 }
 
+export interface TableContext {
+  fieldMeta: FieldMeta[];
+  tableData: any;
+  rows: TableRowData[];
+}
+
 /**
  * Load field metadata + table rows (SM30 flow).
  * Enriches metadata from getTableData.field_list when getFieldMeta is empty.
  */
-export async function loadTableContext(configUuid, tableName, maxRows = 100) {
+export async function loadTableContext(configUuid: string, tableName: string, maxRows = 100): Promise<TableContext> {
   const [fieldMetaResult, tableData] = await Promise.all([
     loadFieldMetaForTable(configUuid, tableName),
     getTableData(configUuid, tableName, maxRows)
@@ -390,7 +397,7 @@ export async function loadTableContext(configUuid, tableName, maxRows = 100) {
 }
 
 /** @deprecated Use getFieldMeta — kept for fallback */
-export async function getFieldConfig(tableName) {
+export async function getFieldConfig(tableName: string): Promise<FieldMeta[]> {
   const res = await api.get('/FieldConfig', {
     params: {
       'sap-client': SAP_CLIENT,
@@ -399,7 +406,7 @@ export async function getFieldConfig(tableName) {
     }
   })
   const rows = res.data.value || []
-  return rows.map(row =>
+  return rows.map((row: any) =>
     normalizeFieldMetaRow({
       field_name: row.FieldName,
       fe_type: row.FieldType,
@@ -415,13 +422,13 @@ export async function getFieldConfig(tableName) {
   )
 }
 
-export async function getDomainValues(configUuid, domainName, searchString = '') {
+export async function getDomainValues(configUuid: string, domainName: string, searchString = ''): Promise<Array<{ value: string; description: string }>> {
   const uuid = normalizeConfigUuid(configUuid)
   const search = (searchString || '').trim()
   const cached = getCachedDomainValues(domainName, search)
   if (cached) return cached
 
-  const body = { domain_name: domainName }
+  const body: Record<string, any> = { domain_name: domainName }
   if (search) {
     body.search_string = search
     body.search_text = search
@@ -447,13 +454,13 @@ export async function getDomainValues(configUuid, domainName, searchString = '')
 
     setCachedDomainValues(domainName, search, options)
     return options
-  } catch (e) {
+  } catch (e: any) {
     console.error('getDomainValues error:', e.response?.data ?? e.message)
     return []
   }
 }
 
-export async function getTableData(configUuid, tableName, maxRows = 100) {
+export async function getTableData(configUuid: string, tableName: string, maxRows = 100): Promise<any> {
   const res = await apiPostWithCsrf(
     actionUrl(configUuid, 'getTableData'),
     {
@@ -466,15 +473,15 @@ export async function getTableData(configUuid, tableName, maxRows = 100) {
   return res.data
 }
 
-function asRecordDataJson(recordData) {
+function asRecordDataJson(recordData: any): string {
   return typeof recordData === 'string' ? recordData : JSON.stringify(recordData)
 }
 
-function asRecordKeyJson(recordKey) {
+function asRecordKeyJson(recordKey: any): string {
   return typeof recordKey === 'string' ? recordKey : JSON.stringify(recordKey)
 }
 
-export async function createRecord(configUuid, tableName, recordData) {
+export async function createRecord(configUuid: string, tableName: string, recordData: any): Promise<any> {
   const res = await apiPostWithCsrf(
     actionUrl(configUuid, 'createRecord'),
     {
@@ -490,13 +497,13 @@ export async function createRecord(configUuid, tableName, recordData) {
 }
 
 export async function updateRecord(
-  configUuid,
-  tableName,
-  recordKey,
-  recordData,
+  configUuid: string,
+  tableName: string,
+  recordKey: any,
+  recordData: any,
   etagField = '',
   etagValue = ''
-) {
+): Promise<any> {
   const res = await apiPostWithCsrf(
     actionUrl(configUuid, 'updateRecord'),
     {
@@ -513,7 +520,7 @@ export async function updateRecord(
   return res.data
 }
 
-export async function deleteRecord(configUuid, tableName, recordKey) {
+export async function deleteRecord(configUuid: string, tableName: string, recordKey: any): Promise<any> {
   const res = await apiPostWithCsrf(
     actionUrl(configUuid, 'deleteRecord'),
     {
@@ -528,7 +535,7 @@ export async function deleteRecord(configUuid, tableName, recordKey) {
   return res.data
 }
 
-export async function getAuditLog(tableName) {
+export async function getAuditLog(tableName: string): Promise<AuditLogEntry[]> {
   const res = await api.get('/AuditLog', {
     params: {
       'sap-client': SAP_CLIENT,

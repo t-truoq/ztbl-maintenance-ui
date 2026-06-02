@@ -3,13 +3,15 @@
  * FE normalizes record_data / etag_value before JSON.stringify; BE deserializes as-is.
  */
 
+import { TableRowData } from '../types'
+
 const ABAP_DATE_EMPTY = '00000000'
 const ABAP_TIME_EMPTY = '000000'
 const ABAP_UTCLONG_RE =
   /^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?$/
 
 /** @param {unknown} value */
-export function toAbapDate(value) {
+export function toAbapDate(value: any): string {
   if (value === undefined || value === null || value === '') return ABAP_DATE_EMPTY
 
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -38,7 +40,7 @@ export function toAbapDate(value) {
 }
 
 /** ISO YYYY-MM-DD for UI DatePicker from ABAP YYYYMMDD */
-export function fromAbapDate(value) {
+export function fromAbapDate(value: any): string {
   if (!value) return ''
   const s = String(value).trim()
   if (s === ABAP_DATE_EMPTY || s === '0') return ''
@@ -50,7 +52,7 @@ export function fromAbapDate(value) {
 }
 
 /** @param {unknown} value */
-export function toAbapTime(value) {
+export function toAbapTime(value: any): string {
   if (value === undefined || value === null || value === '') return ABAP_TIME_EMPTY
 
   const s = String(value).trim()
@@ -68,14 +70,14 @@ export function toAbapTime(value) {
   return ABAP_TIME_EMPTY
 }
 
-function padFractional(frac) {
+function padFractional(frac?: string): string {
   if (!frac) return '.0000000'
   const digits = frac.replace(/\D/g, '')
   return `.${digits.padEnd(7, '0').slice(0, 7)}`
 }
 
 /** @param {unknown} value */
-export function toAbapUtclong(value) {
+export function toAbapUtclong(value: any): string | null {
   if (value === undefined || value === null || value === '') return null
   if (value === 0 || value === '0') return null
 
@@ -121,7 +123,7 @@ export function toAbapUtclong(value) {
 }
 
 /** @param {string} b64 */
-export function base64ToHex(b64) {
+export function base64ToHex(b64: string): string {
   if (!b64) return ''
   const binary = atob(String(b64).trim())
   return Array.from(binary)
@@ -131,15 +133,17 @@ export function base64ToHex(b64) {
 }
 
 /** @param {string} hex */
-export function hexToBase64(hex) {
+export function hexToBase64(hex: string): string {
   if (!hex) return ''
   const clean = String(hex).replace(/[^a-fA-F0-9]/g, '')
   if (clean.length !== 32) return ''
-  const bytes = clean.match(/.{2}/g).map(h => String.fromCharCode(parseInt(h, 16)))
+  const matches = clean.match(/.{2}/g)
+  if (!matches) return ''
+  const bytes = matches.map(h => String.fromCharCode(parseInt(h, 16)))
   return btoa(bytes.join(''))
 }
 
-function looksLikeBase64Uuid(value) {
+function looksLikeBase64Uuid(value: any): boolean {
   const s = String(value).trim()
   if (!s || s.length < 20) return false
   if (/^[0-9A-F]{32}$/i.test(s.replace(/-/g, ''))) return false
@@ -149,7 +153,7 @@ function looksLikeBase64Uuid(value) {
 const EMPTY_UUID_B64 = 'AAAAAAAAAAAAAAAAAAAAAA=='
 
 /** SAP initial / empty sysuuid_x16 sentinels */
-export function isEmptyUuidValue(value) {
+export function isEmptyUuidValue(value: any): boolean {
   if (value === undefined || value === null || value === '') return true
   const s = String(value).trim()
   if (!s) return true
@@ -169,7 +173,7 @@ export function isEmptyUuidValue(value) {
   return false
 }
 
-function isUuidLikeValue(value) {
+function isUuidLikeValue(value: any): boolean {
   const s = String(value ?? '').trim()
   if (!s) return false
   if (looksLikeBase64Uuid(s)) return true
@@ -177,7 +181,7 @@ function isUuidLikeValue(value) {
 }
 
 /** @param {unknown} value — BE contract: 32-char uppercase hex (empty → '') */
-export function toAbapUuid(value) {
+export function toAbapUuid(value: any): string {
   if (isEmptyUuidValue(value)) return ''
   const s = String(value).trim()
 
@@ -199,7 +203,7 @@ export function toAbapUuid(value) {
  * Map FieldConfig row → metadata entry type for normalizeRecordForAbap.
  * @param {{ FieldName?: string, FieldType?: string, IsKeyField?: string }} field
  */
-export function resolveAbapFieldType(field) {
+export function resolveAbapFieldType(field: { FieldName?: string; FieldType?: string; IsKeyField?: string }): string {
   const t = (field.FieldType || '').toUpperCase()
   if (t === 'DATE') return 'DATE'
   if (t === 'TIME') return 'TIME'
@@ -224,8 +228,8 @@ export function resolveAbapFieldType(field) {
  * @param {Array<{ FieldName?: string, FieldType?: string }>} allFields
  * @returns {Record<string, { type: string }>}
  */
-export function buildFieldMetadata(allFields) {
-  const meta = {}
+export function buildFieldMetadata(allFields: Array<{ FieldName?: string; FieldType?: string }>): Record<string, { type: string }> {
+  const meta: Record<string, { type: string }> = {}
   if (!allFields?.length) return meta
   for (const f of allFields) {
     if (f.FieldName) {
@@ -239,7 +243,7 @@ export function buildFieldMetadata(allFields) {
  * @param {Record<string, unknown>} record
  * @param {Record<string, { type: string }>} fieldMetadata
  */
-export function normalizeRecordForAbap(record, fieldMetadata) {
+export function normalizeRecordForAbap(record: TableRowData, fieldMetadata: Record<string, { type: string }>): TableRowData {
   if (!record) return {}
   const result = { ...record }
 
@@ -281,7 +285,7 @@ export function normalizeRecordForAbap(record, fieldMetadata) {
  * @param {{ FieldName?: string, FieldType?: string }} field
  * @param {unknown} value
  */
-export function normalizeFieldValueForAbap(field, value) {
+export function normalizeFieldValueForAbap(field: { FieldName?: string; FieldType?: string }, value: any): any {
   const type = resolveAbapFieldType(field)
   switch (type) {
     case 'DATE':
@@ -298,7 +302,7 @@ export function normalizeFieldValueForAbap(field, value) {
 }
 
 /** Etag / optimistic-lock value as ABAP UTCLONG string, or '' to skip lock */
-export function formatEtagValueForAbap(rawValue) {
+export function formatEtagValueForAbap(rawValue: any): string {
   if (rawValue === undefined || rawValue === null) return ''
   if (rawValue === 0 || rawValue === '0') return ''
 
@@ -316,11 +320,11 @@ export function formatEtagValueForAbap(rawValue) {
   return ''
 }
 
-export function isJsonFormatError(message) {
+export function isJsonFormatError(message: string): boolean {
   return /invalid format in json/i.test(String(message || ''))
 }
 
-export function enhanceJsonFormatError(message) {
+export function enhanceJsonFormatError(message: string): string {
   const base = String(message || 'Invalid format in JSON')
   return `${base}. Please verify date (YYYYMMDD), time (HHMMSS), boolean (X or empty), and UUID (32-char uppercase hex) values.`
 }

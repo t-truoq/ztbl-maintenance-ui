@@ -3,29 +3,13 @@
  */
 
 import { fromAbapDate, toAbapDate } from './abapFormatter'
+import { FieldMeta, FeType, TableRowData } from '../types'
 
-/** @typedef {'text'|'date'|'time'|'uuid'|'boolean'|'decimal'|'integer'|'domain'} FeType */
-
-/**
- * @typedef {object} FieldMeta
- * @property {string} field_name
- * @property {string} [abap_type]
- * @property {FeType} fe_type
- * @property {number} [length]
- * @property {number} [decimals]
- * @property {boolean} [is_key]
- * @property {boolean} [is_mandatory]
- * @property {string} [label]
- * @property {string} [domain_name]
- * @property {number} [display_order]
- * @property {boolean} [is_hidden]
- */
-
-export function abapToIso(abapDate) {
+export function abapToIso(abapDate: string): string {
   return fromAbapDate(abapDate)
 }
 
-export function isoFromAbap(abapDate) {
+export function isoFromAbap(abapDate: string): string {
   return fromAbapDate(abapDate)
 }
 
@@ -34,7 +18,7 @@ export function isoFromAbap(abapDate) {
  * @param {string} metaJson
  * @returns {FieldMeta[]}
  */
-export function parseFieldMetaJson(metaJson) {
+export function parseFieldMetaJson(metaJson: string): FieldMeta[] {
   if (!metaJson?.trim()) return []
   try {
     const list = JSON.parse(metaJson)
@@ -42,18 +26,18 @@ export function parseFieldMetaJson(metaJson) {
     return rows
       .map(normalizeFieldMetaRow)
       .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))
-  } catch (e) {
+  } catch (e: any) {
     console.error('parseFieldMetaJson failed:', e.message)
     return []
   }
 }
 
-function isTruthyFlag(value) {
+function isTruthyFlag(value: any): boolean {
   return value === true || value === 'X' || value === 'x' || value === 1
 }
 
 /** Infer fe_type when getFieldMeta unavailable — uses field_list + sample row */
-export function inferFeTypeFromNameAndValue(fieldName, sampleValue) {
+export function inferFeTypeFromNameAndValue(fieldName: string, sampleValue: any): FeType {
   const name = (fieldName || '').toUpperCase()
   const str = sampleValue === undefined || sampleValue === null ? '' : String(sampleValue).trim()
 
@@ -77,11 +61,15 @@ export function inferFeTypeFromNameAndValue(fieldName, sampleValue) {
  * @param {string} [dataJson]
  * @param {(s: string) => string} [fixJsonFn]
  */
-export function buildFieldMetaFromFieldList(fieldList, dataJson = '', fixJsonFn = s => s) {
+export function buildFieldMetaFromFieldList(
+  fieldList: string,
+  dataJson = '',
+  fixJsonFn = (s: string) => s
+): FieldMeta[] {
   if (!fieldList?.trim()) return []
 
   const names = fieldList.split(',').map(s => s.trim()).filter(Boolean)
-  let sample = {}
+  let sample: Record<string, any> = {}
 
   if (dataJson?.trim()) {
     try {
@@ -106,8 +94,8 @@ export function buildFieldMetaFromFieldList(fieldList, dataJson = '', fixJsonFn 
   )
 }
 
-/** @param {Record<string, unknown>} raw */
-export function normalizeFieldMetaRow(raw) {
+/** @param {Record<string, any>} raw */
+export function normalizeFieldMetaRow(raw: Record<string, any>): FieldMeta {
   const fieldName = String(raw.field_name ?? raw.FieldName ?? raw.FIELD_NAME ?? '')
   const feType = normalizeFeType(raw.fe_type ?? raw.FeType ?? raw.FieldType ?? raw.FE_TYPE)
 
@@ -140,9 +128,9 @@ export function normalizeFieldMetaRow(raw) {
 }
 
 /** @param {unknown} value */
-function normalizeFeType(value) {
+function normalizeFeType(value: any): FeType {
   const t = String(value ?? 'text').toLowerCase()
-  const map = {
+  const map: Record<string, FeType> = {
     text: 'text',
     char: 'text',
     string: 'text',
@@ -160,11 +148,11 @@ function normalizeFeType(value) {
     domain: 'domain',
     doma: 'domain'
   }
-  return /** @type {FeType} */ (map[t] || 'text')
+  return map[t] || 'text'
 }
 
 /** @param {FeType} feType */
-function feTypeToLegacyFieldType(feType) {
+function feTypeToLegacyFieldType(feType: FeType): string {
   switch (feType) {
     case 'date':
       return 'DATE'
@@ -190,13 +178,13 @@ function feTypeToLegacyFieldType(feType) {
  * @param {FieldMeta[]} meta
  * @returns {Record<string, unknown>[]}
  */
-export function parseTableData(dataJson, meta) {
+export function parseTableData(dataJson: string, meta: FieldMeta[]): TableRowData[] {
   if (!dataJson || dataJson.trim() === '[]') return []
   const rows = JSON.parse(dataJson)
   const list = Array.isArray(rows) ? rows : [rows]
 
   return list.map(row => {
-    const parsed = {}
+    const parsed: TableRowData = {}
     for (const [key, val] of Object.entries(row)) {
       const field = meta.find(f => f.field_name === key)
       if (!field) {
@@ -228,7 +216,7 @@ export function parseTableData(dataJson, meta) {
 }
 
 /** BE returns 32-char hex; normalize legacy Base64 if present */
-export function normalizeUuidFromBe(value) {
+export function normalizeUuidFromBe(value: any): string {
   if (value === undefined || value === null || value === '') return ''
   const s = String(value).trim()
   if (/^[0-9A-F]{32}$/i.test(s.replace(/-/g, ''))) {
@@ -254,8 +242,8 @@ export function normalizeUuidFromBe(value) {
  * @param {boolean} isCreate
  * @returns {string}
  */
-export function formatPayload(formData, meta, isCreate) {
-  const payload = {}
+export function formatPayload(formData: Record<string, any>, meta: FieldMeta[], isCreate: boolean): string {
+  const payload: Record<string, any> = {}
 
   for (const field of meta) {
     if (field.is_hidden) continue
@@ -300,7 +288,7 @@ export function formatPayload(formData, meta, isCreate) {
 }
 
 /** Visible fields for form (non-hidden, non auto-key on create) */
-export function getFormFieldsFromMeta(meta, mode = 'create') {
+export function getFormFieldsFromMeta(meta: FieldMeta[], mode = 'create'): FieldMeta[] {
   return meta.filter(f => {
     if (f.is_hidden) return false
     if (mode === 'create' && f.is_key && f.fe_type === 'uuid') return false
@@ -309,8 +297,8 @@ export function getFormFieldsFromMeta(meta, mode = 'create') {
 }
 
 /** @param {FieldMeta[]} formFields */
-export function initFormValuesFromMeta(formFields, row = null) {
-  const values = {}
+export function initFormValuesFromMeta(formFields: FieldMeta[], row: TableRowData | null = null): Record<string, any> {
+  const values: Record<string, any> = {}
   formFields.forEach(f => {
     const raw = row?.[f.field_name]
     if (f.fe_type === 'boolean') {
@@ -324,10 +312,10 @@ export function initFormValuesFromMeta(formFields, row = null) {
   return values
 }
 
-export function isDomainFieldMeta(field) {
+export function isDomainFieldMeta(field: FieldMeta): boolean {
   return field.fe_type === 'domain'
 }
 
-export function getDomainKeyFromMeta(field) {
+export function getDomainKeyFromMeta(field: FieldMeta): string {
   return (field.domain_name || field.field_name || '').trim()
 }

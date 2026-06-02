@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Table,
   TableHeaderRow,
@@ -15,17 +15,26 @@ import {
 } from '@ui5/webcomponents-react'
 import { getAuditLog, getSapErrorMessage } from '../services/sapApi'
 import { getAuditDisplayCells } from '../utils/auditFormatters'
+import { AuditLogEntry } from '../types'
 
-const ACTION_LABELS = { C: 'Created', U: 'Updated', D: 'Deleted' }
-const ACTION_COLORS = { C: '8', U: '6', D: '1' }
+const ACTION_LABELS: Record<string, string> = { C: 'Created', U: 'Updated', D: 'Deleted' }
+const ACTION_COLORS: Record<string, any> = { C: '8', U: '6', D: '1' }
 
-function AuditValueText({ children }) {
+interface AuditValueTextProps {
+  children?: string;
+}
+
+function AuditValueText({ children }: AuditValueTextProps) {
   if (!children) return <Text>—</Text>
   return <Text style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{children}</Text>
 }
 
-export default function AuditLogPanel({ tableName }) {
-  const [entries, setEntries] = useState([])
+interface AuditLogPanelProps {
+  tableName: string;
+}
+
+export default function AuditLogPanel({ tableName }: AuditLogPanelProps) {
+  const [entries, setEntries] = useState<AuditLogEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -39,7 +48,7 @@ export default function AuditLogPanel({ tableName }) {
       setError('')
       const result = await getAuditLog(tableName)
       setEntries(result)
-    } catch (e) {
+    } catch (e: any) {
       setError(getSapErrorMessage(e))
       setEntries([])
     } finally {
@@ -50,7 +59,7 @@ export default function AuditLogPanel({ tableName }) {
   return (
     <div style={{ padding: '0.5rem 0' }}>
       <Toolbar design="Solid">
-        <Button icon="refresh" onClick={loadAuditLog} disabled={loading}>
+        <Button icon={"refresh" as any} onClick={loadAuditLog} disabled={loading}>
           Refresh
         </Button>
         <ToolbarSpacer />
@@ -61,7 +70,7 @@ export default function AuditLogPanel({ tableName }) {
 
       {loading && (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
-          <BusyIndicator active size="Medium" />
+          <BusyIndicator active size="M" />
         </div>
       )}
 
@@ -84,7 +93,7 @@ export default function AuditLogPanel({ tableName }) {
         >
           {entries.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={6}>
+              <TableCell {...({ colSpan: 6 } as any)}>
                 <Text>No audit records</Text>
               </TableCell>
             </TableRow>

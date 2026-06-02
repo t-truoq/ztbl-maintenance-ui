@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useId } from 'react'
+import { useState, useEffect, useRef, useId } from 'react'
 import {
   Dialog,
   Bar,
@@ -30,12 +30,17 @@ import {
   touchSessionLocks
 } from '../utils/fieldLockService'
 import DomainValueHelp from './DomainValueHelp'
+import { FieldMeta, TableRowData } from '../types'
 
-function fieldName(field) {
+function fieldName(field: FieldMeta): string {
   return field.field_name || field.FieldName
 }
 
-function FieldLabel({ field }) {
+interface FieldLabelProps {
+  field: FieldMeta;
+}
+
+function FieldLabel({ field }: FieldLabelProps) {
   const name = fieldName(field)
   const title = field.label || field.LabelText || name
   const inputId = `record-field-${name}`
@@ -46,7 +51,7 @@ function FieldLabel({ field }) {
       <Label
         for={inputId}
         showColon
-        required={field.is_mandatory || field.MandatoryFlag === 'X'}
+        required={!!(field.is_mandatory || field.MandatoryFlag === 'X')}
       >
         {title}
         {(field.is_key || field.IsKeyField === 'X') ? ' (Key)' : ''}
@@ -61,6 +66,18 @@ function FieldLabel({ field }) {
   )
 }
 
+interface RecordDialogProps {
+  open: boolean;
+  mode: 'create' | 'edit';
+  configUuid: string;
+  allFields: FieldMeta[];
+  initialRow: TableRowData | null;
+  tableName: string;
+  username: string;
+  onSave: (formValues: TableRowData, dirtyFieldNames: string[]) => Promise<{ ok: boolean; message?: string }>;
+  onClose: () => void;
+}
+
 export default function RecordDialog({
   open,
   mode,
@@ -71,14 +88,14 @@ export default function RecordDialog({
   username,
   onSave,
   onClose
-}) {
+}: RecordDialogProps) {
   const formFields = getFormFields(allFields, mode)
-  const [values, setValues] = useState({})
+  const [values, setValues] = useState<Record<string, any>>({})
   const [saving, setSaving] = useState(false)
   const [validationError, setValidationError] = useState('')
-  const [foreignLocks, setForeignLocks] = useState({})
+  const [foreignLocks, setForeignLocks] = useState<Record<string, string>>({})
   const sessionId = useId()
-  const baselineRowRef = useRef(null)
+  const baselineRowRef = useRef<TableRowData | null>(null)
 
   const recordKey =
     mode === 'edit' && initialRow ? buildKeyRecord(allFields, initialRow) : null
@@ -123,26 +140,26 @@ export default function RecordDialog({
     onClose()
   }
 
-  function isLockedByOther(fieldName) {
-    return Boolean(foreignLocks[fieldName])
+  function isLockedByOther(fieldNameKey: string): boolean {
+    return Boolean(foreignLocks[fieldNameKey])
   }
 
-  function tryAcquireField(fieldName) {
+  function tryAcquireField(fieldNameKey: string): boolean {
     if (mode !== 'edit' || !tableName || !recordKey || !username) return true
-    if (isLockedByOther(fieldName)) return false
+    if (isLockedByOther(fieldNameKey)) return false
 
-    const result = acquireFieldLock(tableName, recordKey, fieldName, username, sessionId)
+    const result = acquireFieldLock(tableName, recordKey, fieldNameKey, username, sessionId)
     if (!result.acquired) {
-      setForeignLocks(prev => ({ ...prev, [fieldName]: result.heldBy }))
+      setForeignLocks(prev => ({ ...prev, [fieldNameKey]: result.heldBy || '' }))
       return false
     }
     refreshForeignLocks()
     return true
   }
 
-  function updateValue(fieldName, value) {
-    if (!tryAcquireField(fieldName)) return
-    setValues(prev => ({ ...prev, [fieldName]: value }))
+  function updateValue(fieldNameKey: string, value: any) {
+    if (!tryAcquireField(fieldNameKey)) return
+    setValues(prev => ({ ...prev, [fieldNameKey]: value }))
     setValidationError('')
   }
 
@@ -153,7 +170,7 @@ export default function RecordDialog({
       return
     }
 
-    const normalized = {}
+    const normalized: TableRowData = {}
     formFields.forEach(f => {
       const name = fieldName(f)
       normalized[name] = normalizeFieldValue(f, values[name])
@@ -190,7 +207,7 @@ export default function RecordDialog({
     }
   }
 
-  function renderDisplayValue(field) {
+  function renderDisplayValue(field: FieldMeta) {
     const name = fieldName(field)
     const value = values[name] ?? ''
     const feType = field.fe_type || field.FeType
@@ -201,7 +218,7 @@ export default function RecordDialog({
     return <Text>{value}</Text>
   }
 
-  function renderField(field) {
+  function renderField(field: FieldMeta) {
     const name = fieldName(field)
     const lockedBy = foreignLocks[name]
     const fieldLocked = Boolean(lockedBy)
@@ -242,8 +259,8 @@ export default function RecordDialog({
           <Input
             id={inputId}
             value={value}
-            readonly={mode === 'edit' && (field.is_key || field.IsKeyField === 'X')}
-            onInput={e => updateValue(name, e.target.value)}
+            readonly={mode === 'edit' && !!(field.is_key || field.IsKeyField === 'X')}
+            onInput={(e: any) => updateValue(name, e.target.value)}
           />
         )
       case 'date':
@@ -251,7 +268,7 @@ export default function RecordDialog({
           <DatePicker
             id={inputId}
             value={value}
-            onChange={e => updateValue(name, formatDateForSap(e.target.value))}
+            onChange={(e: any) => updateValue(name, formatDateForSap(e.target.value))}
           />
         )
       case 'boolean':
@@ -259,7 +276,7 @@ export default function RecordDialog({
           <CheckBox
             id={inputId}
             checked={value === 'X'}
-            onChange={e => updateValue(name, e.target.checked ? 'X' : '')}
+            onChange={(e: any) => updateValue(name, e.target.checked ? 'X' : '')}
           />
         )
       case 'decimal':
@@ -269,7 +286,7 @@ export default function RecordDialog({
             type="Number"
             value={value}
             placeholder={field.label || field.LabelText || name}
-            onInput={e => updateValue(name, e.target.value)}
+            onInput={(e: any) => updateValue(name, e.target.value)}
           />
         )
       case 'integer':
@@ -279,7 +296,7 @@ export default function RecordDialog({
             type="Number"
             value={value}
             placeholder={field.label || field.LabelText || name}
-            onInput={e => updateValue(name, e.target.value)}
+            onInput={(e: any) => updateValue(name, e.target.value)}
           />
         )
       case 'time':
@@ -288,7 +305,7 @@ export default function RecordDialog({
             id={inputId}
             value={value}
             placeholder="HH:MM:SS"
-            onInput={e => updateValue(name, e.target.value)}
+            onInput={(e: any) => updateValue(name, e.target.value)}
           />
         )
       case 'text':
@@ -299,7 +316,7 @@ export default function RecordDialog({
             value={value}
             maxlength={field.length || field.Length || undefined}
             placeholder={field.label || field.LabelText || name}
-            onInput={e => updateValue(name, e.target.value)}
+            onInput={(e: any) => updateValue(name, e.target.value)}
           />
         )
     }
@@ -331,7 +348,7 @@ export default function RecordDialog({
       }
     >
       {saving && (
-        <BusyIndicator active size="Medium" style={{ marginBottom: '1rem' }} />
+        <BusyIndicator active size="M" style={{ marginBottom: '1rem' }} />
       )}
       {validationError && (
         <Text style={{ color: '#bb0000', marginBottom: '0.5rem' }}>{validationError}</Text>

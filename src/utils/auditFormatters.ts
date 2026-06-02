@@ -1,7 +1,8 @@
 import { fixJson } from '../services/sapApi'
+import { AuditLogEntry } from '../types'
 
 /** Format audit JSON as "KEY: value | KEY: value", skip empty values */
-export function formatAuditValue(value) {
+export function formatAuditValue(value: any): string {
   if (value === undefined || value === null) return ''
   const str = String(value).trim()
   if (!str) return ''
@@ -35,7 +36,7 @@ export function formatAuditValue(value) {
 }
 
 /** Per ActionType: which columns to populate */
-export function getAuditDisplayCells(entry) {
+export function getAuditDisplayCells(entry: AuditLogEntry): { fieldName: string; oldValue: string; newValue: string } {
   const action = entry.ActionType
   const formattedOld = formatAuditValue(entry.OldValue)
   const formattedNew = formatAuditValue(entry.NewValue)
