@@ -1,4 +1,9 @@
-import axios from 'axios'
+import {
+  api,
+  apiPostWithCsrf,
+  SAP_CLIENT,
+  getFriendlyErrorMessage
+} from './apiClient'
 import { getCachedDomainValues, setCachedDomainValues } from './domainCache'
 import {
   formatEtagValueForAbap,
@@ -11,182 +16,14 @@ import {
   normalizeFieldMetaRow,
   buildFieldMetaFromFieldList
 } from '../utils/fieldMeta'
-import { Credentials, FieldMeta, TableConfig, AuditLogEntry, TableRowData } from '../types'
+import { TableConfig, FieldMeta, AuditLogEntry, TableRowData } from '../types'
 
-export const SAP_SERVICE = '/sap/opu/odata4/sap/zsb_tbl_config/srvd/sap/zsd_tbl_config/0001'
-export const SAP_CLIENT = '324'
-
-const api = axios.create({
-  baseURL: SAP_SERVICE,
-  params: { 'sap-client': SAP_CLIENT },
-  headers: { 'Content-Type': 'application/json' },
-  withCredentials: true
-})
-
-let csrfToken = ''
-let credentials: Credentials | null = null
-
-function encodeBasicAuth(username: string, password: string): string {
-  const raw = `${username}:${password}`
-  const bytes = new TextEncoder().encode(raw)
-  let binary = ''
-  bytes.forEach(b => { binary += String.fromCharCode(b) })
-  return btoa(binary)
+export function isOptimisticLockError(message: string): boolean {
+  return /optimistic lock/i.test(String(message || ''))
 }
 
-/** Remove SAP session cookies stored on localhost by the dev proxy */
-export function clearSapCookies(): void {
-  const names = document.cookie.split(';').map(c => c.split('=')[0].trim()).filter(Boolean)
-  for (const name of names) {
-    const lower = name.toLowerCase()
-    if (
-      lower.startsWith('sap') ||
-      lower.includes('mysapsso') ||
-      lower.includes('session')
-    ) {
-      document.cookie = `${name}=; path=/; max-age=0`
-      document.cookie = `${name}=; path=/sap; max-age=0`
-    }
-  }
-}
-
-export function setCredentials(username: string, password: string): void {
-  const token = encodeBasicAuth(username, password)
-  credentials = { username, token }
-  api.defaults.headers.common.Authorization = `Basic ${token}`
-}
-
-export function clearCredentials(): void {
-  credentials = null
-  delete api.defaults.headers.common.Authorization
-  csrfToken = ''
-  clearSapCookies()
-}
-
-api.interceptors.request.use(config => {
-  if (!credentials?.token) {
-    return Promise.reject(new Error('Not authenticated'))
-  }
-  return config
-})
-
-export function getCredentials(): Credentials | null {
-  return credentials
-}
-
-function readCsrfHeader(headers: any): string {
-  if (!headers) return ''
-  return (
-    headers['x-csrf-token'] ||
-    headers['X-CSRF-Token'] ||
-    headers.get?.('x-csrf-token') ||
-    ''
-  )
-}
-
-export function isCsrfError(error: any): boolean {
-  const data = error?.response?.data?.error
-  const category = data?.['@SAP__common.ExceptionCategory'] || data?.ExceptionCategory
-  if (category === 'CSRF_Token_Missing') return true
-  const msg = String(data?.message || '')
-  return /csrf/i.test(msg)
-}
-
-api.interceptors.response.use(
-  response => response,
-  error => {
-    const status = error.response?.status
-    if (credentials && (status === 401 || (status === 403 && !isCsrfError(error)))) {
-      window.dispatchEvent(new CustomEvent('sap-session-expired'))
-    }
-    return Promise.reject(error)
-  }
-)
-
-export async function testLogin(username: string, password: string): Promise<{ success: boolean; username?: string; message?: string }> {
-  clearCredentials()
-
-  const token = encodeBasicAuth(username, password)
-  const url =
-    `${SAP_SERVICE}/TableConfig` +
-    `?$top=1&$select=TableName&sap-client=${encodeURIComponent(SAP_CLIENT)}`
-
-  try {
-    const res = await fetch(url, {
-      method: 'GET',
-      credentials: 'omit',
-      cache: 'no-store',
-      headers: {
-        Authorization: `Basic ${token}`,
-        Accept: 'application/json',
-        'sap-client': SAP_CLIENT,
-        'X-CSRF-Token': 'Fetch'
-      }
-    })
-
-    const contentType = res.headers.get('content-type') || ''
-
-    if (!res.ok) {
-      if (res.status === 401 || res.status === 403) {
-        return { success: false, message: 'Invalid username or password' }
-      }
-      return { success: false, message: 'Cannot connect to SAP system' }
-    }
-
-    if (!contentType.includes('json')) {
-      return { success: false, message: 'Invalid username or password' }
-    }
-
-    const data = await res.json()
-    if (!Array.isArray(data?.value)) {
-      return { success: false, message: 'Invalid username or password' }
-    }
-
-    setCredentials(username, password)
-    // CSRF must be fetched via axios (same session/cookies as later POST requests)
-    await fetchCsrfToken()
-    return { success: true, username }
-  } catch {
-    return { success: false, message: 'Cannot connect to SAP system' }
-  }
-}
-
-export function getSapErrorMessage(error: any): string {
-  const data = error?.response?.data
-  const sapMsg = data?.error?.message
-  if (typeof sapMsg === 'string') return sapMsg
-  if (sapMsg?.value) return sapMsg.value
-  if (typeof data?.message === 'string') return data.message
-  return error?.message || 'Unknown error'
-}
-
-export function formatActionErrorMessage(message: string): string {
-  const msg = String(message || '')
-  if (isJsonFormatError(msg)) {
-    console.error('[ABAP JSON format]', msg)
-    return enhanceJsonFormatError(msg)
-  }
-  return msg
-}
-
-export function getFriendlyErrorMessage(error: any): string {
-  if (!error?.response) {
-    return 'Cannot connect to SAP system. Please check your connection.'
-  }
-  const status = error.response.status
-  if (status === 401) {
-    return 'Session expired. Please login again.'
-  }
-  if (status === 403 && isCsrfError(error)) {
-    return 'Security token expired. Please try again.'
-  }
-  if (status === 403) {
-    return 'Session expired. Please login again.'
-  }
-  if (status >= 500) {
-    return 'Server error. Please contact administrator.'
-  }
-  return formatActionErrorMessage(getSapErrorMessage(error))
+export function isFKReferenceError(message: string): boolean {
+  return /referenced by table/i.test(String(message || ''))
 }
 
 export function parseFKErrorMessage(message: string): string {
@@ -198,42 +35,13 @@ export function parseFKErrorMessage(message: string): string {
   return message
 }
 
-export function isOptimisticLockError(message: string): boolean {
-  return /optimistic lock/i.test(String(message || ''))
-}
-
-export function isFKReferenceError(message: string): boolean {
-  return /referenced by table/i.test(String(message || ''))
-}
-
-export async function fetchCsrfToken(): Promise<string> {
-  const res = await api.get('/', {
-    headers: { 'X-CSRF-Token': 'Fetch' },
-    params: { 'sap-client': SAP_CLIENT }
-  })
-  csrfToken = readCsrfHeader(res.headers)
-  return csrfToken
-}
-
-async function apiPostWithCsrf(url: string, body: any, config: any = {}): Promise<any> {
-  if (!csrfToken) {
-    await fetchCsrfToken()
+export function formatActionErrorMessage(message: string): string {
+  const msg = String(message || '')
+  if (isJsonFormatError(msg)) {
+    console.error('[ABAP JSON format]', msg)
+    return enhanceJsonFormatError(msg)
   }
-  const headers = {
-    'X-CSRF-Token': csrfToken,
-    'Content-Type': 'application/json',
-    ...config.headers
-  }
-  try {
-    return await api.post(url, body, { ...config, headers })
-  } catch (error) {
-    if (!isCsrfError(error)) throw error
-    await fetchCsrfToken()
-    return await api.post(url, body, {
-      ...config,
-      headers: { ...headers, 'X-CSRF-Token': csrfToken }
-    })
-  }
+  return msg
 }
 
 /** Fix unquoted timestamps before JSON.parse */
@@ -248,7 +56,6 @@ export function fixJson(jsonStr: string): string {
     /:\s*(\d{14}\.\d+)/g,
     ':"$1"'
   )
-  // Quote bare 14-digit timestamps (e.g. CHANGED_AT:20260320084745)
   fixed = fixed.replace(
     /:\s*(\d{14})(\s*[,}\]])/g,
     ':"$1.0000000"$2'
@@ -270,7 +77,6 @@ export function parseTableDataJson(dataJson: string, fieldMeta: FieldMeta[] | nu
   return Array.isArray(rows) ? rows : [rows]
 }
 
-/** Ensure UUID has dashes: 8b95f36a-4f27-1fe1-9582-026ba9aed02e */
 export function normalizeConfigUuid(configUuid: string): string {
   if (!configUuid) return ''
   const s = String(configUuid).trim()
@@ -296,7 +102,7 @@ function parseDomainValuesJson(valuesJson: string): Array<{ value: string; descr
     return arr.map(item => ({
       value: String(item.value ?? item.Value ?? item.VALUE ?? item.domvalue_l ?? ''),
       description: String(
-        item.description ?? item.Description ?? item.ddtext ?? item.value ?? item.VALUE ?? ''
+        item.description ?? item.Description ?? item.DESCRIPTION ?? item.ddtext ?? item.value ?? item.VALUE ?? ''
       )
     }))
   } catch (e: any) {
@@ -326,7 +132,6 @@ function extractActionResponseBody(data: any): any {
   return data
 }
 
-/** SM30-style metadata from getFieldMeta action (meta_json) */
 export async function getFieldMeta(configUuid: string, tableName: string): Promise<FieldMeta[]> {
   const res = await apiPostWithCsrf(
     actionUrl(configUuid, 'getFieldMeta'),
@@ -346,57 +151,6 @@ export async function getFieldMeta(configUuid: string, tableName: string): Promi
   return parseFieldMetaJson(metaJson)
 }
 
-/** getFieldMeta → fallback FieldConfig OData */
-export async function loadFieldMetaForTable(configUuid: string, tableName: string): Promise<FieldMeta[]> {
-  try {
-    const meta = await getFieldMeta(configUuid, tableName)
-    if (meta.length > 0) return meta
-  } catch (e: any) {
-    console.warn('[loadFieldMetaForTable] getFieldMeta:', e.message)
-  }
-
-  try {
-    const legacy = await getFieldConfig(tableName)
-    if (legacy.length > 0) return legacy
-  } catch (e: any) {
-    console.warn('[loadFieldMetaForTable] getFieldConfig:', e.message)
-  }
-
-  return []
-}
-
-export interface TableContext {
-  fieldMeta: FieldMeta[];
-  tableData: any;
-  rows: TableRowData[];
-}
-
-/**
- * Load field metadata + table rows (SM30 flow).
- * Enriches metadata from getTableData.field_list when getFieldMeta is empty.
- */
-export async function loadTableContext(configUuid: string, tableName: string, maxRows = 100): Promise<TableContext> {
-  const [fieldMetaResult, tableData] = await Promise.all([
-    loadFieldMetaForTable(configUuid, tableName),
-    getTableData(configUuid, tableName, maxRows)
-  ])
-  let fieldMeta = fieldMetaResult
-
-  if (!fieldMeta.length && tableData.field_list) {
-    fieldMeta = buildFieldMetaFromFieldList(
-      tableData.field_list,
-      tableData.data_json || '',
-      fixJson
-    )
-  }
-
-  const dataJson = tableData.data_json || ''
-  const rows = dataJson ? parseTableDataJson(dataJson, fieldMeta) : []
-
-  return { fieldMeta, tableData, rows }
-}
-
-/** @deprecated Use getFieldMeta — kept for fallback */
 export async function getFieldConfig(tableName: string): Promise<FieldMeta[]> {
   const res = await api.get('/FieldConfig', {
     params: {
@@ -417,9 +171,83 @@ export async function getFieldConfig(tableName: string): Promise<FieldMeta[]> {
       label: row.LabelText,
       domain_name: row.DomainName,
       display_order: row.DisplayOrder,
-      is_hidden: row.HiddenFlag === 'X'
+      is_hidden: row.HiddenFlag === 'X' || row.Hidden === 'X',
+      readonly_flag: row.ReadonlyFlag === 'X' || row.Readonly === 'X'
     })
   )
+}
+
+export async function loadFieldMetaForTable(configUuid: string, tableName: string): Promise<FieldMeta[]> {
+  let dbMeta: FieldMeta[] = []
+  try {
+    dbMeta = await getFieldMeta(configUuid, tableName)
+  } catch (e: any) {
+    console.warn('[loadFieldMetaForTable] getFieldMeta:', e.message)
+    if (e.response?.status === 423) {
+      throw e
+    }
+  }
+
+  let customConfigs: FieldMeta[] = []
+  try {
+    customConfigs = await getFieldConfig(tableName)
+  } catch (e: any) {
+    console.warn('[loadFieldMetaForTable] getFieldConfig:', e.message)
+    if (e.response?.status === 423) {
+      throw e
+    }
+  }
+
+  if (dbMeta.length === 0) {
+    return customConfigs
+  }
+
+  return dbMeta.map(dbField => {
+    const custom = customConfigs.find(
+      c => c.field_name.toUpperCase() === dbField.field_name.toUpperCase()
+    )
+    if (!custom) return dbField
+
+    return {
+      ...dbField,
+      label: custom.label || dbField.label,
+      LabelText: custom.LabelText || dbField.LabelText,
+      display_order: custom.display_order ?? dbField.display_order,
+      DisplayOrder: custom.DisplayOrder ?? dbField.DisplayOrder,
+      is_hidden: custom.is_hidden,
+      HiddenFlag: custom.HiddenFlag,
+      ReadonlyFlag: custom.ReadonlyFlag,
+      fe_type: custom.fe_type || dbField.fe_type,
+      FeType: custom.FeType || dbField.FeType
+    }
+  }).sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))
+}
+
+export interface TableContext {
+  fieldMeta: FieldMeta[];
+  tableData: any;
+  rows: TableRowData[];
+}
+
+export async function loadTableContext(configUuid: string, tableName: string, maxRows = 100): Promise<TableContext> {
+  const [fieldMetaResult, tableData] = await Promise.all([
+    loadFieldMetaForTable(configUuid, tableName),
+    getTableData(configUuid, tableName, maxRows)
+  ])
+  let fieldMeta = fieldMetaResult
+
+  if (!fieldMeta.length && tableData.field_list) {
+    fieldMeta = buildFieldMetaFromFieldList(
+      tableData.field_list,
+      tableData.data_json || '',
+      fixJson
+    )
+  }
+
+  const dataJson = tableData.data_json || ''
+  const rows = dataJson ? parseTableDataJson(dataJson, fieldMeta) : []
+
+  return { fieldMeta, tableData, rows }
 }
 
 export async function getDomainValues(configUuid: string, domainName: string, searchString = ''): Promise<Array<{ value: string; description: string }>> {
@@ -521,6 +349,7 @@ export async function updateRecord(
 }
 
 export async function deleteRecord(configUuid: string, tableName: string, recordKey: any): Promise<any> {
+  console.log('[deleteRecord] configUuid:', configUuid, 'tableName:', tableName, 'recordKey:', recordKey)
   const res = await apiPostWithCsrf(
     actionUrl(configUuid, 'deleteRecord'),
     {
@@ -545,3 +374,6 @@ export async function getAuditLog(tableName: string): Promise<AuditLogEntry[]> {
   })
   return res.data.value || []
 }
+
+// Re-export friendly error formatters for easier access from pages
+export { getFriendlyErrorMessage }

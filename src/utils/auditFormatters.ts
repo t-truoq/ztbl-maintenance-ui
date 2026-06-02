@@ -1,4 +1,4 @@
-import { fixJson } from '../services/sapApi'
+import { fixJson } from '../services/tableConfigApi'
 import { AuditLogEntry } from '../types'
 
 /** Format audit JSON as "KEY: value | KEY: value", skip empty values */

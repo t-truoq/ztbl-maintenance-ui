@@ -6,7 +6,7 @@ import {
   BusyIndicator,
   Label
 } from '@ui5/webcomponents-react'
-import { testLogin, clearCredentials } from '../services/sapApi'
+import { testLogin, clearCredentials } from '../services/apiClient'
 
 interface LoginScreenProps {
   onLogin: (credentials: { username: string }) => void;

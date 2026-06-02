@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import {
   FlexBox,
   ComboBox,
@@ -16,11 +16,11 @@ import {
   Text,
   BusyIndicator
 } from '@ui5/webcomponents-react'
-import { getDomainValues, getSapErrorMessage } from '../services/sapApi'
+import { getDomainValues } from '../services/tableConfigApi'
+import { getSapErrorMessage } from '../services/apiClient'
 import { getDomainKey } from '../utils/recordHelpers'
 import { FieldMeta } from '../types'
 
-const SEARCH_DEBOUNCE_MS = 350
 
 interface DomainValueHelpProps {
   configUuid: string;
@@ -45,74 +45,37 @@ export default function DomainValueHelp({
   const [loadError, setLoadError] = useState('')
   const [helpOpen, setHelpOpen] = useState(false)
   const [helpSearch, setHelpSearch] = useState('')
-  const [comboOpen, setComboOpen] = useState(false)
   const [filterText, setFilterText] = useState('')
 
-  const debounceRef = useRef<any>(null)
-  const requestIdRef = useRef(0)
-
-  const searchApi = useCallback(
-    async (searchString: string) => {
+  const loadOptions = useCallback(
+    async () => {
       if (!configUuid || !domainKey) return
-      const reqId = ++requestIdRef.current
       setLoading(true)
       setLoadError('')
       try {
-        const rows = await getDomainValues(configUuid, domainKey, searchString)
-        if (reqId !== requestIdRef.current) return
+        const rows = await getDomainValues(configUuid, domainKey, '')
         setOptions(rows)
-        setComboOpen(true)
       } catch (e: any) {
-        if (reqId !== requestIdRef.current) return
         setLoadError(getSapErrorMessage(e))
         setOptions([])
       } finally {
-        if (reqId === requestIdRef.current) setLoading(false)
+        setLoading(false)
       }
     },
     [configUuid, domainKey]
   )
-
-  const debouncedSearch = useCallback(
-    (text: string) => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-      debounceRef.current = setTimeout(() => {
-        searchApi(text)
-      }, SEARCH_DEBOUNCE_MS)
-    },
-    [searchApi]
-  )
-
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (configUuid && domainKey && value && options.length === 0) {
-      searchApi('')
-    }
-  }, [configUuid, domainKey])
-
-  useEffect(() => {
-    if (!helpOpen) return
-    debouncedSearch(helpSearch)
-  }, [helpSearch, helpOpen])
 
   function selectValue(val: string) {
     onChange(val)
     setHelpOpen(false)
     setHelpSearch('')
     setFilterText('')
-    setComboOpen(false)
   }
 
   function handleComboInput(e: any) {
     const text = e.target.value ?? ''
     setFilterText(text)
     if (!text) onChange('')
-    debouncedSearch(text)
   }
 
   const label = field.LabelText || field.FieldName
@@ -122,6 +85,15 @@ export default function DomainValueHelp({
     return <Text>{text || value || ''}</Text>
   }
 
+  const filteredOptions = options.filter(o => {
+    const term = (helpSearch || '').trim().toLowerCase()
+    if (!term) return true
+    return (
+      o.value.toLowerCase().includes(term) ||
+      (o.description || '').toLowerCase().includes(term)
+    )
+  })
+
   return (
     <>
       <FlexBox alignItems="Center" style={{ gap: '0.35rem', width: '100%' }}>
@@ -129,15 +101,12 @@ export default function DomainValueHelp({
           id={inputId}
           style={{ flex: 1, minWidth: 0 }}
           value={value}
-          open={comboOpen}
           placeholder={`Type to search ${label}...`}
-          filter="None"
+          filter="Contains"
           loading={loading}
           onOpen={() => {
-            setComboOpen(true)
-            if (options.length === 0) searchApi(filterText || '')
+            if (options.length === 0) loadOptions()
           }}
-          onClose={() => setComboOpen(false)}
           onInput={handleComboInput}
           onSelectionChange={(e: any) => {
             const selected = e.detail.item
@@ -162,7 +131,7 @@ export default function DomainValueHelp({
           onClick={() => {
             setHelpSearch(filterText || '')
             setHelpOpen(true)
-            searchApi(filterText || '')
+            if (options.length === 0) loadOptions()
           }}
         />
       </FlexBox>
@@ -193,7 +162,7 @@ export default function DomainValueHelp({
         </Text>
         <Input
           icon={"search" as any}
-          placeholder="Type to search (calls API)..."
+          placeholder="Type to search (client-side)..."
           value={helpSearch}
           onInput={(e: any) => setHelpSearch(e.target.value)}
           style={{ width: '100%', marginBottom: '0.75rem' }}
@@ -209,14 +178,14 @@ export default function DomainValueHelp({
               </TableHeaderRow>
             }
           >
-            {options.length === 0 ? (
+            {filteredOptions.length === 0 ? (
               <TableRow>
                 <TableCell {...({ colSpan: 2 } as any)}>
                   <Text>No values found</Text>
                 </TableCell>
               </TableRow>
             ) : (
-              options.map(o => (
+              filteredOptions.map(o => (
                 <TableRow
                   key={o.value}
                   onClick={() => selectValue(o.value)}

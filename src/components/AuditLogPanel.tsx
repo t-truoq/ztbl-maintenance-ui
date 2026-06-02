@@ -13,7 +13,8 @@ import {
   Toolbar,
   ToolbarSpacer
 } from '@ui5/webcomponents-react'
-import { getAuditLog, getSapErrorMessage } from '../services/sapApi'
+import { getAuditLog } from '../services/tableConfigApi'
+import { getSapErrorMessage } from '../services/apiClient'
 import { getAuditDisplayCells } from '../utils/auditFormatters'
 import { AuditLogEntry } from '../types'
 

@@ -111,7 +111,8 @@ export function normalizeFieldMetaRow(raw: Record<string, any>): FieldMeta {
     label: String(raw.label ?? raw.LabelText ?? raw.LABEL ?? fieldName),
     domain_name: String(raw.domain_name ?? raw.DomainName ?? raw.DOMAIN_NAME ?? ''),
     display_order: Number(raw.display_order ?? raw.DisplayOrder ?? raw.DISPLAY_ORDER ?? 0),
-    is_hidden: isTruthyFlag(raw.is_hidden) || raw.HiddenFlag === 'X' || isTruthyFlag(raw.IS_HIDDEN),
+    is_hidden: isTruthyFlag(raw.is_hidden) || raw.HiddenFlag === 'X' || isTruthyFlag(raw.IS_HIDDEN) || raw.Hidden === 'X',
+    ReadonlyFlag: isTruthyFlag(raw.readonly_flag) || raw.ReadonlyFlag === 'X' || isTruthyFlag(raw.READONLY_FLAG) || isTruthyFlag(raw.Readonly) || isTruthyFlag(raw.READONLY) ? 'X' : '',
     /** Legacy aliases for existing UI helpers */
     FieldName: fieldName,
     FeType: feType,
@@ -119,7 +120,7 @@ export function normalizeFieldMetaRow(raw: Record<string, any>): FieldMeta {
     LabelText: String(raw.label ?? raw.LabelText ?? raw.LABEL ?? fieldName),
     IsKeyField: isTruthyFlag(raw.is_key) || raw.IsKeyField === 'X' || isTruthyFlag(raw.IS_KEY) ? 'X' : '',
     MandatoryFlag: isTruthyFlag(raw.is_mandatory) || raw.MandatoryFlag === 'X' || isTruthyFlag(raw.IS_MANDATORY) ? 'X' : '',
-    HiddenFlag: isTruthyFlag(raw.is_hidden) || raw.HiddenFlag === 'X' || isTruthyFlag(raw.IS_HIDDEN) ? 'X' : '',
+    HiddenFlag: isTruthyFlag(raw.is_hidden) || raw.HiddenFlag === 'X' || isTruthyFlag(raw.IS_HIDDEN) || raw.Hidden === 'X' ? 'X' : '',
     DomainName: String(raw.domain_name ?? raw.DomainName ?? raw.DOMAIN_NAME ?? ''),
     DisplayOrder: Number(raw.display_order ?? raw.DisplayOrder ?? raw.DISPLAY_ORDER ?? 0),
     Length: Number(raw.length ?? raw.Length ?? raw.LENGTH ?? 0),
@@ -287,10 +288,27 @@ export function formatPayload(formData: Record<string, any>, meta: FieldMeta[], 
   return JSON.stringify(payload)
 }
 
-/** Visible fields for form (non-hidden, non auto-key on create) */
+/** Visible fields for form (non-hidden, non auto-key on create, non-system field) */
 export function getFormFieldsFromMeta(meta: FieldMeta[], mode = 'create'): FieldMeta[] {
+  const SYSTEM_FIELD_NAMES = new Set([
+    'CREATED_BY',
+    'CREATED_AT',
+    'CHANGED_BY',
+    'CHANGED_AT',
+    'ERNAM',
+    'ERDAT',
+    'ERZET',
+    'AENAM',
+    'AEDAT',
+    'AEZET',
+    'LAEDA'
+  ])
+
   return meta.filter(f => {
     if (f.is_hidden) return false
+    const name = (f.field_name || f.FieldName || '').toUpperCase()
+    if (SYSTEM_FIELD_NAMES.has(name)) return false
+    if (/^(CREATED|CHANGED)_(BY|AT|ON|DATE|TIME)$/i.test(name)) return false
     if (mode === 'create' && f.is_key && f.fe_type === 'uuid') return false
     return true
   })

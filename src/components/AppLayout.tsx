@@ -1,0 +1,130 @@
+import React, { useState, useRef } from 'react'
+import {
+  ShellBar,
+  SideNavigation,
+  SideNavigationItem,
+  Avatar,
+  Button,
+  FlexBox,
+  Label,
+  Popover,
+  Title,
+  Text
+} from '@ui5/webcomponents-react'
+import { TableConfig } from '../types'
+
+interface AppLayoutProps {
+  tables: TableConfig[];
+  selectedTable: TableConfig | null;
+  loading: boolean;
+  username: string;
+  onSelectTable: (table: TableConfig) => void;
+  onLogout: () => void;
+  children: React.ReactNode;
+}
+
+export default function AppLayout({
+  tables,
+  selectedTable,
+  loading: _loading,
+  username,
+  onSelectTable,
+  onLogout,
+  children
+}: AppLayoutProps) {
+  const [collapsed, setCollapsed] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const popoverRef = useRef<any>(null)
+  
+  const userInitials = username ? username.slice(0, 2).toUpperCase() : 'U'
+
+  const handleProfileClick = (e: any) => {
+    // e.detail.targetRef contains the reference to the clicked profile avatar element
+    popoverRef.current = e.detail.targetRef
+    setProfileOpen(prev => !prev)
+  }
+
+  return (
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      {/* Shell Bar Header */}
+      <ShellBar
+        primaryTitle="Dynamic Table Maintenance"
+        secondaryTitle={`${username || ''} · Client 324`}
+        startButton={
+          <Button
+            icon={"menu" as any}
+            design="Transparent"
+            onClick={() => setCollapsed(prev => !prev)}
+          />
+        }
+        profile={<Avatar initials={userInitials} colorScheme="Accent6" interactive />}
+        onProfileClick={handleProfileClick}
+      />
+
+      {/* User Profile Popover according to SAP Fiori Design guidelines */}
+      <Popover
+        open={profileOpen}
+        opener={popoverRef.current}
+        onClose={() => setProfileOpen(false)}
+        headerText="User Account Info"
+      >
+        <FlexBox
+          direction="Column"
+          alignItems="Center"
+          style={{ padding: '1.25rem', gap: '0.75rem', minWidth: '240px' }}
+        >
+          <Avatar initials={userInitials} colorScheme="Accent6" size="L" />
+          <Title level="H5" style={{ margin: '4px 0' }}>{username}</Title>
+          <Text style={{ color: '#6a7075', fontSize: '0.85rem' }}>Client: 324 · System: DEV</Text>
+          <Button
+            design="Negative"
+            icon={"log" as any}
+            style={{ marginTop: '0.75rem', width: '100%' }}
+            onClick={() => {
+              setProfileOpen(false)
+              onLogout()
+            }}
+          >
+            Logout
+          </Button>
+        </FlexBox>
+      </Popover>
+
+      {/* Main split layout */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* Left Side Navigation wrapper with dynamic width transition */}
+        <div style={{
+          width: collapsed ? '48px' : '260px',
+          borderRight: '1px solid #d9d9d9',
+          background: '#fff',
+          overflowY: 'auto',
+          transition: 'width 0.2s ease-in-out',
+          display: 'flex',
+          flexDirection: 'column'
+        }}>
+          {!collapsed && (
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+              <Label>Registered Tables ({tables.length})</Label>
+            </div>
+          )}
+          <SideNavigation collapsed={collapsed} style={{ flex: 1 }}>
+            {tables.map(t => (
+              <SideNavigationItem
+                key={t.ConfigUuid}
+                text={t.TableName}
+                icon={"table-view" as any}
+                selected={selectedTable?.ConfigUuid === t.ConfigUuid}
+                onClick={() => onSelectTable(t)}
+              />
+            ))}
+          </SideNavigation>
+        </div>
+
+        {/* Right side dynamic page content area */}
+        <div style={{ flex: 1, overflowY: 'auto', background: '#f5f6f7' }}>
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}
