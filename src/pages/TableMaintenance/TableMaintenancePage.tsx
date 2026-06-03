@@ -97,8 +97,13 @@ export default function TableMaintenancePage({
   const [toastText, setToastText] = useState('')
   const [toastOpen, setToastOpen] = useState(false)
 
+  function truncateUuids(text: string): string {
+    if (!text) return ''
+    return text.replace(/\b([0-9a-fA-F]{4})[0-9a-fA-F]{24}([0-9a-fA-F]{4})\b/g, '$1...$2')
+  }
+
   function showToast(msg: string) {
-    setToastText(msg)
+    setToastText(truncateUuids(msg))
     setToastOpen(true)
   }
 
