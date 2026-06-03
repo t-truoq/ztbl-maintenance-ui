@@ -97,6 +97,18 @@ export default function TableMaintenancePage({
   const [toastText, setToastText] = useState('')
   const [toastOpen, setToastOpen] = useState(false)
 
+  function parseToastMessage(msg: string): { title: string; subtitle?: string } {
+    if (!msg) return { title: '' }
+    const match = msg.match(/^(.*?)\s*\(ID:\s*([0-9a-fA-F]{32})\)$/i)
+    if (match) {
+      return {
+        title: match[1].trim(),
+        subtitle: `ID: ${match[2].toUpperCase()}`
+      }
+    }
+    return { title: msg }
+  }
+
   function showToast(msg: string) {
     setToastText(msg)
     setToastOpen(true)
@@ -756,9 +768,31 @@ export default function TableMaintenancePage({
       </MessageBox>
 
       <Toast open={toastOpen} duration={4000} onClose={() => setToastOpen(false)}>
-        <div style={{ wordBreak: 'break-all', whiteSpace: 'normal', textAlign: 'center' }}>
-          {toastText}
-        </div>
+        {(() => {
+          const { title, subtitle } = parseToastMessage(toastText)
+          return (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px',
+              textAlign: 'center',
+              whiteSpace: 'normal',
+              padding: '2px 4px'
+            }}>
+              <span style={{ fontWeight: 'bold' }}>{title}</span>
+              {subtitle && (
+                <span style={{
+                  fontSize: '0.8rem',
+                  color: '#d0d4d9',
+                  wordBreak: 'break-all',
+                  fontFamily: 'monospace'
+                }}>
+                  {subtitle}
+                </span>
+              )}
+            </div>
+          )
+        })()}
       </Toast>
     </>
   )
