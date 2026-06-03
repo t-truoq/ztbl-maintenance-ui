@@ -230,10 +230,8 @@ export interface TableContext {
 }
 
 export async function loadTableContext(configUuid: string, tableName: string, maxRows = 100): Promise<TableContext> {
-  const [fieldMetaResult, tableData] = await Promise.all([
-    loadFieldMetaForTable(configUuid, tableName),
-    getTableData(configUuid, tableName, maxRows)
-  ])
+  const fieldMetaResult = await loadFieldMetaForTable(configUuid, tableName)
+  const tableData = await getTableData(configUuid, tableName, maxRows)
   let fieldMeta = fieldMetaResult
 
   if (!fieldMeta.length && tableData.field_list) {

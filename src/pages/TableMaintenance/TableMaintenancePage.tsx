@@ -33,7 +33,6 @@ import {
 import {
   loadTableContext,
   getTableData,
-  getDomainValues,
   createRecord,
   updateRecord,
   deleteRecord,
@@ -173,12 +172,6 @@ export default function TableMaintenancePage({
       setData(rows)
       setTableDataJson(dataJson)
       setEtagMap(dataJson ? buildEtagMap(dataJson, fieldMeta, rows) : {})
-
-      // Fetch domain values in the background to prevent blocking table rendering
-      const domainFields = fieldMeta.filter(f => f.fe_type === 'domain' && f.domain_name)
-      Promise.all(
-        domainFields.map(f => getDomainValues(normalizedUuid, f.domain_name || '', ''))
-      ).catch(e => console.warn('Background domain prefetch error:', e))
     } catch (e: any) {
       if (latestActiveTableUuidRef.current === normalizedUuid) {
         showError(getFriendlyErrorMessage(e))
