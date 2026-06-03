@@ -1,7 +1,12 @@
 import { useState, useEffect, useRef, useId } from 'react'
 import {
-  Dialog,
-  Bar,
+  ObjectPage,
+  ObjectPageTitle,
+  ObjectPageSection,
+  ObjectPageSubSection,
+  Form,
+  FormGroup,
+  FormItem,
   Button,
   FlexBox,
   Label,
@@ -10,7 +15,9 @@ import {
   CheckBox,
   BusyIndicator,
   Text,
-  MessageStrip
+  MessageStrip,
+  ObjectStatus,
+  Toolbar
 } from '@ui5/webcomponents-react'
 import { formatDateForSap } from '../utils/displayHelpers'
 import {
@@ -52,6 +59,7 @@ function FieldLabel({ field }: FieldLabelProps) {
         for={inputId}
         showColon
         required={!!(field.is_mandatory || field.MandatoryFlag === 'X')}
+        style={{ fontWeight: 'bold' }}
       >
         {title}
         {(field.is_key || field.IsKeyField === 'X') ? ' (Key)' : ''}
@@ -66,9 +74,8 @@ function FieldLabel({ field }: FieldLabelProps) {
   )
 }
 
-interface RecordDialogProps {
-  open: boolean;
-  mode: 'create' | 'edit';
+interface RecordObjectPageProps {
+  mode: 'view' | 'edit' | 'create';
   configUuid: string;
   allFields: FieldMeta[];
   initialRow: TableRowData | null;
@@ -76,10 +83,12 @@ interface RecordDialogProps {
   username: string;
   onSave: (formValues: TableRowData, dirtyFieldNames: string[]) => Promise<{ ok: boolean; message?: string }>;
   onClose: () => void;
+  onSwitchToEdit: () => void;
+  onSwitchToView: () => void;
+  onDelete: () => void;
 }
 
-export default function RecordDialog({
-  open,
+export default function RecordObjectPage({
   mode,
   configUuid,
   allFields,
@@ -87,9 +96,18 @@ export default function RecordDialog({
   tableName,
   username,
   onSave,
-  onClose
-}: RecordDialogProps) {
-  const formFields = getFormFields(allFields, mode)
+  onClose,
+  onSwitchToEdit,
+  onSwitchToView,
+  onDelete
+}: RecordObjectPageProps) {
+  const isCreate = mode === 'create'
+  const isEdit = mode === 'edit'
+  const isView = mode === 'view'
+  
+  // When in view (read-only) mode, we still render the fields. We treat it like editing schema but read-only.
+  const formFields = getFormFields(allFields, isCreate ? 'create' : 'edit')
+  
   const [values, setValues] = useState<Record<string, any>>({})
   const [saving, setSaving] = useState(false)
   const [validationError, setValidationError] = useState('')
@@ -98,10 +116,10 @@ export default function RecordDialog({
   const baselineRowRef = useRef<TableRowData | null>(null)
 
   const recordKey =
-    mode === 'edit' && initialRow ? buildKeyRecord(allFields, initialRow) : null
+    !isCreate && initialRow ? buildKeyRecord(allFields, initialRow) : null
 
   function refreshForeignLocks() {
-    if (mode !== 'edit' || !tableName || !recordKey || !username) {
+    if (!isEdit || !tableName || !recordKey || !username) {
       setForeignLocks({})
       return
     }
@@ -109,8 +127,7 @@ export default function RecordDialog({
   }
 
   useEffect(() => {
-    if (!open) return
-    baselineRowRef.current = mode === 'edit' ? initialRow : null
+    baselineRowRef.current = isEdit ? initialRow : null
     setValues(initFormValues(formFields, initialRow))
     setValidationError('')
     refreshForeignLocks()
@@ -118,26 +135,35 @@ export default function RecordDialog({
     const onStorage = () => refreshForeignLocks()
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
-  }, [open, mode, allFields, initialRow])
+  }, [mode, allFields, initialRow])
 
   useEffect(() => {
-    if (!open || mode !== 'edit') return undefined
+    if (!isEdit) return undefined
     const timer = setInterval(() => {
       touchSessionLocks(sessionId)
       refreshForeignLocks()
     }, 60000)
     return () => clearInterval(timer)
-  }, [open, mode, tableName, recordKey, username])
+  }, [mode, tableName, recordKey, username])
 
   useEffect(() => {
-    if (!open) {
+    return () => {
       releaseSessionLocks(sessionId)
     }
-  }, [open, sessionId])
+  }, [sessionId])
 
   function handleClose() {
     releaseSessionLocks(sessionId)
     onClose()
+  }
+
+  function handleCancel() {
+    releaseSessionLocks(sessionId)
+    if (isEdit) {
+      onSwitchToView()
+    } else {
+      onClose()
+    }
   }
 
   function isLockedByOther(fieldNameKey: string): boolean {
@@ -145,7 +171,7 @@ export default function RecordDialog({
   }
 
   function tryAcquireField(fieldNameKey: string): boolean {
-    if (mode !== 'edit' || !tableName || !recordKey || !username) return true
+    if (!isEdit || !tableName || !recordKey || !username) return true
     if (isLockedByOther(fieldNameKey)) return false
 
     const result = acquireFieldLock(tableName, recordKey, fieldNameKey, username, sessionId)
@@ -177,16 +203,16 @@ export default function RecordDialog({
     })
 
     const dirtyFields =
-      mode === 'edit'
+      isEdit
         ? getDirtyFieldNames(formFields, baselineRowRef.current, normalized)
         : []
 
-    if (mode === 'edit' && dirtyFields.length === 0) {
+    if (isEdit && dirtyFields.length === 0) {
       setValidationError('No changes to save')
       return
     }
 
-    if (mode === 'edit' && dirtyFields.length > 0) {
+    if (isEdit && dirtyFields.length > 0) {
       const blockedDirty = dirtyFields.filter(name => isLockedByOther(name))
       if (blockedDirty.length === dirtyFields.length) {
         setValidationError(
@@ -201,6 +227,8 @@ export default function RecordDialog({
       const result = await onSave(normalized, dirtyFields)
       if (result?.ok === false && result.message) {
         setValidationError(result.message)
+      } else if (isEdit) {
+        onSwitchToView()
       }
     } finally {
       setSaving(false)
@@ -224,12 +252,13 @@ export default function RecordDialog({
     const fieldLocked = Boolean(lockedBy)
     const feType = field.fe_type || field.FeType
 
-    if (isDisplayOnlyField(field, mode) || fieldLocked) {
+    // If we're in view-only mode, or if the field is locked by someone else, render it read-only
+    if (isView || isDisplayOnlyField(field, isCreate ? 'create' : 'edit') || fieldLocked) {
       return (
         <FlexBox direction="Column" gap="4px">
           {renderDisplayValue(field)}
           {fieldLocked && (
-            <Text style={{ fontSize: '0.8rem', color: '#bb0000' }}>
+            <Text style={{ fontSize: '0.8rem', color: '#bb0000', fontWeight: 'bold' }}>
               Locked by {lockedBy}
             </Text>
           )}
@@ -259,8 +288,9 @@ export default function RecordDialog({
           <Input
             id={inputId}
             value={value}
-            readonly={mode === 'edit' && !!(field.is_key || field.IsKeyField === 'X')}
+            readonly={isEdit && !!(field.is_key || field.IsKeyField === 'X')}
             onInput={(e: any) => updateValue(name, e.target.value)}
+            style={{ width: '100%' }}
           />
         )
       case 'date':
@@ -269,6 +299,7 @@ export default function RecordDialog({
             id={inputId}
             value={value}
             onChange={(e: any) => updateValue(name, formatDateForSap(e.target.value))}
+            style={{ width: '100%' }}
           />
         )
       case 'boolean':
@@ -287,6 +318,7 @@ export default function RecordDialog({
             value={value}
             placeholder={field.label || field.LabelText || name}
             onInput={(e: any) => updateValue(name, e.target.value)}
+            style={{ width: '100%' }}
           />
         )
       case 'integer':
@@ -297,6 +329,7 @@ export default function RecordDialog({
             value={value}
             placeholder={field.label || field.LabelText || name}
             onInput={(e: any) => updateValue(name, e.target.value)}
+            style={{ width: '100%' }}
           />
         )
       case 'time':
@@ -306,6 +339,7 @@ export default function RecordDialog({
             value={value}
             placeholder="HH:MM:SS"
             onInput={(e: any) => updateValue(name, e.target.value)}
+            style={{ width: '100%' }}
           />
         )
       case 'text':
@@ -317,9 +351,18 @@ export default function RecordDialog({
             maxlength={field.length || field.Length || undefined}
             placeholder={field.label || field.LabelText || name}
             onInput={(e: any) => updateValue(name, e.target.value)}
+            style={{ width: '100%' }}
           />
         )
     }
+  }
+
+  // Build the title text for the Object Page
+  let titleText = 'Create Record'
+  if (!isCreate && recordKey) {
+    titleText = Object.entries(recordKey)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(', ')
   }
 
   const lockedFieldLabels = Object.entries(foreignLocks).map(
@@ -327,54 +370,98 @@ export default function RecordDialog({
   )
 
   return (
-    <Dialog
-      open={open}
-      headerText={mode === 'create' ? 'Create Record' : 'Edit Record'}
-      style={{ width: '720px' }}
-      footer={
-        <Bar
-          design="Footer"
-          endContent={
-            <>
-              <Button design="Transparent" onClick={handleClose} disabled={saving}>
-                Cancel
-              </Button>
-              <Button design="Emphasized" onClick={handleSave} disabled={saving}>
-                Save
-              </Button>
-            </>
-          }
-        />
-      }
-    >
-      {saving && (
-        <BusyIndicator active size="M" style={{ marginBottom: '1rem' }} />
-      )}
-      {validationError && (
-        <Text style={{ color: '#bb0000', marginBottom: '0.5rem' }}>{validationError}</Text>
-      )}
-      {lockedFieldLabels.length > 0 && (
-        <MessageStrip design="Information" style={{ marginBottom: '0.75rem' }}>
-          Fields locked by another user: {lockedFieldLabels.join(', ')}
-        </MessageStrip>
-      )}
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--sapBackgroundColor, #f5f6f7)' }}>
+      <ObjectPage
+        style={{ flex: 1 }}
+        titleArea={
+          <ObjectPageTitle
+            header={titleText}
+            subHeader={tableName}
+            actionsBar={
+              <Toolbar design="Transparent" style={{ padding: 0 }}>
+                {isView && (
+                  <>
+                    <Button design="Emphasized" icon="edit" onClick={onSwitchToEdit}>
+                      Edit
+                    </Button>
+                    <Button design="Negative" icon="delete" onClick={onDelete}>
+                      Delete
+                    </Button>
+                    <Button design="Transparent" icon="decline" onClick={handleClose}>
+                      Close
+                    </Button>
+                  </>
+                )}
+                {(isEdit || isCreate) && (
+                  <>
+                    <Button design="Emphasized" onClick={handleSave} disabled={saving}>
+                      Save
+                    </Button>
+                    <Button design="Transparent" onClick={handleCancel} disabled={saving}>
+                      Cancel
+                    </Button>
+                  </>
+                )}
+              </Toolbar>
+            }
+          />
+        }
+      >
+        <ObjectPageSection titleText="General Information" id="general-info">
+          <ObjectPageSubSection id="general-info-sub" titleText="Details">
+            <FlexBox direction="Column" style={{ width: '100%', gap: '1rem' }}>
+              {saving && <BusyIndicator active size="M" />}
+              {validationError && (
+                <MessageStrip design="Negative" onClose={() => setValidationError('')}>
+                  {validationError}
+                </MessageStrip>
+              )}
+              {lockedFieldLabels.length > 0 && (
+                <MessageStrip design="Information">
+                  Fields locked by another user: {lockedFieldLabels.join(', ')}
+                </MessageStrip>
+              )}
 
-      <FlexBox direction="Column" style={{ gap: '1rem', padding: '0.25rem 0' }}>
-        {formFields.map(field => {
-          const feType = field.fe_type || field.FeType
-          return (
-            <FlexBox
-              key={fieldName(field)}
-              direction="Column"
-              style={{ gap: '0.35rem' }}
-            >
-              {feType !== 'boolean' && !isDomainField(field) && <FieldLabel field={field} />}
-              {isDomainField(field) && <FieldLabel field={field} />}
-              {renderField(field)}
+              <Form layout="S1 M1 L2 XL2" style={{ width: '100%' }}>
+                <FormGroup>
+                  {formFields.map(field => (
+                    <FormItem key={fieldName(field)} labelContent={<FieldLabel field={field} />}>
+                      {renderField(field)}
+                    </FormItem>
+                  ))}
+                </FormGroup>
+              </Form>
             </FlexBox>
-          )
-        })}
-      </FlexBox>
-    </Dialog>
+          </ObjectPageSubSection>
+        </ObjectPageSection>
+
+        {!isCreate && recordKey ? (
+          <ObjectPageSection titleText="Record Status" id="record-status">
+            <ObjectPageSubSection id="record-status-sub" titleText="Status Details">
+              <Form layout="S1 M1 L2 XL2" style={{ width: '100%' }}>
+                <FormGroup>
+                  <FormItem labelContent={<Label style={{ fontWeight: 'bold' }}>Active State</Label>}>
+                    <ObjectStatus state={initialRow?.ActiveFlag === 'X' || initialRow?.active_flag === 'X' ? 'Positive' : 'None'}>
+                      {initialRow?.ActiveFlag === 'X' || initialRow?.active_flag === 'X' ? 'Active' : 'Inactive'}
+                    </ObjectStatus>
+                  </FormItem>
+                  <FormItem labelContent={<Label style={{ fontWeight: 'bold' }}>Lock Status</Label>}>
+                    {lockedFieldLabels.length > 0 ? (
+                      <ObjectStatus state="Negative" icon="private">
+                        Locked (Partial)
+                      </ObjectStatus>
+                    ) : (
+                      <ObjectStatus state="Positive" icon="locked">
+                        Unlocked / Editable
+                      </ObjectStatus>
+                    )}
+                  </FormItem>
+                </FormGroup>
+              </Form>
+            </ObjectPageSubSection>
+          </ObjectPageSection>
+        ) : (null as any)}
+      </ObjectPage>
+    </div>
   )
 }
