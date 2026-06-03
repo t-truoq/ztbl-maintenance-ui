@@ -755,8 +755,10 @@ export default function TableMaintenancePage({
         {fkErrorMessage}
       </MessageBox>
 
-      <Toast open={toastOpen} duration={3000} onClose={() => setToastOpen(false)}>
-        {toastText}
+      <Toast open={toastOpen} duration={4000} onClose={() => setToastOpen(false)}>
+        <div style={{ wordBreak: 'break-all', whiteSpace: 'normal', textAlign: 'center' }}>
+          {toastText}
+        </div>
       </Toast>
     </>
   )
