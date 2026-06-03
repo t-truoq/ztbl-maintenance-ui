@@ -88,8 +88,10 @@ export default function App({ credentials, onLogout }: AppProps) {
     >
       <TableMaintenancePage
         selectedTable={selectedTable}
+        tables={tables}
         username={credentials?.username || ''}
         onRefreshTableList={loadTables}
+        onSelectTable={handleSelectTable}
       />
     </AppLayout>
   )

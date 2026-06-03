@@ -95,16 +95,16 @@ export default function AppLayout({
         {/* Left Side Navigation wrapper with dynamic width transition */}
         <div style={{
           width: collapsed ? '48px' : '260px',
-          borderRight: '1px solid #d9d9d9',
-          background: '#fff',
+          borderRight: '1px solid var(--sapContent_BorderColor, #d9d9d9)',
+          background: 'var(--sapContent_NavigationBackgroundColor, #ffffff)',
           overflowY: 'auto',
           transition: 'width 0.2s ease-in-out',
           display: 'flex',
           flexDirection: 'column'
         }}>
           {!collapsed && (
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-              <Label>Registered Tables ({tables.length})</Label>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--sapContent_BorderColor, #f0f0f0)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+              <Label style={{ fontWeight: 'bold' }}>Registered Tables ({tables.length})</Label>
             </div>
           )}
           <SideNavigation collapsed={collapsed} style={{ flex: 1 }}>
