@@ -19,7 +19,6 @@ import {
   Label,
   Toolbar,
   ToolbarSpacer,
-  ToolbarSeparator,
   Dialog,
   Bar,
   TabContainer,
@@ -30,7 +29,11 @@ import {
   Icon,
   ObjectStatus,
   Toast,
-  FlexibleColumnLayout
+  FlexibleColumnLayout,
+  Card,
+  CardHeader,
+  FilterBar,
+  FilterGroupItem
 } from '@ui5/webcomponents-react'
 import {
   loadTableContext,
@@ -75,14 +78,18 @@ function formatHeaderLabel(f: FieldMeta) {
 
 interface TableMaintenancePageProps {
   selectedTable: TableConfig | null;
+  tables: TableConfig[];
   username: string;
   onRefreshTableList: () => Promise<void>;
+  onSelectTable: (table: TableConfig) => void;
 }
 
 export default function TableMaintenancePage({
   selectedTable,
+  tables,
   username,
-  onRefreshTableList
+  onRefreshTableList,
+  onSelectTable
 }: TableMaintenancePageProps) {
   const [allFields, setAllFields] = useState<FieldMeta[]>([])
   const [fields, setFields] = useState<FieldMeta[]>([])
@@ -94,6 +101,9 @@ export default function TableMaintenancePage({
   const [error, setError] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const [filterValues, setFilterValues] = useState<Record<string, string>>({})
+  const [appliedSearchQuery, setAppliedSearchQuery] = useState('')
+  const [appliedFilterValues, setAppliedFilterValues] = useState<Record<string, string>>({})
 
   const [toastText, setToastText] = useState('')
   const [toastOpen, setToastOpen] = useState(false)
@@ -141,6 +151,10 @@ export default function TableMaintenancePage({
     clearDomainCache()
     setFclLayout('OneColumn')
     setEditingRow(null)
+    setSearchQuery('')
+    setFilterValues({})
+    setAppliedSearchQuery('')
+    setAppliedFilterValues({})
   }
 
   function showError(message: string) {
@@ -164,6 +178,10 @@ export default function TableMaintenancePage({
     setData([])
     setTableDataJson('')
     setEtagMap({})
+    setSearchQuery('')
+    setFilterValues({})
+    setAppliedSearchQuery('')
+    setAppliedFilterValues({})
 
     try {
       setDataLoading(true)
@@ -241,6 +259,18 @@ export default function TableMaintenancePage({
     )
     setIsReadOnlyMode(true)
     setFclLayout('TwoColumnsMidExpanded')
+  }
+
+  function handleGo() {
+    setAppliedSearchQuery(searchQuery)
+    setAppliedFilterValues(filterValues)
+  }
+
+  function handleClear() {
+    setSearchQuery('')
+    setFilterValues({})
+    setAppliedSearchQuery('')
+    setAppliedFilterValues({})
   }
 
   function openDeleteDialog(row: TableRowData) {
@@ -429,25 +459,121 @@ export default function TableMaintenancePage({
 
   if (!selectedTable) {
     return (
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: '60vh',
-        flexDirection: 'column',
-        gap: '1rem'
-      }}>
-        <Title level="H3">Select a table to maintain</Title>
-        <Text>Choose a table from the left navigation</Text>
+      <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', background: '#f4f6f8', minHeight: '100%', boxSizing: 'border-box' }}>
+        {/* Welcome Banner */}
+        <div style={{
+          background: 'linear-gradient(135deg, #1d2d50 0%, #133b5c 100%)',
+          color: '#fff',
+          borderRadius: '8px',
+          padding: '2rem',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '1rem'
+        }}>
+          <div>
+            <Title level="H2" style={{ color: '#fff', margin: 0 }}>Welcome to Dynamic Table Maintenance</Title>
+            <Text style={{ color: '#dbe2ef', marginTop: '0.5rem', display: 'block' }}>
+              Select a table below or from the sidebar navigation to manage database records.
+            </Text>
+          </div>
+          <div style={{ textAlign: 'right', minWidth: '180px' }}>
+            <Label style={{ color: '#a3b7dc', display: 'block' }}>System Context</Label>
+            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: '1.1rem' }}>DEV · Client 324</Text>
+            <Text style={{ color: '#a3b7dc', fontSize: '0.85rem', display: 'block', marginTop: '4px' }}>User: {username}</Text>
+          </div>
+        </div>
+
+        {/* Dashboard Title & Stats */}
+        <FlexBox justifyContent="SpaceBetween" alignItems="Center" style={{ marginTop: '0.5rem' }}>
+          <Title level="H3">Overview: Registered Tables ({tables.length})</Title>
+          <Button icon="refresh" design="Transparent" onClick={onRefreshTableList}>
+            Refresh Config
+          </Button>
+        </FlexBox>
+
+        {/* Tables Grid */}
+        {tables.length === 0 ? (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '30vh', background: '#fff', borderRadius: '8px', border: '1px solid #d9d9d9' }}>
+            <Text>No active tables registered in the configuration</Text>
+          </div>
+        ) : (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+            gap: '1.5rem'
+          }}>
+            {tables.map(t => (
+              <Card
+                key={t.ConfigUuid}
+                onClick={() => onSelectTable(t)}
+                style={{ cursor: 'pointer', border: '1px solid #e2e8f0', boxShadow: '0 2px 5px rgba(0,0,0,0.02)', transition: 'transform 0.15s, box-shadow 0.15s' }}
+                onMouseOver={(e: any) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)'
+                  e.currentTarget.style.boxShadow = '0 4px 10px rgba(0,0,0,0.06)'
+                }}
+                onMouseOut={(e: any) => {
+                  e.currentTarget.style.transform = 'none'
+                  e.currentTarget.style.boxShadow = '0 2px 5px rgba(0,0,0,0.02)'
+                }}
+              >
+                <CardHeader
+                  titleText={t.TableName}
+                  subtitleText={t.Description || 'Database Table'}
+                />
+                <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <FlexBox gap="8px" wrap="Wrap">
+                    <Tag colorScheme={t.ActiveFlag === 'X' ? '8' : '2'}>
+                      {t.ActiveFlag === 'X' ? 'Active' : 'Inactive'}
+                    </Tag>
+                    <Tag colorScheme={t.ApprovalRequired === 'X' ? '6' : '1'}>
+                      {t.ApprovalRequired === 'X' ? 'Approval Required' : 'Direct CRUD'}
+                    </Tag>
+                  </FlexBox>
+
+                  <div style={{ borderTop: '1px solid #f0f0f0', marginTop: '0.25rem', paddingTop: '0.5rem' }}>
+                    <FlexBox direction="Column" gap="4px">
+                      <Label style={{ fontSize: '0.75rem', color: '#6a7075' }}>Config UUID</Label>
+                      <Text style={{ fontSize: '0.8rem', fontFamily: 'monospace', color: '#32363a' }}>{t.ConfigUuid}</Text>
+                    </FlexBox>
+                  </div>
+
+                  <FlexBox justifyContent="End" style={{ marginTop: '0.25rem' }}>
+                    <Button
+                      design="Emphasized"
+                      icon="navigation-right-arrow"
+                      onClick={(e: any) => {
+                        e.stopPropagation()
+                        onSelectTable(t)
+                      }}
+                    >
+                      Maintain Data
+                    </Button>
+                  </FlexBox>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     )
   }
 
-  const filteredData = data.filter(row =>
-    Object.values(row).some(v =>
-      String(v).toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredData = data.filter(row => {
+    const matchesSearch = appliedSearchQuery.trim() === '' || Object.values(row).some(v =>
+      String(v).toLowerCase().includes(appliedSearchQuery.toLowerCase())
     )
-  )
+
+    const matchesKeys = Object.entries(appliedFilterValues).every(([field, val]) => {
+      if (!val.trim()) return true
+      const cellVal = String(row[field] ?? '')
+      return cellVal.toLowerCase().includes(val.toLowerCase())
+    })
+
+    return matchesSearch && matchesKeys
+  })
 
   const displayedFields = fclLayout === 'TwoColumnsMidExpanded'
     ? fields.filter((f, idx) => f.is_key || f.IsKeyField === 'X' || idx < 3)
@@ -455,12 +581,14 @@ export default function TableMaintenancePage({
 
   const dataTable = (
     <>
-      <Toolbar design="Solid">
+      <Toolbar design="Transparent">
+        <Title level="H4">Records ({filteredData.length})</Title>
+        <ToolbarSpacer />
         <Button design="Emphasized" icon={"add" as any} onClick={openCreateDialog}>
           Create
         </Button>
-        <ToolbarSeparator />
         <Button
+          design="Transparent"
           icon={"refresh" as any}
           onClick={async () => {
             try {
@@ -472,17 +600,6 @@ export default function TableMaintenancePage({
         >
           Refresh
         </Button>
-        <ToolbarSpacer />
-        <Input
-          placeholder="Search..."
-          icon={"search" as any}
-          value={searchQuery}
-          onInput={(e: any) => setSearchQuery(e.target.value)}
-          style={{ width: '250px' }}
-        />
-        <Text style={{ fontSize: '13px', color: '#6a7075', marginLeft: '0.5rem' }}>
-          {filteredData.length} of {data.length} records
-        </Text>
       </Toolbar>
 
       {dataLoading && (
@@ -606,28 +723,40 @@ export default function TableMaintenancePage({
               ),
               headerContent: (
                 <DynamicPageHeader>
-                  <FlexBox gap="2rem" alignItems="Center">
-                    <FlexBox direction="Column" gap="4px">
-                      <Label>Table Name</Label>
-                      <Text>{selectedTable.TableName}</Text>
-                    </FlexBox>
-                    <FlexBox direction="Column" gap="4px">
-                      <Label>Records</Label>
-                      <Text>{filteredData.length}</Text>
-                    </FlexBox>
-                    <FlexBox direction="Column" gap="4px">
-                      <Label>Status</Label>
-                      <Tag colorScheme={selectedTable.ActiveFlag === 'X' ? '8' : '2'}>
-                        {selectedTable.ActiveFlag === 'X' ? 'Active' : 'Inactive'}
-                      </Tag>
-                    </FlexBox>
-                    <FlexBox direction="Column" gap="4px">
-                      <Label>Approval Required</Label>
-                      <Tag colorScheme={selectedTable.ApprovalRequired === 'X' ? '6' : '1'}>
-                        {selectedTable.ApprovalRequired === 'X' ? 'Yes' : 'No'}
-                      </Tag>
-                    </FlexBox>
-                  </FlexBox>
+                  <FilterBar
+                    search={
+                      <Input
+                        placeholder="Search records..."
+                        value={searchQuery}
+                        onInput={(e: any) => setSearchQuery(e.target.value)}
+                        icon={<Icon name="search" />}
+                        style={{ width: '250px' }}
+                      />
+                    }
+                    showGoOnFB
+                    showClearOnFB
+                    hideFilterConfiguration
+                    onGo={handleGo}
+                    onClear={handleClear}
+                  >
+                    {fields
+                      .filter(f => f.is_key || f.IsKeyField === 'X')
+                      .map(f => {
+                        const name = f.field_name || f.FieldName
+                        const label = f.label || f.LabelText || name
+                        return (
+                          <FilterGroupItem key={name} filterKey={name} label={label}>
+                            <Input
+                              placeholder={`Filter by ${label}...`}
+                              value={filterValues[name] ?? ''}
+                              onInput={(e: any) => {
+                                setFilterValues(prev => ({ ...prev, [name]: e.target.value }))
+                              }}
+                            />
+                          </FilterGroupItem>
+                        )
+                      })}
+                  </FilterBar>
                 </DynamicPageHeader>
               )
             } as any)}

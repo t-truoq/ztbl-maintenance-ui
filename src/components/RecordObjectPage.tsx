@@ -17,7 +17,14 @@ import {
   Text,
   MessageStrip,
   ObjectStatus,
-  Toolbar
+  Toolbar,
+  Bar,
+  TableHeaderRow,
+  TableHeaderCell,
+  Tag,
+  Table,
+  TableRow,
+  TableCell
 } from '@ui5/webcomponents-react'
 import { formatDateForSap } from '../utils/displayHelpers'
 import {
@@ -37,7 +44,9 @@ import {
   touchSessionLocks
 } from '../utils/fieldLockService'
 import DomainValueHelp from './DomainValueHelp'
-import { FieldMeta, TableRowData } from '../types'
+import { getAuditLog } from '../services/tableConfigApi'
+import { getAuditDisplayCells } from '../utils/auditFormatters'
+import { FieldMeta, TableRowData, AuditLogEntry } from '../types'
 
 function fieldName(field: FieldMeta): string {
   return field.field_name || field.FieldName
@@ -112,11 +121,49 @@ export default function RecordObjectPage({
   const [saving, setSaving] = useState(false)
   const [validationError, setValidationError] = useState('')
   const [foreignLocks, setForeignLocks] = useState<Record<string, string>>({})
+  const [auditEntries, setAuditEntries] = useState<AuditLogEntry[]>([])
+  const [auditLoading, setAuditLoading] = useState(false)
   const sessionId = useId()
   const baselineRowRef = useRef<TableRowData | null>(null)
 
   const recordKey =
     !isCreate && initialRow ? buildKeyRecord(allFields, initialRow) : null
+
+  useEffect(() => {
+    if (!isCreate && tableName && recordKey) {
+      loadAuditLogs()
+    } else {
+      setAuditEntries([])
+    }
+  }, [tableName, initialRow, mode])
+
+  async function loadAuditLogs() {
+    try {
+      setAuditLoading(true)
+      const logs = await getAuditLog(tableName)
+      if (recordKey) {
+        const filtered = logs.filter(entry => {
+          return Object.entries(recordKey).every(([k, v]) => {
+            const rawVal = String(v)
+            const matchStr = `"${k}":"${v}"`
+            const matchStr2 = `"${k}":${typeof v === 'number' ? v : `"${v}"`}`
+            return (
+              (entry.OldValue && (entry.OldValue.includes(matchStr) || entry.OldValue.includes(matchStr2) || entry.OldValue.includes(rawVal))) ||
+              (entry.NewValue && (entry.NewValue.includes(matchStr) || entry.NewValue.includes(matchStr2) || entry.NewValue.includes(rawVal)))
+            )
+          })
+        })
+        setAuditEntries(filtered)
+      } else {
+        setAuditEntries([])
+      }
+    } catch (e) {
+      console.error('Failed to load audit logs for record:', e)
+      setAuditEntries([])
+    } finally {
+      setAuditLoading(false)
+    }
+  }
 
   function refreshForeignLocks() {
     if (!isEdit || !tableName || !recordKey || !username) {
@@ -378,33 +425,38 @@ export default function RecordObjectPage({
             header={titleText}
             subHeader={tableName}
             actionsBar={
-              <Toolbar design="Transparent" style={{ padding: 0 }}>
-                {isView && (
-                  <>
-                    <Button design="Emphasized" icon="edit" onClick={onSwitchToEdit}>
-                      Edit
-                    </Button>
-                    <Button design="Negative" icon="delete" onClick={onDelete}>
-                      Delete
-                    </Button>
-                    <Button design="Transparent" icon="decline" onClick={handleClose}>
-                      Close
-                    </Button>
-                  </>
-                )}
-                {(isEdit || isCreate) && (
-                  <>
-                    <Button design="Emphasized" onClick={handleSave} disabled={saving}>
-                      Save
-                    </Button>
-                    <Button design="Transparent" onClick={handleCancel} disabled={saving}>
-                      Cancel
-                    </Button>
-                  </>
-                )}
-              </Toolbar>
+              isView ? (
+                <Toolbar design="Transparent" style={{ padding: 0 }}>
+                  <Button design="Emphasized" icon="edit" onClick={onSwitchToEdit}>
+                    Edit
+                  </Button>
+                  <Button design="Negative" icon="delete" onClick={onDelete}>
+                    Delete
+                  </Button>
+                  <Button design="Transparent" icon="decline" onClick={handleClose}>
+                    Close
+                  </Button>
+                </Toolbar>
+              ) : (null as any)
             }
           />
+        }
+        footerArea={
+          (isEdit || isCreate) ? (
+            <Bar
+              design="FloatingFooter"
+              endContent={
+                <>
+                  <Button design="Emphasized" onClick={handleSave} disabled={saving}>
+                    Save
+                  </Button>
+                  <Button design="Transparent" onClick={handleCancel} disabled={saving}>
+                    Cancel
+                  </Button>
+                </>
+              }
+            />
+          ) : (null as any)
         }
       >
         <ObjectPageSection titleText="General Information" id="general-info">
@@ -458,6 +510,63 @@ export default function RecordObjectPage({
                   </FormItem>
                 </FormGroup>
               </Form>
+            </ObjectPageSubSection>
+          </ObjectPageSection>
+        ) : (null as any)}
+
+        {!isCreate && recordKey ? (
+          <ObjectPageSection titleText="Change History" id="change-history">
+            <ObjectPageSubSection id="change-history-sub" titleText="Audit Trail">
+              {auditLoading && <BusyIndicator active size="S" />}
+              {!auditLoading && auditEntries.length === 0 && (
+                <Text style={{ color: '#6a7075', fontSize: '0.9rem' }}>No change history found for this record.</Text>
+              )}
+              {!auditLoading && auditEntries.length > 0 && (
+                <Table
+                  headerRow={
+                    <TableHeaderRow>
+                      <TableHeaderCell minWidth="90px"><Label>Action</Label></TableHeaderCell>
+                      <TableHeaderCell minWidth="120px"><Label>Field Name</Label></TableHeaderCell>
+                      <TableHeaderCell minWidth="120px"><Label>Old Value</Label></TableHeaderCell>
+                      <TableHeaderCell minWidth="120px"><Label>New Value</Label></TableHeaderCell>
+                      <TableHeaderCell minWidth="100px"><Label>Changed By</Label></TableHeaderCell>
+                      <TableHeaderCell minWidth="140px"><Label>Changed At</Label></TableHeaderCell>
+                    </TableHeaderRow>
+                  }
+                >
+                  {auditEntries.map(entry => {
+                    const { fieldName: fName, oldValue, newValue } = getAuditDisplayCells(entry)
+                    const isUpdate = entry.ActionType === 'U'
+                    const actionColors: Record<string, any> = { C: '8', U: '6', D: '1' }
+                    const actionLabels: Record<string, string> = { C: 'Created', U: 'Updated', D: 'Deleted' }
+                    return (
+                      <TableRow key={entry.AuditId}>
+                        <TableCell>
+                          <Tag colorScheme={actionColors[entry.ActionType] || '2'}>
+                            {actionLabels[entry.ActionType] || entry.ActionType}
+                          </Tag>
+                        </TableCell>
+                        <TableCell>
+                          <Text style={{ fontWeight: 'bold' }}>{fName}</Text>
+                          {isUpdate && (oldValue || newValue) && (
+                            <Text style={{ fontSize: '0.8rem', color: '#6a7075', marginTop: '2px' }}>
+                              {oldValue || '—'} → {newValue || '—'}
+                            </Text>
+                          )}
+                        </TableCell>
+                        <TableCell><Text style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{oldValue || '—'}</Text></TableCell>
+                        <TableCell><Text style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{newValue || '—'}</Text></TableCell>
+                        <TableCell><Text>{entry.ChangedBy || ''}</Text></TableCell>
+                        <TableCell>
+                          <Text>
+                            {entry.ChangedAt ? String(entry.ChangedAt).substring(0, 19) : ''}
+                          </Text>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </Table>
+              )}
             </ObjectPageSubSection>
           </ObjectPageSection>
         ) : (null as any)}
