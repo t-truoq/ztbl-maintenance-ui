@@ -40,8 +40,7 @@ export default function App({ credentials, onLogout }: AppProps) {
     try {
       setLoading(true)
       const result = await getTables()
-      const activeTables = result.filter(t => t.ActiveFlag === 'X' || (t as any).active_flag === 'X')
-      setTables(activeTables)
+      setTables(result)
     } catch {
       // Quietly handle table loading failure on shell level, TablePage will show error
       setTables([])
@@ -89,10 +88,8 @@ export default function App({ credentials, onLogout }: AppProps) {
     >
       <TableMaintenancePage
         selectedTable={selectedTable}
-        tables={tables}
         username={credentials?.username || ''}
         onRefreshTableList={loadTables}
-        onSelectTable={handleSelectTable}
       />
     </AppLayout>
   )
