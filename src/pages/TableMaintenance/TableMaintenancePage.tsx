@@ -30,7 +30,9 @@ import {
   Icon,
   ObjectStatus,
   Card,
-  CardHeader
+  CardHeader,
+  FilterBar,
+  FilterGroupItem
 } from '@ui5/webcomponents-react'
 import {
   loadTableContext,
@@ -98,6 +100,9 @@ export default function TableMaintenancePage({
   const [error, setError] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const [filterValues, setFilterValues] = useState<Record<string, string>>({})
+  const [appliedSearchQuery, setAppliedSearchQuery] = useState('')
+  const [appliedFilterValues, setAppliedFilterValues] = useState<Record<string, string>>({})
 
   const [recordDialogOpen, setRecordDialogOpen] = useState(false)
   const [recordDialogMode, setRecordDialogMode] = useState<'create' | 'edit'>('create')
@@ -134,6 +139,10 @@ export default function TableMaintenancePage({
     setTableDataJson('')
     setEtagMap({})
     clearDomainCache()
+    setSearchQuery('')
+    setFilterValues({})
+    setAppliedSearchQuery('')
+    setAppliedFilterValues({})
   }
 
   function showError(message: string) {
@@ -156,6 +165,10 @@ export default function TableMaintenancePage({
     setData([])
     setTableDataJson('')
     setEtagMap({})
+    setSearchQuery('')
+    setFilterValues({})
+    setAppliedSearchQuery('')
+    setAppliedFilterValues({})
 
     try {
       setDataLoading(true)
@@ -223,6 +236,18 @@ export default function TableMaintenancePage({
   function openDeleteDialog(row: TableRowData) {
     setDeletingRow(row)
     setDeleteDialogOpen(true)
+  }
+
+  function handleGo() {
+    setAppliedSearchQuery(searchQuery)
+    setAppliedFilterValues(filterValues)
+  }
+
+  function handleClear() {
+    setSearchQuery('')
+    setFilterValues({})
+    setAppliedSearchQuery('')
+    setAppliedFilterValues({})
   }
 
   async function fetchRowByKey(table: TableConfig, recordKey: TableRowData) {
@@ -506,11 +531,19 @@ export default function TableMaintenancePage({
     )
   }
 
-  const filteredData = data.filter(row =>
-    Object.values(row).some(v =>
-      String(v).toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredData = data.filter(row => {
+    const matchesSearch = appliedSearchQuery.trim() === '' || Object.values(row).some(v =>
+      String(v).toLowerCase().includes(appliedSearchQuery.toLowerCase())
     )
-  )
+
+    const matchesKeys = Object.entries(appliedFilterValues).every(([field, val]) => {
+      if (!val.trim()) return true
+      const cellVal = String(row[field] ?? '')
+      return cellVal.toLowerCase().includes(val.toLowerCase())
+    })
+
+    return matchesSearch && matchesKeys
+  })
 
   const dataTable = (
     <>
@@ -652,28 +685,40 @@ export default function TableMaintenancePage({
         }
         headerArea={
           <DynamicPageHeader>
-            <FlexBox gap="2.5rem" alignItems="Center" wrap="Wrap">
-              <FlexBox direction="Column" gap="4px">
-                <Label style={{ color: '#6a7075', fontSize: '0.85rem' }}>Records Count</Label>
-                <Text style={{ fontWeight: 'bold', fontSize: '1.05rem', color: '#32363a' }}>{filteredData.length}</Text>
-              </FlexBox>
-              <FlexBox direction="Column" gap="4px">
-                <Label style={{ color: '#6a7075', fontSize: '0.85rem' }}>Status</Label>
-                <Tag colorScheme={selectedTable.ActiveFlag === 'X' ? '8' : '2'}>
-                  {selectedTable.ActiveFlag === 'X' ? 'Active' : 'Inactive'}
-                </Tag>
-              </FlexBox>
-              <FlexBox direction="Column" gap="4px">
-                <Label style={{ color: '#6a7075', fontSize: '0.85rem' }}>Approval Requirement</Label>
-                <Tag colorScheme={selectedTable.ApprovalRequired === 'X' ? '6' : '1'}>
-                  {selectedTable.ApprovalRequired === 'X' ? 'Approval Required' : 'Direct CRUD'}
-                </Tag>
-              </FlexBox>
-              <FlexBox direction="Column" gap="4px">
-                <Label style={{ color: '#6a7075', fontSize: '0.85rem' }}>Configuration UUID</Label>
-                <Text style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: '#6a7075' }}>{selectedTable.ConfigUuid}</Text>
-              </FlexBox>
-            </FlexBox>
+            <FilterBar
+              search={
+                <Input
+                  placeholder="Search records..."
+                  value={searchQuery}
+                  onInput={(e: any) => setSearchQuery(e.target.value)}
+                  icon={<Icon name="search" />}
+                  style={{ width: '250px' }}
+                />
+              }
+              showGoOnFB
+              showClearOnFB
+              hideFilterConfiguration
+              onGo={handleGo}
+              onClear={handleClear}
+            >
+              {fields
+                .filter(f => f.is_key || f.IsKeyField === 'X')
+                .map(f => {
+                  const name = f.field_name || f.FieldName
+                  const label = f.label || f.LabelText || name
+                  return (
+                    <FilterGroupItem key={name} filterKey={name} label={label}>
+                      <Input
+                        placeholder={`Filter by ${label}...`}
+                        value={filterValues[name] ?? ''}
+                        onInput={(e: any) => {
+                          setFilterValues(prev => ({ ...prev, [name]: e.target.value }))
+                        }}
+                      />
+                    </FilterGroupItem>
+                  )
+                })}
+            </FilterBar>
           </DynamicPageHeader>
         }
       >
