@@ -760,13 +760,13 @@ export default function TableMaintenancePage({
         duration={4500}
         onClose={() => setToastOpen(false)}
         style={{
-          minWidth: '580px',
+          width: 'max-content',
+          minWidth: '200px',
           maxWidth: '90vw',
-          width: 'auto',
           textAlign: 'center'
         }}
       >
-        <div style={{ wordBreak: 'break-all', whiteSpace: 'normal' }}>
+        <div style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
           {toastText}
         </div>
       </Toast>
