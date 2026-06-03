@@ -218,6 +218,9 @@ function enhanceJsonFormatError(message: string): string {
 }
 
 export function getFriendlyErrorMessage(error: any): string {
+  if (!axios.isAxiosError(error)) {
+    return error?.message || String(error)
+  }
   if (!error?.response) {
     return 'Cannot connect to SAP system. Please check your connection.'
   }

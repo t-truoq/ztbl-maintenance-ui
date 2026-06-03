@@ -95,13 +95,11 @@ export default function TableMaintenancePage({
   const [searchQuery, setSearchQuery] = useState('')
 
   const [toastText, setToastText] = useState('')
-  const toastRef = useRef<any>(null)
+  const [toastOpen, setToastOpen] = useState(false)
 
   function showToast(msg: string) {
     setToastText(msg)
-    if (toastRef.current) {
-      toastRef.current.show()
-    }
+    setToastOpen(true)
   }
 
   const [recordDialogOpen, setRecordDialogOpen] = useState(false)
@@ -757,7 +755,7 @@ export default function TableMaintenancePage({
         {fkErrorMessage}
       </MessageBox>
 
-      <Toast ref={toastRef} duration={3000}>
+      <Toast open={toastOpen} duration={3000} onClose={() => setToastOpen(false)}>
         {toastText}
       </Toast>
     </>
