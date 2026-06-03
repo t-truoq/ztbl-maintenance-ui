@@ -686,6 +686,7 @@ export default function TableMaintenancePage({
         headerArea={
           <DynamicPageHeader>
             <FilterBar
+              header={<Title level="H4">Filters</Title>}
               search={
                 <Input
                   placeholder="Search records..."
