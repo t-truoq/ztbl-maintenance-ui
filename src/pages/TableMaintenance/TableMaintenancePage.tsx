@@ -28,7 +28,8 @@ import {
   MessageBoxType,
   MessageBoxAction,
   Icon,
-  ObjectStatus
+  ObjectStatus,
+  Toast
 } from '@ui5/webcomponents-react'
 import {
   loadTableContext,
@@ -93,6 +94,16 @@ export default function TableMaintenancePage({
   const [successMsg, setSuccessMsg] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
 
+  const [toastText, setToastText] = useState('')
+  const toastRef = useRef<any>(null)
+
+  function showToast(msg: string) {
+    setToastText(msg)
+    if (toastRef.current) {
+      toastRef.current.show()
+    }
+  }
+
   const [recordDialogOpen, setRecordDialogOpen] = useState(false)
   const [recordDialogMode, setRecordDialogMode] = useState<'create' | 'edit'>('create')
   const [editingRow, setEditingRow] = useState<TableRowData | null>(null)
@@ -138,6 +149,7 @@ export default function TableMaintenancePage({
   function showSuccess(message: string) {
     setError('')
     setSuccessMsg(message)
+    showToast(message)
   }
 
   async function loadTable(table: TableConfig) {
@@ -427,7 +439,12 @@ export default function TableMaintenancePage({
         <ToolbarSeparator />
         <Button
           icon={"refresh" as any}
-          onClick={() => loadTable(selectedTable)}
+          onClick={async () => {
+            try {
+              await loadTable(selectedTable)
+              showToast('Table data refreshed')
+            } catch {}
+          }}
           disabled={dataLoading}
         >
           Refresh
@@ -739,6 +756,10 @@ export default function TableMaintenancePage({
       >
         {fkErrorMessage}
       </MessageBox>
+
+      <Toast ref={toastRef} duration={3000}>
+        {toastText}
+      </Toast>
     </>
   )
 }
