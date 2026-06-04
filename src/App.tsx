@@ -49,7 +49,16 @@ export default function App({ credentials, onLogout }: AppProps) {
     }
   }
 
-  function handleSelectTable(table: TableConfig) {
+  function handleSelectTable(table: TableConfig | null) {
+    if (!table) {
+      setSelectedTable(null)
+      try {
+        sessionStorage.removeItem('sap_selected_table')
+      } catch (e) {
+        console.warn('Failed to remove selected table from sessionStorage:', e)
+      }
+      return
+    }
     const normalizedUuid = normalizeConfigUuid(table.ConfigUuid)
     const updated = { ...table, ConfigUuid: normalizedUuid }
     setSelectedTable(updated)

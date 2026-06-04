@@ -7,6 +7,8 @@ import {
   Button,
   FlexBox,
   Label,
+  Input,
+  Icon,
   Popover,
   Title,
   Text
@@ -18,7 +20,7 @@ interface AppLayoutProps {
   selectedTable: TableConfig | null;
   loading: boolean;
   username: string;
-  onSelectTable: (table: TableConfig) => void;
+  onSelectTable: (table: TableConfig | null) => void;
   onLogout: () => void;
   children: React.ReactNode;
 }
@@ -33,16 +35,24 @@ export default function AppLayout({
   children
 }: AppLayoutProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const [sidebarSearch, setSidebarSearch] = useState('')
   const [profileOpen, setProfileOpen] = useState(false)
   const popoverRef = useRef<any>(null)
   
   const userInitials = username ? username.slice(0, 2).toUpperCase() : 'U'
 
   const handleProfileClick = (e: any) => {
-    // e.detail.targetRef contains the reference to the clicked profile avatar element
     popoverRef.current = e.detail.targetRef
     setProfileOpen(prev => !prev)
   }
+
+  const filteredTables = tables.filter(t => {
+    if (!sidebarSearch.trim()) return true
+    const term = sidebarSearch.toLowerCase()
+    const nameMatch = (t.TableName || '').toLowerCase().includes(term)
+    const descMatch = (t.Description || '').toLowerCase().includes(term)
+    return nameMatch || descMatch
+  })
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -103,12 +113,25 @@ export default function AppLayout({
           flexDirection: 'column'
         }}>
           {!collapsed && (
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--sapContent_BorderColor, #f0f0f0)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-              <Label style={{ fontWeight: 'bold' }}>Registered Tables ({tables.length})</Label>
+            <div style={{
+              padding: '12px 16px',
+              borderBottom: '1px solid var(--sapContent_BorderColor, #f0f0f0)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px'
+            }}>
+              <Label style={{ fontWeight: 'bold' }}>Select Z-Table to Maintain</Label>
+              <Input
+                placeholder="Search tables..."
+                value={sidebarSearch}
+                onInput={(e: any) => setSidebarSearch(e.target.value)}
+                icon={<Icon name="search" />}
+                style={{ width: '100%' }}
+              />
             </div>
           )}
           <SideNavigation collapsed={collapsed} style={{ flex: 1 }}>
-            {tables.map(t => (
+            {filteredTables.map(t => (
               <SideNavigationItem
                 key={t.ConfigUuid}
                 text={t.TableName}

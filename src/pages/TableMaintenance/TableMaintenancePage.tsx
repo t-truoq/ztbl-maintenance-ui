@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { formatDateForSap } from '../../utils/displayHelpers'
 import {
   DynamicPage,
   DynamicPageTitle,
@@ -31,8 +32,10 @@ import {
   ObjectStatus,
   Card,
   CardHeader,
-  FilterBar,
-  FilterGroupItem
+  ComboBox,
+  ComboBoxItem,
+  DatePicker,
+  CheckBox
 } from '@ui5/webcomponents-react'
 import {
   loadTableContext,
@@ -56,10 +59,15 @@ import {
   formatDeleteSummary,
   buildEtagMap,
   resolveEtagForUpdate,
-  mergeRecordForConcurrentEdit
+  mergeRecordForConcurrentEdit,
+  initFormValues,
+  validateMandatory,
+  isFieldReadonly,
+  isSystemGeneratedField
 } from '../../utils/recordHelpers'
 import { formatCellValue } from '../../utils/displayHelpers'
 import RecordDialog from '../../components/RecordDialog'
+import DomainValueHelp from '../../components/DomainValueHelp'
 import AuditLogPanel from '../../components/AuditLogPanel'
 import { FieldMeta, TableConfig, TableRowData } from '../../types'
 
@@ -80,7 +88,7 @@ interface TableMaintenancePageProps {
   tables: TableConfig[];
   username: string;
   onRefreshTableList: () => Promise<void>;
-  onSelectTable: (table: TableConfig) => void;
+  onSelectTable: (table: TableConfig | null) => void;
 }
 
 export default function TableMaintenancePage({
@@ -103,6 +111,9 @@ export default function TableMaintenancePage({
   const [filterValues, setFilterValues] = useState<Record<string, string>>({})
   const [appliedSearchQuery, setAppliedSearchQuery] = useState('')
   const [appliedFilterValues, setAppliedFilterValues] = useState<Record<string, string>>({})
+
+  const [isEditingTable, setIsEditingTable] = useState(false)
+  const [editedData, setEditedData] = useState<TableRowData[]>([])
 
   const [recordDialogOpen, setRecordDialogOpen] = useState(false)
   const [recordDialogMode, setRecordDialogMode] = useState<'create' | 'edit'>('create')
@@ -132,6 +143,27 @@ export default function TableMaintenancePage({
     return () => clearTimeout(timer)
   }, [successMsg])
 
+  useEffect(() => {
+    const hideToggle = () => {
+      const dynamicPage = document.querySelector('ui5-dynamic-page')
+      if (dynamicPage && dynamicPage.shadowRoot) {
+        if (dynamicPage.shadowRoot.querySelector('#hide-collapse-style')) return
+        const style = document.createElement('style')
+        style.id = 'hide-collapse-style'
+        style.textContent = `
+          ui5-dynamic-page-header-actions {
+            display: none !important;
+          }
+        `
+        dynamicPage.shadowRoot.appendChild(style)
+      }
+    }
+
+    hideToggle()
+    const timer = setTimeout(hideToggle, 300)
+    return () => clearTimeout(timer)
+  }, [selectedTable])
+
   function clearPageData() {
     setAllFields([])
     setFields([])
@@ -143,6 +175,8 @@ export default function TableMaintenancePage({
     setFilterValues({})
     setAppliedSearchQuery('')
     setAppliedFilterValues({})
+    setIsEditingTable(false)
+    setEditedData([])
   }
 
   function showError(message: string) {
@@ -169,6 +203,8 @@ export default function TableMaintenancePage({
     setFilterValues({})
     setAppliedSearchQuery('')
     setAppliedFilterValues({})
+    setIsEditingTable(false)
+    setEditedData([])
 
     try {
       setDataLoading(true)
@@ -214,13 +250,6 @@ export default function TableMaintenancePage({
     }
   }
 
-  function openCreateDialog() {
-    setRecordDialogMode('create')
-    setEditingRow(null)
-    setEditSessionEtag(null)
-    setRecordDialogOpen(true)
-  }
-
   function openEditDialog(row: TableRowData) {
     setRecordDialogMode('edit')
     setEditingRow(row)
@@ -236,6 +265,178 @@ export default function TableMaintenancePage({
   function openDeleteDialog(row: TableRowData) {
     setDeletingRow(row)
     setDeleteDialogOpen(true)
+  }
+
+  const handleCellChange = (rowIndex: number, fieldName: string, newValue: any) => {
+    setEditedData(prev => {
+      const updated = [...prev]
+      updated[rowIndex] = {
+        ...updated[rowIndex],
+        [fieldName]: newValue
+      }
+      return updated
+    })
+  }
+
+  const handleAddRow = () => {
+    const newRecord = initFormValues(allFields, null)
+    newRecord._isNew = true
+    setEditedData(prev => [...prev, newRecord])
+  }
+
+  const handleCancelInlineEdits = () => {
+    setIsEditingTable(false)
+    setEditedData([])
+    setError('')
+  }
+
+  const handleRemoveNewRow = (rowIndex: number) => {
+    setEditedData(prev => prev.filter((_, idx) => idx !== rowIndex))
+  }
+
+  async function handleSaveInlineEdits() {
+    if (!selectedTable) return
+    setError('')
+    setSuccessMsg('')
+
+    // 1. Validation
+    const validationErrors: string[] = []
+    editedData.forEach((row, idx) => {
+      const missing = validateMandatory(fields, row)
+      if (missing.length > 0) {
+        validationErrors.push(`Row #${idx + 1}: Missing required fields: ${missing.join(', ')}`)
+      }
+    })
+
+    if (validationErrors.length > 0) {
+      showError(validationErrors.join(' | '))
+      return
+    }
+
+    try {
+      setDataLoading(true)
+
+      // 2. Identify new and modified rows
+      const newRows = editedData.filter(r => r._isNew)
+      const modifiedRows = editedData.filter(row => {
+        if (row._isNew) return false
+        const keyStr = buildRecordKeyString(allFields, row)
+        const originalRow = data.find(orig => buildRecordKeyString(allFields, orig) === keyStr)
+        if (!originalRow) return true
+        return fields.some(f => {
+          if (isSystemGeneratedField(f)) return false
+          const name = f.field_name || f.FieldName
+          return row[name] !== originalRow[name]
+        })
+      })
+
+      if (newRows.length === 0 && modifiedRows.length === 0) {
+        showSuccess('No changes to save')
+        setIsEditingTable(false)
+        setEditedData([])
+        return
+      }
+
+      // 3. Execute creates SEQUENTIALLY to avoid SAP resource lock conflicts
+      // (SAP backend locks the config instance between requests; parallel creates
+      //  trigger MC_CSP_USR_RUNTIME/004 "instance is locked" errors)
+      for (const row of newRows) {
+        const payload = buildFullRecordPayload(allFields, row, null)
+        const res = await createRecord(selectedTable.ConfigUuid, selectedTable.TableName, payload)
+        if (res.success === false) {
+          throw new Error(res.message || 'Failed to create record')
+        }
+      }
+
+      // 4. Execute updates in parallel (updates use ETags and don't share the same lock contention)
+      const updatePromises = modifiedRows.map(async (row) => {
+        const recordKey = buildKeyRecord(allFields, row)
+        const keyStr = buildRecordKeyString(allFields, row)
+        const storedEtag = etagMap[keyStr] ?? null
+        const etagInfo = resolveEtagForUpdate(allFields, row, tableDataJson, recordKey, storedEtag)
+        const res = await updateRecord(
+          selectedTable.ConfigUuid,
+          selectedTable.TableName,
+          recordKey,
+          row,
+          etagInfo.field || '',
+          etagInfo.value || ''
+        )
+        if (res.success === false) {
+          throw new Error(res.message || 'Failed to update record')
+        }
+        return res
+      })
+
+      await Promise.all(updatePromises)
+
+      // 5. Success cleanup
+      showSuccess(`Saved successfully (${newRows.length} created, ${modifiedRows.length} updated)`)
+      setIsEditingTable(false)
+      setEditedData([])
+      await loadTable(selectedTable)
+      await onRefreshTableList()
+    } catch (e: any) {
+      showError(getFriendlyErrorMessage(e))
+    } finally {
+      setDataLoading(false)
+    }
+  }
+
+  const renderCellEditControl = (row: TableRowData, rowIndex: number, f: FieldMeta) => {
+    const name = f.field_name || f.FieldName
+    const val = row[name] ?? ''
+
+    const isNewRow = !!row._isNew
+    const mode = isNewRow ? 'create' : 'edit'
+
+    const readonly = isFieldReadonly(f, mode) || isSystemGeneratedField(f) || (mode === 'edit' && (f.is_key || f.IsKeyField === 'X'))
+
+    if (readonly) {
+      return <Text style={{ color: '#6a7075' }}>{formatCellValue(f, val)}</Text>
+    }
+
+    const feType = f.fe_type || f.FeType
+
+    if (feType === 'date') {
+      return (
+        <DatePicker
+          value={val}
+          onChange={(e: any) => handleCellChange(rowIndex, name, formatDateForSap(e.target.value))}
+          style={{ width: '100%' }}
+        />
+      )
+    }
+
+    if (feType === 'boolean') {
+      const isChecked = val === 'X' || val === true
+      return (
+        <CheckBox
+          checked={isChecked}
+          onChange={(e: any) => handleCellChange(rowIndex, name, e.target.checked ? 'X' : '')}
+        />
+      )
+    }
+
+    if (feType === 'domain') {
+      return (
+        <DomainValueHelp
+          configUuid={selectedTable!.ConfigUuid}
+          field={f}
+          value={val}
+          onChange={(newVal) => handleCellChange(rowIndex, name, newVal)}
+          readonly={false}
+        />
+      )
+    }
+
+    return (
+      <Input
+        value={val}
+        onInput={(e: any) => handleCellChange(rowIndex, name, e.target.value)}
+        style={{ width: '100%' }}
+      />
+    )
   }
 
   function handleGo() {
@@ -456,6 +657,39 @@ export default function TableMaintenancePage({
           </div>
         </div>
 
+        {/* Searchable ComboBox Z-Table Selector */}
+        <Card style={{ border: '1px solid #e2e8f0', boxShadow: '0 2px 5px rgba(0,0,0,0.02)' }}>
+          <div style={{ padding: '1.5rem' }}>
+            <FlexBox direction="Column" gap="8px">
+              <Label style={{ fontSize: '0.95rem', fontWeight: 'bold' }} showColon>Select Z-Table to Maintain</Label>
+              <FlexBox gap="12px" alignItems="Center" wrap="Wrap">
+                <ComboBox
+                  placeholder="Type to search and select a table..."
+                  style={{ width: '400px' }}
+                  filter="Contains"
+                  onSelectionChange={(e: any) => {
+                    const selected = e.detail.item
+                    if (selected) {
+                      const match = tables.find(t => t.TableName === selected.text)
+                      if (match) onSelectTable(match)
+                    }
+                  }}
+                >
+                  {tables.map(t => (
+                    <ComboBoxItem
+                      key={t.ConfigUuid}
+                      text={t.TableName}
+                    />
+                  ))}
+                </ComboBox>
+                <Text style={{ color: '#6a7075', fontSize: '0.85rem' }}>
+                  Quick Search: Type standard table name (e.g. Z251, ZTPC)
+                </Text>
+              </FlexBox>
+            </FlexBox>
+          </div>
+        </Card>
+
         {/* Dashboard Title & Stats */}
         <FlexBox justifyContent="SpaceBetween" alignItems="Center" style={{ marginTop: '0.5rem' }}>
           <Title level="H3">Overview: Registered Tables ({tables.length})</Title>
@@ -494,14 +728,13 @@ export default function TableMaintenancePage({
                   subtitleText={t.Description || 'Database Table'}
                 />
                 <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  <FlexBox gap="8px" wrap="Wrap">
-                    <Tag colorScheme={t.ActiveFlag === 'X' ? '8' : '2'}>
-                      {t.ActiveFlag === 'X' ? 'Active' : 'Inactive'}
-                    </Tag>
-                    <Tag colorScheme={t.ApprovalRequired === 'X' ? '6' : '1'}>
-                      {t.ApprovalRequired === 'X' ? 'Approval Required' : 'Direct CRUD'}
-                    </Tag>
-                  </FlexBox>
+                  {t.ApprovalRequired === 'X' && (
+                    <FlexBox gap="8px" wrap="Wrap">
+                      <Tag colorScheme="6">
+                        Approval Required
+                      </Tag>
+                    </FlexBox>
+                  )}
 
                   <div style={{ borderTop: '1px solid #f0f0f0', marginTop: '0.25rem', paddingTop: '0.5rem' }}>
                     <FlexBox direction="Column" gap="4px">
@@ -545,22 +778,71 @@ export default function TableMaintenancePage({
     return matchesSearch && matchesKeys
   })
 
+  const fieldsWithWidths = fields.map(f => {
+    const headerLabel = formatHeaderLabel(f)
+    const feType = f.fe_type || f.FeType
+    const isDate = feType === 'date'
+    const minColWidth = Math.max(isDate ? 220 : 150, headerLabel.length * 10 + 50)
+    return { field: f, minColWidth, headerLabel }
+  })
+
+  const totalTableWidth = fieldsWithWidths.reduce((sum, item) => sum + item.minColWidth, 100)
+  const columnsStyle = fieldsWithWidths.map(item => `${item.minColWidth}px`).join(' ') + ' 100px'
+
   const dataTable = (
     <>
       <Toolbar design="Transparent">
-        <Title level="H4">Records ({filteredData.length})</Title>
+        <Title level="H4">
+          Records ({isEditingTable ? editedData.length : filteredData.length})
+        </Title>
         <ToolbarSpacer />
-        <Button design="Emphasized" icon={"add" as any} onClick={openCreateDialog}>
-          Create
-        </Button>
-        <Button
-          design="Transparent"
-          icon={"refresh" as any}
-          onClick={() => loadTable(selectedTable)}
-          disabled={dataLoading}
-        >
-          Refresh
-        </Button>
+        {isEditingTable ? (
+          <>
+            <Button design="Emphasized" icon={"save" as any} onClick={handleSaveInlineEdits}>
+              Save
+            </Button>
+            <Button design="Transparent" icon={"decline" as any} onClick={handleCancelInlineEdits}>
+              Cancel
+            </Button>
+            <Button design="Transparent" icon={"add" as any} onClick={handleAddRow}>
+              Add Row
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              design="Emphasized"
+              icon={"edit" as any}
+              onClick={() => {
+                setIsEditingTable(true)
+                setEditedData([...filteredData])
+              }}
+            >
+              Edit
+            </Button>
+            <Button
+              design="Transparent"
+              icon={"add" as any}
+              onClick={() => {
+                setIsEditingTable(true)
+                const copy = [...filteredData]
+                const newRec = initFormValues(allFields, null)
+                newRec._isNew = true
+                setEditedData([...copy, newRec])
+              }}
+            >
+              Create
+            </Button>
+            <Button
+              design="Transparent"
+              icon={"refresh" as any}
+              onClick={() => loadTable(selectedTable)}
+              disabled={dataLoading}
+            >
+              Refresh
+            </Button>
+          </>
+        )}
         <ToolbarSeparator />
         <Input
           placeholder="Search..."
@@ -568,6 +850,7 @@ export default function TableMaintenancePage({
           value={searchQuery}
           onInput={(e: any) => setSearchQuery(e.target.value)}
           style={{ width: '250px' }}
+          disabled={isEditingTable}
         />
       </Toolbar>
 
@@ -578,25 +861,75 @@ export default function TableMaintenancePage({
       )}
 
       <Table
+        overflowMode="Scroll"
+        style={{ minWidth: `${totalTableWidth}px`, width: '100%' }}
         headerRow={
-          <TableHeaderRow>
-            {fields.map(f => (
-              <TableHeaderCell key={f.field_name || f.FieldName} minWidth="120px">
-                <FlexBox alignItems="Center" gap="4px">
-                  <Label>{formatHeaderLabel(f)}</Label>
-                  {(f.is_key || f.IsKeyField === 'X') && (
-                    <Icon name="key" style={{ width: '12px', height: '12px', color: '#e09d00' }} />
-                  )}
-                </FlexBox>
-              </TableHeaderCell>
-            ))}
-            <TableHeaderCell minWidth="100px">
+          <TableHeaderRow style={{ gridTemplateColumns: columnsStyle }}>
+            {fieldsWithWidths.map(({ field: f, minColWidth, headerLabel }) => {
+              const technicalName = f.field_name || f.FieldName
+              return (
+                <TableHeaderCell 
+                  key={technicalName} 
+                  width={`${minColWidth}px`}
+                  minWidth={`${minColWidth}px`}
+                  style={{ minWidth: `${minColWidth}px` }}
+                >
+                  <FlexBox alignItems="Center" gap="4px" style={{ width: '100%' }}>
+                    <Label title={`${headerLabel} (${technicalName})`} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {headerLabel}
+                    </Label>
+                    {(f.is_key || f.IsKeyField === 'X') && (
+                      <Icon name="key" style={{ minWidth: '12px', width: '12px', height: '12px', color: '#e09d00' }} />
+                    )}
+                  </FlexBox>
+                </TableHeaderCell>
+              )
+            })}
+            <TableHeaderCell minWidth="100px" style={{ minWidth: '100px' }}>
               <Label>Actions</Label>
             </TableHeaderCell>
           </TableHeaderRow>
         }
       >
-        {filteredData.length === 0 ? (
+        {isEditingTable ? (
+          editedData.length === 0 ? (
+            <TableRow>
+              <TableCell {...({ colSpan: fields.length + 1 } as any)}>
+                <Text>No data available</Text>
+              </TableCell>
+            </TableRow>
+          ) : (
+            editedData.map((row, i) => (
+              <TableRow key={i} style={{ gridTemplateColumns: columnsStyle }}>
+                {fieldsWithWidths.map(({ field: f, minColWidth }) => {
+                  const name = f.field_name || f.FieldName
+                  return (
+                    <TableCell key={name} style={{ minWidth: `${minColWidth}px` }}>
+                      {renderCellEditControl(row, i, f)}
+                    </TableCell>
+                  )
+                })}
+                <TableCell>
+                  {row._isNew ? (
+                    <Button
+                      design="Transparent"
+                      icon={"delete" as any}
+                      accessibleName="Remove new record"
+                      onClick={() => handleRemoveNewRow(i)}
+                    />
+                  ) : (
+                    <Button
+                      design="Transparent"
+                      icon={"delete" as any}
+                      accessibleName="Delete record"
+                      onClick={() => openDeleteDialog(row)}
+                    />
+                  )}
+                </TableCell>
+              </TableRow>
+            ))
+          )
+        ) : filteredData.length === 0 ? (
           <TableRow>
             <TableCell {...({ colSpan: fields.length + 1 } as any)}>
               <Text>No data available</Text>
@@ -608,8 +941,9 @@ export default function TableMaintenancePage({
               key={i}
               interactive
               onClick={() => openEditDialog(row)}
+              style={{ gridTemplateColumns: columnsStyle }}
             >
-              {fields.map(f => {
+              {fieldsWithWidths.map(({ field: f, minColWidth }) => {
                 const name = f.field_name || f.FieldName
                 const val = row[name]
 
@@ -618,7 +952,7 @@ export default function TableMaintenancePage({
                   const isActive = valStr === 'A' || valStr === 'ACTIVE' || valStr === 'X'
                   const isInactive = valStr === 'I' || valStr === 'INACTIVE'
                   return (
-                    <TableCell key={name}>
+                    <TableCell key={name} style={{ minWidth: `${minColWidth}px` }}>
                       <ObjectStatus state={isActive ? "Positive" : (isInactive ? "Negative" : "None")}>
                         {isActive ? "Active" : (isInactive ? "Inactive" : valStr || "—")}
                       </ObjectStatus>
@@ -627,7 +961,7 @@ export default function TableMaintenancePage({
                 }
 
                 return (
-                  <TableCell key={name}>
+                  <TableCell key={name} style={{ minWidth: `${minColWidth}px` }}>
                     <Text style={{ color: '#32363a' }}>{formatCellValue(f, val)}</Text>
                   </TableCell>
                 )
@@ -679,47 +1013,81 @@ export default function TableMaintenancePage({
       <DynamicPage
         titleArea={
           <DynamicPageTitle
-            heading={<Title>{selectedTable.TableName}</Title>}
+            heading={
+              <FlexBox alignItems="Center" gap="8px">
+                <Button
+                  icon="nav-back"
+                  design="Transparent"
+                  title="Back to Table Selection"
+                  onClick={() => onSelectTable(null as any)}
+                />
+                <Title>{selectedTable.TableName}</Title>
+              </FlexBox>
+            }
             subheading={<Text>{selectedTable.Description || 'Database Table'}</Text>}
           />
         }
         headerArea={
-          <DynamicPageHeader>
-            <FilterBar
-              header={<Title level="H4">Filters</Title>}
-              search={
-                <Input
-                  placeholder="Search records..."
-                  value={searchQuery}
-                  onInput={(e: any) => setSearchQuery(e.target.value)}
-                  icon={<Icon name="search" />}
-                  style={{ width: '250px' }}
-                />
-              }
-              showGoOnFB
-              showClearOnFB
-              hideFilterConfiguration
-              onGo={handleGo}
-              onClear={handleClear}
+          <DynamicPageHeader style={{ padding: '0px' }}>
+            <FlexBox
+              alignItems="End"
+              justifyContent="SpaceBetween"
+              wrap="Wrap"
+              style={{
+                background: 'var(--sapObjectHeader_Background, #f4f6f8)',
+                borderBottom: '1px solid var(--sapGroup_BorderColor, #e5e5e5)',
+                padding: '12px 24px',
+                gap: '16px',
+                width: '100%',
+                boxSizing: 'border-box'
+              }}
             >
-              {fields
-                .filter(f => f.is_key || f.IsKeyField === 'X')
-                .map(f => {
-                  const name = f.field_name || f.FieldName
-                  const label = f.label || f.LabelText || name
-                  return (
-                    <FilterGroupItem key={name} filterKey={name} label={label}>
-                      <Input
-                        placeholder={`Filter by ${label}...`}
-                        value={filterValues[name] ?? ''}
-                        onInput={(e: any) => {
-                          setFilterValues(prev => ({ ...prev, [name]: e.target.value }))
-                        }}
-                      />
-                    </FilterGroupItem>
-                  )
-                })}
-            </FilterBar>
+              {/* Inputs Group */}
+              <FlexBox gap="16px" wrap="Wrap" alignItems="Center">
+                {/* General Search Input */}
+                <FlexBox direction="Column" gap="4px">
+                  <Label style={{ fontSize: '0.875rem' }}>Filters</Label>
+                  <Input
+                    placeholder="Search records..."
+                    value={searchQuery}
+                    onInput={(e: any) => setSearchQuery(e.target.value)}
+                    icon={<Icon name="search" />}
+                    style={{ width: '250px' }}
+                  />
+                </FlexBox>
+
+                {/* Key Fields Filter Inputs */}
+                {fields
+                  .filter(f => f.is_key || f.IsKeyField === 'X')
+                  .map(f => {
+                    const name = f.field_name || f.FieldName
+                    const label = f.label || f.LabelText || name
+                    return (
+                      <FlexBox key={name} direction="Column" gap="4px">
+                        <Label style={{ fontSize: '0.875rem' }}>{label}</Label>
+                        <Input
+                          placeholder={`Filter by ${label}...`}
+                          value={filterValues[name] ?? ''}
+                          onInput={(e: any) => {
+                            setFilterValues(prev => ({ ...prev, [name]: e.target.value }))
+                          }}
+                          style={{ minWidth: '220px' }}
+                        />
+                      </FlexBox>
+                    )
+                  })}
+              </FlexBox>
+
+              {/* Action Buttons Group inline with inputs */}
+              <FlexBox gap="8px" alignItems="Center" style={{ marginLeft: 'auto' }}>
+                <Button design="Emphasized" onClick={handleGo}>
+                  Go
+                </Button>
+                <Button design="Transparent" onClick={handleClear}>
+                  Clear
+                </Button>
+              </FlexBox>
+            </FlexBox>
           </DynamicPageHeader>
         }
       >

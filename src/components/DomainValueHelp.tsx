@@ -119,7 +119,8 @@ export default function DomainValueHelp({
             <ComboBoxItem
               key={`${o.value}-${o.description}`}
               value={o.value}
-              text={`${o.value} — ${o.description || o.value}`}
+              text={o.value}
+              additionalText={o.description !== o.value ? o.description : undefined}
             />
           ))}
         </ComboBox>

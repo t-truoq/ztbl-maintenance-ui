@@ -35,7 +35,14 @@ function fieldName(field: FieldMeta): string {
 export function isSystemGeneratedField(field: FieldMeta): boolean {
   const name = fieldName(field).toUpperCase()
   if (SYSTEM_FIELD_NAMES.has(name)) return true
-  if (/^(CREATED|CHANGED)_(BY|AT|ON|DATE|TIME)$/i.test(name)) return true
+  if (
+    name.includes('CREATED') ||
+    name.includes('CHANGED') ||
+    name.includes('MODIFIED') ||
+    /^(CREATED|CHANGED|LAST_CHANGED|LOCAL_LAST_CHANGED)_(BY|AT|ON|DATE|TIME)$/i.test(name)
+  ) {
+    return true
+  }
   return false
 }
 

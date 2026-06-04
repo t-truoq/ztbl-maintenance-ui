@@ -105,3 +105,29 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* SAP Fiori Horizon UI Custom Spacing & Layout Overrides */
+
+/* 1. Reduce the huge empty space in DynamicPage headers */
+ui5-dynamic-page-title {
+  padding-bottom: 0.25rem !important;
+}
+
+ui5-dynamic-page-header {
+  padding: 0 !important;
+}
+
+/* 2. Fix FilterBar input spacing (prevent gluing/stuck search and filter fields) */
+ui5-filter-bar [slot="search"],
+ui5-filter-bar ui5-input[slot="search"] {
+  margin-right: 16px !important;
+}
+
+ui5-filter-bar ui5-filter-group-item {
+  margin-right: 16px !important;
+}
+
+/* Ensure the layout has nice breathing room */
+ui5-filter-bar {
+  padding: 0.5rem 1rem !important;
+}
