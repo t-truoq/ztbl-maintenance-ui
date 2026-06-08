@@ -99,7 +99,7 @@ export default function DomainValueHelp({
       <FlexBox alignItems="Center" style={{ gap: '0.35rem', width: '100%' }}>
         <ComboBox
           id={inputId}
-          style={{ flex: 1, minWidth: 0 }}
+          style={{ flex: 1, minWidth: '120px' }}
           value={value}
           placeholder={`Type to search ${label}...`}
           filter="Contains"

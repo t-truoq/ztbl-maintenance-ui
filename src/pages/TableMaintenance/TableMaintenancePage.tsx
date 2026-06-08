@@ -399,11 +399,35 @@ export default function TableMaintenancePage({
     const feType = f.fe_type || f.FeType
 
     if (feType === 'date') {
+      // Use native HTML date input in table cells — the UI5 DatePicker's calendar button
+      // is rendered outside its host element and gets clipped by the table cell's overflow:hidden.
+      // A native <input type="date"> embeds the calendar icon inside the input itself (no overflow needed).
+      const nativeVal = val ? String(val).substring(0, 10) : ''
       return (
-        <DatePicker
-          value={val}
-          onChange={(e: any) => handleCellChange(rowIndex, name, formatDateForSap(e.target.value))}
-          style={{ width: '100%' }}
+        <input
+          type="date"
+          value={nativeVal}
+          onChange={(e) => handleCellChange(rowIndex, name, formatDateForSap(e.target.value))}
+          style={{
+            width: '100%',
+            height: '36px',
+            padding: '0 8px',
+            border: '1px solid var(--sapField_BorderColor, #89919a)',
+            borderRadius: '4px',
+            background: 'var(--sapField_Background, #fff)',
+            color: 'var(--sapTextColor, #32363a)',
+            fontSize: '0.875rem',
+            fontFamily: 'inherit',
+            boxSizing: 'border-box',
+            outline: 'none',
+            cursor: 'pointer',
+          }}
+          onFocus={(e) => {
+            e.target.style.border = '2px solid var(--sapField_Hover_BorderColor, #0a6ed1)'
+          }}
+          onBlur={(e) => {
+            e.target.style.border = '1px solid var(--sapField_BorderColor, #89919a)'
+          }}
         />
       )
     }
@@ -782,7 +806,8 @@ export default function TableMaintenancePage({
     const headerLabel = formatHeaderLabel(f)
     const feType = f.fe_type || f.FeType
     const isDate = feType === 'date'
-    const minColWidth = Math.max(isDate ? 220 : 150, headerLabel.length * 10 + 50)
+    const isDomain = feType === 'domain'
+    const minColWidth = Math.max(isDate ? 220 : isDomain ? 200 : 150, headerLabel.length * 10 + 50)
     return { field: f, minColWidth, headerLabel }
   })
 
