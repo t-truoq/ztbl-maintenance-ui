@@ -1,0 +1,38 @@
+{
+  "_version": "1.65.0",
+  "sap.app": {
+    "id": "ztbl.maintenance.ui",
+    "type": "application",
+    "title": "Dynamic Table Maintenance",
+    "description": "Z-Table Maintenance UI for managing custom database tables",
+    "applicationVersion": {
+      "version": "1.0.0"
+    },
+    "dataSources": {
+      "ZSD_TBL_CONFIG": {
+        "uri": "/sap/opu/odata4/sap/zsb_tbl_config/srvd/sap/zsd_tbl_config/0001/",
+        "type": "OData",
+        "settings": {
+          "odataVersion": "4.0"
+        }
+      }
+    }
+  },
+  "sap.ui": {
+    "technology": "UI5",
+    "fullWidth": true
+  },
+  "sap.flp": {
+    "type": "application"
+  },
+  "sap.ui5": {
+    "dependencies": {
+      "minUI5Version": "1.120.0",
+      "libs": {
+        "sap.ui.core": {},
+        "sap.m": {},
+        "sap.fiori": {}
+      }
+    }
+  }
+}

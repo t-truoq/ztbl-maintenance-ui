@@ -34,7 +34,6 @@ import {
   CardHeader,
   ComboBox,
   ComboBoxItem,
-  DatePicker,
   CheckBox
 } from '@ui5/webcomponents-react'
 import {
