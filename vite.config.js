@@ -22,10 +22,9 @@ export default defineConfig(({ command }) => ({
     sourcemap: false,
     rollupOptions: {
       output: {
-        // Tên file ổn định (không hash trên entrypoint) cho BSP compatibility
-        entryFileNames: 'assets/[name]-[hash].js',
-        chunkFileNames: 'assets/[name]-[hash].js',
-        assetFileNames: 'assets/[name]-[hash].[ext]'
+        entryFileNames: 'index.js',
+        chunkFileNames: '[name].js',
+        assetFileNames: '[name].[ext]'
       }
     }
   }

@@ -6,20 +6,22 @@ resources:
   configuration:
     paths:
       webapp: dist
-customTasks:
-  - name: deploy-to-abap
-    configuration:
-      target:
-        url: https://s40lp1.ucc.cit.tum.de
-        client: '324'
-        auth: basic
-        # Credentials sẽ được nhập lúc chạy lệnh deploy (không lưu hardcode)
-      app:
-        name: ZZTBL_MAINT_UI
-        package: ZZTBL_PACKAGE
-        # Thay YOUR_TR_NUMBER bằng transport request thực (SE09/SE10)
-        # Ví dụ: S4DK900123
-        transport: YOUR_TR_NUMBER
-      exclude:
-        - /test/
-        - /localService/
+builder:
+  customTasks:
+    - name: deploy-to-abap
+      afterTask: generateCachebusterInfo
+      configuration:
+        verbose: true
+        ignoreCertErrors: true
+        target:
+          url: https://s40lp1.ucc.cit.tum.de
+          client: '324'
+          auth: basic
+        app:
+          name: ZZTBL_MAINT_UI
+          description: ZTable Maintenance UI
+          package: $tmp
+          transport: ''
+        exclude:
+          - /test/
+          - /localService/

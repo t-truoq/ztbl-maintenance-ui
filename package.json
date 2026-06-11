@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:deploy": "vite build && npx fiori deploy --config ui5-deploy.yaml --yes",
-    "deploy": "npx fiori deploy --config ui5-deploy.yaml --yes",
+    "build:deploy": "vite build && npx fiori deploy --config ui5-deploy.yaml --archive-path dist",
+    "deploy": "npx fiori deploy --config ui5-deploy.yaml --archive-path dist",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",

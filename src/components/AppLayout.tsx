@@ -25,6 +25,13 @@ interface AppLayoutProps {
   children: React.ReactNode;
 }
 
+const isEmbeddedInFLP = (): boolean => {
+  const path = window.location.pathname.toLowerCase()
+  const hash = window.location.hash
+  const hasFlp = path.includes('/flp') || path.includes('fiorilaunchpad.html')
+  return hasFlp && hash.startsWith('#')
+}
+
 export default function AppLayout({
   tables,
   selectedTable,
@@ -38,6 +45,9 @@ export default function AppLayout({
   const [sidebarSearch, setSidebarSearch] = useState('')
   const [profileOpen, setProfileOpen] = useState(false)
   const popoverRef = useRef<any>(null)
+  
+  const hideShellBar = isEmbeddedInFLP()
+  const showSidebarToggle = hideShellBar
   
   const userInitials = username ? username.slice(0, 2).toUpperCase() : 'U'
 
@@ -57,19 +67,21 @@ export default function AppLayout({
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Shell Bar Header */}
-      <ShellBar
-        primaryTitle="Dynamic Table Maintenance"
-        secondaryTitle={`${username || ''} · Client 324`}
-        startButton={
-          <Button
-            icon={"menu" as any}
-            design="Transparent"
-            onClick={() => setCollapsed(prev => !prev)}
-          />
-        }
-        profile={<Avatar initials={userInitials} colorScheme="Accent6" interactive />}
-        onProfileClick={handleProfileClick}
-      />
+      {!hideShellBar && (
+        <ShellBar
+          primaryTitle="Dynamic Table Maintenance"
+          secondaryTitle={`${username || ''} · Client 324`}
+          startButton={
+            <Button
+              icon={"menu" as any}
+              design="Transparent"
+              onClick={() => setCollapsed(prev => !prev)}
+            />
+          }
+          profile={<Avatar initials={userInitials} colorScheme="Accent6" interactive />}
+          onProfileClick={handleProfileClick}
+        />
+      )}
 
       {/* User Profile Popover according to SAP Fiori Design guidelines */}
       <Popover
@@ -112,6 +124,22 @@ export default function AppLayout({
           display: 'flex',
           flexDirection: 'column'
         }}>
+          {/* Sidebar Toggle when ShellBar is hidden */}
+          {showSidebarToggle && (
+            <div style={{
+              display: 'flex',
+              justifyContent: collapsed ? 'center' : 'flex-start',
+              padding: '8px',
+              borderBottom: '1px solid var(--sapContent_BorderColor, #f0f0f0)'
+            }}>
+              <Button
+                icon={"menu" as any}
+                design="Transparent"
+                onClick={() => setCollapsed(prev => !prev)}
+              />
+            </div>
+          )}
+
           {!collapsed && (
             <div style={{
               padding: '12px 16px',

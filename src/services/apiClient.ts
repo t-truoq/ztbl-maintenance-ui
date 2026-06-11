@@ -73,8 +73,13 @@ export function clearCredentials(): void {
   }
 }
 
+export function isDeployedOnSAP(): boolean {
+  const host = window.location.hostname
+  return host !== 'localhost' && host !== '127.0.0.1'
+}
+
 api.interceptors.request.use(config => {
-  if (!credentials?.token) {
+  if (!isDeployedOnSAP() && !credentials?.token) {
     return Promise.reject(new Error('Not authenticated'))
   }
   return config
@@ -84,7 +89,7 @@ api.interceptors.response.use(
   response => response,
   error => {
     const status = error.response?.status
-    if (credentials && (status === 401 || (status === 403 && !isCsrfError(error)))) {
+    if ((credentials || isDeployedOnSAP()) && (status === 401 || (status === 403 && !isCsrfError(error)))) {
       window.dispatchEvent(new CustomEvent('sap-session-expired'))
     }
     return Promise.reject(error)

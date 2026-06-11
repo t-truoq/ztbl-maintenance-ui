@@ -4,19 +4,11 @@ import LoginScreen from './components/LoginScreen'
 import {
   clearCredentials,
   SAP_SERVICE,
-  SAP_CLIENT
+  SAP_CLIENT,
+  isDeployedOnSAP
 } from './services/apiClient'
 import { clearDomainCache } from './services/domainCache'
 import { SessionUser } from './types'
-
-/**
- * Detect if running on the SAP server (deployed as BSP),
- * as opposed to localhost dev server.
- */
-function isDeployedOnSAP(): boolean {
-  const host = window.location.hostname
-  return host !== 'localhost' && host !== '127.0.0.1'
-}
 
 /**
  * When deployed on the SAP server, the user is already authenticated
