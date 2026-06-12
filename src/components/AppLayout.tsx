@@ -25,17 +25,32 @@ interface AppLayoutProps {
   children: React.ReactNode;
 }
 
+const isRunningLocally = (): boolean => {
+  const hostname = window.location.hostname
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '[::1]' ||
+    hostname.includes('localhost') ||
+    hostname.startsWith('192.168.') ||
+    hostname.startsWith('10.') ||
+    hostname.startsWith('172.') ||
+    window.location.port === '3000'
+  )
+}
+
 const isEmbeddedInFLP = (): boolean => {
+  if (!isRunningLocally()) {
+    return true
+  }
   try {
     if (window.self !== window.top) {
       return true
     }
-    const path = window.location.pathname.toLowerCase()
-    const parentPath = window.parent && window.parent !== window ? window.parent.location.pathname.toLowerCase() : ''
-    return path.includes('/flp') || path.includes('fiorilaunchpad.html') || parentPath.includes('/flp') || parentPath.includes('fiorilaunchpad.html')
   } catch {
     return true
   }
+  return false
 }
 
 export default function AppLayout({
