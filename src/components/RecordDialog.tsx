@@ -74,6 +74,7 @@ interface RecordDialogProps {
   initialRow: TableRowData | null;
   tableName: string;
   username: string;
+  data: TableRowData[];
   onSave: (formValues: TableRowData, dirtyFieldNames: string[]) => Promise<{ ok: boolean; message?: string }>;
   onClose: () => void;
 }
@@ -86,6 +87,7 @@ export default function RecordDialog({
   initialRow,
   tableName,
   username,
+  data,
   onSave,
   onClose
 }: RecordDialogProps) {
@@ -93,12 +95,70 @@ export default function RecordDialog({
   const [values, setValues] = useState<Record<string, any>>({})
   const [saving, setSaving] = useState(false)
   const [validationError, setValidationError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [foreignLocks, setForeignLocks] = useState<Record<string, string>>({})
   const sessionId = useId()
   const baselineRowRef = useRef<TableRowData | null>(null)
 
   const recordKey =
     mode === 'edit' && initialRow ? buildKeyRecord(allFields, initialRow) : null
+
+  const validateField = (fieldNameKey: string, val: any, currentValues: Record<string, any>): string => {
+    const field = formFields.find(f => fieldName(f) === fieldNameKey)
+    if (!field) return ''
+
+    const isKey = field.is_key || field.IsKeyField === 'X'
+    const feType = field.fe_type || field.FeType
+    
+    // 1. Mandatory validation
+    const isMandatory = field.is_mandatory || field.MandatoryFlag === 'X'
+    if (isMandatory && feType !== 'boolean') {
+      if (val === undefined || val === null || String(val).trim() === '') {
+        return 'Field is required'
+      }
+    }
+
+    // 2. Length validation
+    const len = field.length || field.Length || 0
+    if (len > 0 && (feType === 'text' || feType === 'uuid')) {
+      if (String(val).length > len) {
+        return `Maximum length is ${len} characters`
+      }
+    }
+
+    // 3. Duplicate Key Check
+    if (mode === 'create' && isKey) {
+      const pendingRecord = { ...currentValues, [fieldNameKey]: val }
+      const keyFields = allFields.filter(f => {
+        const isKey = f.is_key || f.IsKeyField === 'X'
+        const name = (f.field_name || f.FieldName || '').toUpperCase()
+        return isKey && name !== 'CLIENT' && name !== 'MANDT'
+      })
+
+      const hasAllKeys = keyFields.every(kf => {
+        const name = kf.field_name || kf.FieldName
+        const kVal = pendingRecord[name]
+        return kVal !== undefined && kVal !== null && String(kVal).trim() !== ''
+      })
+
+      if (hasAllKeys) {
+        const buildKeyString = (row: TableRowData) => {
+          return keyFields.map(kf => {
+            const name = kf.field_name || kf.FieldName
+            return String(row[name] ?? row[kf.FieldName] ?? '').trim().toUpperCase()
+          }).join('|')
+        }
+
+        const currentKeyStr = buildKeyString(pendingRecord)
+        const duplicate = data.some(row => buildKeyString(row) === currentKeyStr)
+        if (duplicate) {
+          return 'Primary Key combination already exists!'
+        }
+      }
+    }
+
+    return ''
+  }
 
   function refreshForeignLocks() {
     if (mode !== 'edit' || !tableName || !recordKey || !username) {
@@ -113,6 +173,7 @@ export default function RecordDialog({
     baselineRowRef.current = mode === 'edit' ? initialRow : null
     setValues(initFormValues(formFields, initialRow))
     setValidationError('')
+    setFieldErrors({})
     refreshForeignLocks()
 
     const onStorage = () => refreshForeignLocks()
@@ -159,11 +220,47 @@ export default function RecordDialog({
 
   function updateValue(fieldNameKey: string, value: any) {
     if (!tryAcquireField(fieldNameKey)) return
-    setValues(prev => ({ ...prev, [fieldNameKey]: value }))
+    const nextValues = { ...values, [fieldNameKey]: value }
+    setValues(nextValues)
     setValidationError('')
+
+    // Perform validation
+    const errorMsg = validateField(fieldNameKey, value, nextValues)
+    
+    setFieldErrors(prev => {
+      const updated = { ...prev }
+      if (errorMsg) {
+        updated[fieldNameKey] = errorMsg
+      } else {
+        delete updated[fieldNameKey]
+      }
+
+      // Re-validate other key fields since the key combination has changed
+      const field = formFields.find(f => fieldName(f) === fieldNameKey)
+      if (field && (field.is_key || field.IsKeyField === 'X') && mode === 'create') {
+        const otherKeys = formFields.filter(f => (f.is_key || f.IsKeyField === 'X') && fieldName(f) !== fieldNameKey)
+        otherKeys.forEach(ok => {
+          const name = fieldName(ok)
+          const okVal = nextValues[name] ?? ''
+          const okErr = validateField(name, okVal, nextValues)
+          if (okErr) {
+            updated[name] = okErr
+          } else {
+            delete updated[name]
+          }
+        })
+      }
+
+      return updated
+    })
   }
 
   async function handleSave() {
+    if (Object.keys(fieldErrors).length > 0) {
+      setValidationError('Please fix the errors before saving.')
+      return
+    }
+
     const missing = validateMandatory(formFields, values)
     if (missing.length > 0) {
       setValidationError(`Required fields: ${missing.join(', ')}`)
@@ -249,6 +346,10 @@ export default function RecordDialog({
           inputId={inputId}
           readonly={false}
           onChange={v => updateValue(name, v)}
+          valueState={fieldErrors[name] ? 'Negative' : 'None'}
+          valueStateMessage={
+            fieldErrors[name] ? <div slot="valueStateMessage">{fieldErrors[name]}</div> : undefined
+          }
         />
       )
     }
@@ -259,6 +360,10 @@ export default function RecordDialog({
           <Input
             id={inputId}
             value={value}
+            valueState={fieldErrors[name] ? 'Negative' : 'None'}
+            valueStateMessage={
+              fieldErrors[name] ? <div slot="valueStateMessage">{fieldErrors[name]}</div> : undefined
+            }
             readonly={mode === 'edit' && !!(field.is_key || field.IsKeyField === 'X')}
             onInput={(e: any) => updateValue(name, e.target.value)}
           />
@@ -268,6 +373,10 @@ export default function RecordDialog({
           <DatePicker
             id={inputId}
             value={value}
+            valueState={fieldErrors[name] ? 'Negative' : 'None'}
+            valueStateMessage={
+              fieldErrors[name] ? <div slot="valueStateMessage">{fieldErrors[name]}</div> : undefined
+            }
             onChange={(e: any) => updateValue(name, formatDateForSap(e.target.value))}
           />
         )
@@ -285,6 +394,10 @@ export default function RecordDialog({
             id={inputId}
             type="Number"
             value={value}
+            valueState={fieldErrors[name] ? 'Negative' : 'None'}
+            valueStateMessage={
+              fieldErrors[name] ? <div slot="valueStateMessage">{fieldErrors[name]}</div> : undefined
+            }
             placeholder={field.label || field.LabelText || name}
             onInput={(e: any) => updateValue(name, e.target.value)}
           />
@@ -295,6 +408,10 @@ export default function RecordDialog({
             id={inputId}
             type="Number"
             value={value}
+            valueState={fieldErrors[name] ? 'Negative' : 'None'}
+            valueStateMessage={
+              fieldErrors[name] ? <div slot="valueStateMessage">{fieldErrors[name]}</div> : undefined
+            }
             placeholder={field.label || field.LabelText || name}
             onInput={(e: any) => updateValue(name, e.target.value)}
           />
@@ -304,6 +421,10 @@ export default function RecordDialog({
           <Input
             id={inputId}
             value={value}
+            valueState={fieldErrors[name] ? 'Negative' : 'None'}
+            valueStateMessage={
+              fieldErrors[name] ? <div slot="valueStateMessage">{fieldErrors[name]}</div> : undefined
+            }
             placeholder="HH:MM:SS"
             onInput={(e: any) => updateValue(name, e.target.value)}
           />
@@ -314,6 +435,10 @@ export default function RecordDialog({
           <Input
             id={inputId}
             value={value}
+            valueState={fieldErrors[name] ? 'Negative' : 'None'}
+            valueStateMessage={
+              fieldErrors[name] ? <div slot="valueStateMessage">{fieldErrors[name]}</div> : undefined
+            }
             maxlength={field.length || field.Length || undefined}
             placeholder={field.label || field.LabelText || name}
             onInput={(e: any) => updateValue(name, e.target.value)}
@@ -339,7 +464,7 @@ export default function RecordDialog({
               <Button design="Transparent" onClick={handleClose} disabled={saving}>
                 Cancel
               </Button>
-              <Button design="Emphasized" onClick={handleSave} disabled={saving}>
+              <Button design="Emphasized" onClick={handleSave} disabled={saving || Object.keys(fieldErrors).length > 0}>
                 Save
               </Button>
             </>
@@ -362,15 +487,22 @@ export default function RecordDialog({
       <FlexBox direction="Column" style={{ gap: '1rem', padding: '0.25rem 0' }}>
         {formFields.map(field => {
           const feType = field.fe_type || field.FeType
+          const name = fieldName(field)
+          const errorMsg = fieldErrors[name]
           return (
             <FlexBox
-              key={fieldName(field)}
+              key={name}
               direction="Column"
               style={{ gap: '0.35rem' }}
             >
               {feType !== 'boolean' && !isDomainField(field) && <FieldLabel field={field} />}
               {isDomainField(field) && <FieldLabel field={field} />}
               {renderField(field)}
+              {errorMsg && (
+                <Text style={{ color: 'var(--sapNegativeTextColor, #bb0000)', fontSize: '0.8rem', marginTop: '2px' }}>
+                  {errorMsg}
+                </Text>
+              )}
             </FlexBox>
           )
         })}

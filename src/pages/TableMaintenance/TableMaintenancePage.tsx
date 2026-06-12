@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useId } from 'react'
 import { formatDateForSap } from '../../utils/displayHelpers'
 import {
   DynamicPage,
@@ -34,7 +34,8 @@ import {
   CardHeader,
   ComboBox,
   ComboBoxItem,
-  CheckBox
+  CheckBox,
+  Toast
 } from '@ui5/webcomponents-react'
 import {
   loadTableContext,
@@ -69,6 +70,12 @@ import RecordDialog from '../../components/RecordDialog'
 import DomainValueHelp from '../../components/DomainValueHelp'
 import AuditLogPanel from '../../components/AuditLogPanel'
 import { FieldMeta, TableConfig, TableRowData } from '../../types'
+import {
+  acquireTableLock,
+  releaseTableLock,
+  getActiveTableLock,
+  touchTableLock
+} from '../../utils/tableLockService'
 
 function formatHeaderLabel(f: FieldMeta) {
   const rawLabel = f.label || f.LabelText
@@ -80,6 +87,38 @@ function formatHeaderLabel(f: FieldMeta) {
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
+}
+
+function extractApprovalCode(response: any): string | null {
+  if (!response) return null
+
+  // 1. Check for explicit properties in response
+  const keys = [
+    'approval_request_id', 'approval_req_id', 'ApprovalReqId', 
+    'ApprovalRequest', 'approval_id', 'req_id', 'ReqId', 
+    'approval_code', 'ApprovalCode', 'ApprovalRequestID'
+  ]
+  for (const key of keys) {
+    if (response[key]) return String(response[key])
+    if (response.data && response.data[key]) return String(response.data[key])
+  }
+
+  // 2. Scan response messages/descriptions
+  const message = response.message || response.data?.message || response.error_msg || ''
+  if (message) {
+    // Match common patterns: "Approval request 1000201", "Request #100201", "mã yêu cầu: 1000201"
+    const match = message.match(/(?:approval\s+request|request|chứng\s+từ|mã\s+yêu\s+cầu|yêu\s+cầu)\s*[:#\s]*([a-zA-Z0-9_-]+)/i)
+    if (match && match[1] && isNaN(Number(match[1])) === false) {
+      return match[1]
+    }
+    // Match any isolated 4-12 digit numbers
+    const numMatch = message.match(/\b\d{4,12}\b/)
+    if (numMatch) {
+      return numMatch[0]
+    }
+  }
+
+  return null
 }
 
 interface TableMaintenancePageProps {
@@ -128,6 +167,137 @@ export default function TableMaintenancePage({
 
   const latestActiveTableUuidRef = useRef<string | null>(null)
 
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastOpen, setToastOpen] = useState(false)
+  const [approvalInfo, setApprovalInfo] = useState<{ code: string; action: 'create' | 'update' | 'delete' | 'save' } | null>(null)
+
+  function showToast(message: string) {
+    setError('')
+    setSuccessMsg('')
+    setToastMessage(message)
+    setToastOpen(true)
+  }
+  const [activeTableLock, setActiveTableLock] = useState<{ lockedBy: string } | null>(null)
+  const [inlineErrors, setInlineErrors] = useState<Record<number, Record<string, string>>>({})
+  const sessionId = useId()
+
+  const validateInlineField = (
+    rowIndex: number,
+    fieldNameKey: string,
+    val: any,
+    row: TableRowData,
+    currentEditedData?: TableRowData[]
+  ): string => {
+    const field = allFields.find(f => (f.field_name || f.FieldName) === fieldNameKey)
+    if (!field) return ''
+
+    const isKey = field.is_key || field.IsKeyField === 'X'
+    const feType = field.fe_type || field.FeType
+
+    // 1. Mandatory validation
+    const isMandatory = field.is_mandatory || field.MandatoryFlag === 'X'
+    if (isMandatory && feType !== 'boolean') {
+      if (val === undefined || val === null || String(val).trim() === '') {
+        return 'Field is required'
+      }
+    }
+
+    // 2. Length validation
+    const len = field.length || field.Length || 0
+    if (len > 0 && (feType === 'text' || feType === 'uuid')) {
+      if (String(val).length > len) {
+        return `Maximum length is ${len} characters`
+      }
+    }
+
+    // 3. Duplicate Key Check
+    if (row._isNew && isKey) {
+      const keyFields = allFields.filter(f => {
+        const isKey = f.is_key || f.IsKeyField === 'X'
+        const name = (f.field_name || f.FieldName || '').toUpperCase()
+        return isKey && name !== 'CLIENT' && name !== 'MANDT'
+      })
+
+      const hasAllKeys = keyFields.every(kf => {
+        const name = kf.field_name || kf.FieldName
+        const kVal = row[name]
+        return kVal !== undefined && kVal !== null && String(kVal).trim() !== ''
+      })
+
+      if (hasAllKeys) {
+        const buildKeyString = (r: TableRowData) => {
+          return keyFields.map(kf => {
+            const name = kf.field_name || kf.FieldName
+            return String(r[name] ?? r[kf.FieldName] ?? '').trim().toUpperCase()
+          }).join('|')
+        }
+
+        const currentKeyStr = buildKeyString(row)
+
+        const duplicateInDb = data.some(dbRow => buildKeyString(dbRow) === currentKeyStr)
+        if (duplicateInDb) {
+          return 'Primary Key combination already exists!'
+        }
+
+        const duplicateInEdited = (currentEditedData || editedData).some((otherRow, otherIdx) => {
+          if (otherIdx === rowIndex || !otherRow._isNew) return false
+          return buildKeyString(otherRow) === currentKeyStr
+        })
+        if (duplicateInEdited) {
+          return 'Duplicate key found in another new row!'
+        }
+      }
+    }
+
+    return ''
+  }
+
+  function tryStartEditingTable(): boolean {
+    if (!selectedTable) return false
+    const lockRes = acquireTableLock(selectedTable.TableName, username, sessionId)
+    if (!lockRes.acquired) {
+      showError(`Cannot edit: Table is currently being edited by User ${lockRes.heldBy}`)
+      return false
+    }
+    setError('')
+    return true
+  }
+
+  function releaseTableLockIfHeld() {
+    if (selectedTable) {
+      releaseTableLock(selectedTable.TableName, sessionId)
+    }
+  }
+
+  // Periodic table lock check
+  useEffect(() => {
+    if (!selectedTable) {
+      setActiveTableLock(null)
+      return undefined
+    }
+
+    const checkLock = () => {
+      const lock = getActiveTableLock(selectedTable.TableName, username, sessionId)
+      setActiveTableLock(lock)
+      
+      // If we are currently editing the table, touch our own lock to keep it alive
+      if (isEditingTable || recordDialogOpen || deleteDialogOpen) {
+        touchTableLock(selectedTable.TableName, sessionId)
+      }
+    }
+
+    checkLock() // Run immediately
+    const interval = setInterval(checkLock, 5000) // Poll every 5s
+
+    const handleStorageChange = () => checkLock()
+    window.addEventListener('storage', handleStorageChange)
+
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('storage', handleStorageChange)
+      releaseTableLock(selectedTable.TableName, sessionId)
+    }
+  }, [selectedTable, username, sessionId, isEditingTable, recordDialogOpen, deleteDialogOpen])
   useEffect(() => {
     if (selectedTable) {
       loadTable(selectedTable)
@@ -176,6 +346,7 @@ export default function TableMaintenancePage({
     setAppliedFilterValues({})
     setIsEditingTable(false)
     setEditedData([])
+    setInlineErrors({})
   }
 
   function showError(message: string) {
@@ -204,6 +375,7 @@ export default function TableMaintenancePage({
     setAppliedFilterValues({})
     setIsEditingTable(false)
     setEditedData([])
+    setInlineErrors({})
 
     try {
       setDataLoading(true)
@@ -250,6 +422,7 @@ export default function TableMaintenancePage({
   }
 
   function openEditDialog(row: TableRowData) {
+    if (!tryStartEditingTable()) return
     setRecordDialogMode('edit')
     setEditingRow(row)
     const recordKey = buildKeyRecord(allFields, row)
@@ -262,6 +435,7 @@ export default function TableMaintenancePage({
   }
 
   function openDeleteDialog(row: TableRowData) {
+    if (!tryStartEditingTable()) return
     setDeletingRow(row)
     setDeleteDialogOpen(true)
   }
@@ -269,10 +443,81 @@ export default function TableMaintenancePage({
   const handleCellChange = (rowIndex: number, fieldName: string, newValue: any) => {
     setEditedData(prev => {
       const updated = [...prev]
-      updated[rowIndex] = {
+      const updatedRow = {
         ...updated[rowIndex],
         [fieldName]: newValue
       }
+      updated[rowIndex] = updatedRow
+
+      setInlineErrors(prevErrors => {
+        const nextErrors = { ...prevErrors }
+        const rowErrors = { ...(nextErrors[rowIndex] || {}) }
+        const errorMsg = validateInlineField(rowIndex, fieldName, newValue, updatedRow, updated)
+        if (errorMsg) {
+          rowErrors[fieldName] = errorMsg
+        } else {
+          delete rowErrors[fieldName]
+        }
+
+        const field = allFields.find(f => (f.field_name || f.FieldName) === fieldName)
+        if (field && (field.is_key || field.IsKeyField === 'X') && updatedRow._isNew) {
+          const otherKeys = allFields.filter(f => (f.is_key || f.IsKeyField === 'X') && (f.field_name || f.FieldName) !== fieldName)
+          otherKeys.forEach(ok => {
+            const okName = ok.field_name || ok.FieldName
+            const okVal = updatedRow[okName] ?? ''
+            const okErr = validateInlineField(rowIndex, okName, okVal, updatedRow, updated)
+            if (okErr) {
+              rowErrors[okName] = okErr
+            } else {
+              delete rowErrors[okName]
+            }
+          })
+        }
+
+        if (Object.keys(rowErrors).length > 0) {
+          nextErrors[rowIndex] = rowErrors
+        } else {
+          delete nextErrors[rowIndex]
+        }
+
+        if (field && (field.is_key || field.IsKeyField === 'X') && updatedRow._isNew) {
+          updated.forEach((otherRow, otherIdx) => {
+            if (otherIdx === rowIndex || !otherRow._isNew) return
+
+            const otherRowErrors = { ...(nextErrors[otherIdx] || {}) }
+            const keyFields = allFields.filter(f => {
+              const isKey = f.is_key || f.IsKeyField === 'X'
+              const name = (f.field_name || f.FieldName || '').toUpperCase()
+              return isKey && name !== 'CLIENT' && name !== 'MANDT'
+            })
+            let keyChanged = false
+            keyFields.forEach(kf => {
+              const kfName = kf.field_name || kf.FieldName
+              const kfVal = otherRow[kfName] ?? ''
+              const kfErr = validateInlineField(otherIdx, kfName, kfVal, otherRow, updated)
+              if (kfErr) {
+                otherRowErrors[kfName] = kfErr
+                keyChanged = true
+              } else {
+                if (otherRowErrors[kfName]) {
+                  delete otherRowErrors[kfName]
+                  keyChanged = true
+                }
+              }
+            })
+            if (keyChanged) {
+              if (Object.keys(otherRowErrors).length > 0) {
+                nextErrors[otherIdx] = otherRowErrors
+              } else {
+                delete nextErrors[otherIdx]
+              }
+            }
+          })
+        }
+
+        return nextErrors
+      })
+
       return updated
     })
   }
@@ -286,11 +531,63 @@ export default function TableMaintenancePage({
   const handleCancelInlineEdits = () => {
     setIsEditingTable(false)
     setEditedData([])
+    setInlineErrors({})
     setError('')
+    releaseTableLockIfHeld()
   }
 
   const handleRemoveNewRow = (rowIndex: number) => {
-    setEditedData(prev => prev.filter((_, idx) => idx !== rowIndex))
+    setEditedData(prev => {
+      const updated = prev.filter((_, idx) => idx !== rowIndex)
+
+      setInlineErrors(prevErrors => {
+        const nextErrors: Record<number, Record<string, string>> = {}
+        Object.entries(prevErrors).forEach(([idxStr, errs]) => {
+          const idx = parseInt(idxStr, 10)
+          if (idx < rowIndex) {
+            nextErrors[idx] = errs
+          } else if (idx > rowIndex) {
+            nextErrors[idx - 1] = errs
+          }
+        })
+
+        updated.forEach((row, idx) => {
+          if (!row._isNew) return
+          const keyFields = allFields.filter(f => {
+            const isKey = f.is_key || f.IsKeyField === 'X'
+            const name = (f.field_name || f.FieldName || '').toUpperCase()
+            return isKey && name !== 'CLIENT' && name !== 'MANDT'
+          })
+          const rowErrors = { ...(nextErrors[idx] || {}) }
+          let keyChanged = false
+          keyFields.forEach(kf => {
+            const kfName = kf.field_name || kf.FieldName
+            const kfVal = row[kfName] ?? ''
+            const kfErr = validateInlineField(idx, kfName, kfVal, row, updated)
+            if (kfErr) {
+              rowErrors[kfName] = kfErr
+              keyChanged = true
+            } else {
+              if (rowErrors[kfName]) {
+                delete rowErrors[kfName]
+                keyChanged = true
+              }
+            }
+          })
+          if (keyChanged) {
+            if (Object.keys(rowErrors).length > 0) {
+              nextErrors[idx] = rowErrors
+            } else {
+              delete nextErrors[idx]
+            }
+          }
+        })
+
+        return nextErrors
+      })
+
+      return updated
+    })
   }
 
   async function handleSaveInlineEdits() {
@@ -300,15 +597,31 @@ export default function TableMaintenancePage({
 
     // 1. Validation
     const validationErrors: string[] = []
+    const newInlineErrors = { ...inlineErrors }
+    let hasValidationError = false
+
     editedData.forEach((row, idx) => {
       const missing = validateMandatory(fields, row)
       if (missing.length > 0) {
         validationErrors.push(`Row #${idx + 1}: Missing required fields: ${missing.join(', ')}`)
+        hasValidationError = true
+
+        const rowErrs = { ...(newInlineErrors[idx] || {}) }
+        missing.forEach(name => {
+          rowErrs[name] = 'Field is required'
+        })
+        newInlineErrors[idx] = rowErrs
       }
     })
 
-    if (validationErrors.length > 0) {
+    if (hasValidationError) {
+      setInlineErrors(newInlineErrors)
       showError(validationErrors.join(' | '))
+      return
+    }
+
+    if (Object.values(inlineErrors).some(row => Object.keys(row).length > 0)) {
+      showError('Please fix validation errors before saving.')
       return
     }
 
@@ -339,11 +652,16 @@ export default function TableMaintenancePage({
       // 3. Execute creates SEQUENTIALLY to avoid SAP resource lock conflicts
       // (SAP backend locks the config instance between requests; parallel creates
       //  trigger MC_CSP_USR_RUNTIME/004 "instance is locked" errors)
+      const approvalCodes: string[] = []
       for (const row of newRows) {
         const payload = buildFullRecordPayload(allFields, row, null)
         const res = await createRecord(selectedTable.ConfigUuid, selectedTable.TableName, payload)
         if (res.success === false) {
           throw new Error(res.message || 'Failed to create record')
+        }
+        const code = extractApprovalCode(res)
+        if (code && !approvalCodes.includes(code)) {
+          approvalCodes.push(code)
         }
       }
 
@@ -367,12 +685,23 @@ export default function TableMaintenancePage({
         return res
       })
 
-      await Promise.all(updatePromises)
+      const updateResults = await Promise.all(updatePromises)
+      updateResults.forEach(res => {
+        const code = extractApprovalCode(res)
+        if (code && !approvalCodes.includes(code)) {
+          approvalCodes.push(code)
+        }
+      })
 
       // 5. Success cleanup
-      showSuccess(`Saved successfully (${newRows.length} created, ${modifiedRows.length} updated)`)
       setIsEditingTable(false)
       setEditedData([])
+      releaseTableLockIfHeld()
+      if (approvalCodes.length > 0) {
+        setApprovalInfo({ code: approvalCodes.join(', '), action: 'save' })
+      } else {
+        showToast(`Saved successfully (${newRows.length} created, ${modifiedRows.length} updated)`)
+      }
       await loadTable(selectedTable)
       await onRefreshTableList()
     } catch (e: any) {
@@ -396,6 +725,7 @@ export default function TableMaintenancePage({
     }
 
     const feType = f.fe_type || f.FeType
+    const cellError = inlineErrors[rowIndex]?.[name]
 
     if (feType === 'date') {
       // Use native HTML date input in table cells — the UI5 DatePicker's calendar button
@@ -407,11 +737,14 @@ export default function TableMaintenancePage({
           type="date"
           value={nativeVal}
           onChange={(e) => handleCellChange(rowIndex, name, formatDateForSap(e.target.value))}
+          title={cellError || ''}
           style={{
             width: '100%',
             height: '36px',
             padding: '0 8px',
-            border: '1px solid var(--sapField_BorderColor, #89919a)',
+            border: cellError
+              ? '2px solid var(--sapField_InvalidColor, #bb0000)'
+              : '1px solid var(--sapField_BorderColor, #89919a)',
             borderRadius: '4px',
             background: 'var(--sapField_Background, #fff)',
             color: 'var(--sapTextColor, #32363a)',
@@ -422,10 +755,14 @@ export default function TableMaintenancePage({
             cursor: 'pointer',
           }}
           onFocus={(e) => {
-            e.target.style.border = '2px solid var(--sapField_Hover_BorderColor, #0a6ed1)'
+            e.target.style.border = cellError
+              ? '2px solid var(--sapField_InvalidColor, #bb0000)'
+              : '2px solid var(--sapField_Hover_BorderColor, #0a6ed1)'
           }}
           onBlur={(e) => {
-            e.target.style.border = '1px solid var(--sapField_BorderColor, #89919a)'
+            e.target.style.border = cellError
+              ? '2px solid var(--sapField_InvalidColor, #bb0000)'
+              : '1px solid var(--sapField_BorderColor, #89919a)'
           }}
         />
       )
@@ -449,6 +786,10 @@ export default function TableMaintenancePage({
           value={val}
           onChange={(newVal) => handleCellChange(rowIndex, name, newVal)}
           readonly={false}
+          valueState={cellError ? 'Negative' : 'None'}
+          valueStateMessage={
+            cellError ? <div slot="valueStateMessage">{cellError}</div> : undefined
+          }
         />
       )
     }
@@ -458,6 +799,10 @@ export default function TableMaintenancePage({
         value={val}
         onInput={(e: any) => handleCellChange(rowIndex, name, e.target.value)}
         style={{ width: '100%' }}
+        valueState={cellError ? 'Negative' : 'None'}
+        valueStateMessage={
+          cellError ? <div slot="valueStateMessage">{cellError}</div> : undefined
+        }
       />
     )
   }
@@ -575,11 +920,16 @@ export default function TableMaintenancePage({
 
     setRecordDialogOpen(false)
     setEditSessionEtag(null)
-    let msg = result.message || 'Record updated'
-    if (blocked.length > 0) {
-      msg += `. Skipped (locked by others): ${blocked.map(b => b.label).join(', ')}`
+    const approvalCode = extractApprovalCode(result)
+    if (approvalCode) {
+      setApprovalInfo({ code: approvalCode, action: 'update' })
+    } else {
+      let msg = result.message || 'Record updated'
+      if (blocked.length > 0) {
+        msg += `. Skipped (locked by others): ${blocked.map(b => b.label).join(', ')}`
+      }
+      showToast(msg)
     }
-    showSuccess(msg)
     await loadTable(selectedTable)
     await onRefreshTableList()
     return { ok: true }
@@ -601,7 +951,12 @@ export default function TableMaintenancePage({
           return { ok: false, message }
         }
         setRecordDialogOpen(false)
-        showSuccess(result.message || 'Record created')
+        const approvalCode = extractApprovalCode(result)
+        if (approvalCode) {
+          setApprovalInfo({ code: approvalCode, action: 'create' })
+        } else {
+          showToast(result.message || 'Record created successfully')
+        }
         await loadTable(selectedTable)
         await onRefreshTableList()
         return { ok: true }
@@ -631,6 +986,7 @@ export default function TableMaintenancePage({
       )
       if (result.success === false) {
         setDeleteDialogOpen(false)
+        releaseTableLockIfHeld()
         if (isFKReferenceError(result.message)) {
           setFkErrorMessage(parseFKErrorMessage(result.message))
           setFkErrorOpen(true)
@@ -641,11 +997,18 @@ export default function TableMaintenancePage({
       }
       setDeleteDialogOpen(false)
       setDeletingRow(null)
-      showSuccess(result.message || 'Record deleted')
+      const approvalCode = extractApprovalCode(result)
+      if (approvalCode) {
+        setApprovalInfo({ code: approvalCode, action: 'delete' })
+      } else {
+        showToast(result.message || 'Record deleted successfully')
+      }
+      releaseTableLockIfHeld()
       await loadTable(selectedTable)
       await onRefreshTableList()
     } catch (e: any) {
       showError(getFriendlyErrorMessage(e))
+      releaseTableLockIfHeld()
     } finally {
       setDeleteLoading(false)
     }
@@ -822,7 +1185,12 @@ export default function TableMaintenancePage({
         <ToolbarSpacer />
         {isEditingTable ? (
           <>
-            <Button design="Emphasized" icon={"save" as any} onClick={handleSaveInlineEdits}>
+            <Button
+              design="Emphasized"
+              icon={"save" as any}
+              onClick={handleSaveInlineEdits}
+              disabled={Object.values(inlineErrors).some(row => Object.keys(row).length > 0)}
+            >
               Save
             </Button>
             <Button design="Transparent" icon={"decline" as any} onClick={handleCancelInlineEdits}>
@@ -837,9 +1205,12 @@ export default function TableMaintenancePage({
             <Button
               design="Emphasized"
               icon={"edit" as any}
+              disabled={!!activeTableLock}
               onClick={() => {
-                setIsEditingTable(true)
-                setEditedData([...filteredData])
+                if (tryStartEditingTable()) {
+                  setIsEditingTable(true)
+                  setEditedData([...filteredData])
+                }
               }}
             >
               Edit
@@ -847,12 +1218,15 @@ export default function TableMaintenancePage({
             <Button
               design="Transparent"
               icon={"add" as any}
+              disabled={!!activeTableLock}
               onClick={() => {
-                setIsEditingTable(true)
-                const copy = [...filteredData]
-                const newRec = initFormValues(allFields, null)
-                newRec._isNew = true
-                setEditedData([...copy, newRec])
+                if (tryStartEditingTable()) {
+                  setIsEditingTable(true)
+                  const copy = [...filteredData]
+                  const newRec = initFormValues(allFields, null)
+                  newRec._isNew = true
+                  setEditedData([...copy, newRec])
+                }
               }}
             >
               Create
@@ -963,8 +1337,11 @@ export default function TableMaintenancePage({
           filteredData.map((row, i) => (
             <TableRow
               key={i}
-              interactive
-              onClick={() => openEditDialog(row)}
+              interactive={!activeTableLock}
+              onClick={() => {
+                if (activeTableLock) return
+                openEditDialog(row)
+              }}
               style={{ gridTemplateColumns: columnsStyle }}
             >
               {fieldsWithWidths.map(({ field: f, minColWidth }) => {
@@ -995,6 +1372,7 @@ export default function TableMaintenancePage({
                   design="Transparent"
                   icon={"edit" as any}
                   accessibleName="Edit record"
+                  disabled={!!activeTableLock}
                   onClick={(e: any) => {
                     e.stopPropagation()
                     openEditDialog(row)
@@ -1004,6 +1382,7 @@ export default function TableMaintenancePage({
                   design="Transparent"
                   icon={"delete" as any}
                   accessibleName="Delete record"
+                  disabled={!!activeTableLock}
                   onClick={(e: any) => {
                     e.stopPropagation()
                     openDeleteDialog(row)
@@ -1019,6 +1398,14 @@ export default function TableMaintenancePage({
 
   return (
     <>
+      {activeTableLock && (
+        <div style={{ padding: '1rem', paddingBottom: 0 }}>
+          <MessageStrip design="Critical" hideCloseButton>
+            Bảng '{selectedTable?.TableName}' đang được chỉnh sửa bởi User {activeTableLock.lockedBy}. Chức năng chỉnh sửa tạm thời bị khóa.
+          </MessageStrip>
+        </div>
+      )}
+
       {(error || successMsg) && (
         <div style={{ padding: '1rem' }}>
           {error && (
@@ -1207,10 +1594,12 @@ export default function TableMaintenancePage({
         initialRow={editingRow}
         tableName={selectedTable?.TableName || ''}
         username={username}
+        data={data}
         onSave={handleSaveRecord}
         onClose={() => {
           setRecordDialogOpen(false)
           setEditSessionEtag(null)
+          releaseTableLockIfHeld()
         }}
       />
 
@@ -1226,7 +1615,10 @@ export default function TableMaintenancePage({
                 <>
                   <Button
                     design="Transparent"
-                    onClick={() => setDeleteDialogOpen(false)}
+                    onClick={() => {
+                      setDeleteDialogOpen(false)
+                      releaseTableLockIfHeld()
+                    }}
                     disabled={deleteLoading}
                   >
                     Cancel
@@ -1279,6 +1671,50 @@ export default function TableMaintenancePage({
       >
         {fkErrorMessage}
       </MessageBox>
+
+      <MessageBox
+        open={!!approvalInfo}
+        type={MessageBoxType.Success}
+        titleText="Approval Request Submitted"
+        actions={[MessageBoxAction.OK]}
+        onClose={() => setApprovalInfo(null)}
+      >
+        {approvalInfo && (
+          <FlexBox direction="Column" gap="8px" style={{ width: '100%' }}>
+            <Text>
+              Your changes for table <strong>{selectedTable?.TableName}</strong> require approval and have been successfully submitted.
+            </Text>
+            <FlexBox
+              alignItems="Center"
+              gap="12px"
+              style={{
+                background: 'var(--sapGroup_Background, #f4f6f8)',
+                padding: '12px 16px',
+                borderRadius: '8px',
+                border: '1px solid var(--sapGroup_BorderColor, #d9d9d9)',
+                marginTop: '8px',
+                width: '100%',
+                boxSizing: 'border-box'
+              }}
+            >
+              <Icon name="employee-approvals" style={{ color: 'var(--sapContent_NonInteractiveIconColor, #0a6ed1)', width: '24px', height: '24px' }} />
+              <FlexBox direction="Column" gap="4px">
+                <Label style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>Approval Request ID</Label>
+                <Text style={{ fontFamily: 'monospace', fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--sapContent_LabelColor, #133b5c)' }}>
+                  {approvalInfo.code}
+                </Text>
+              </FlexBox>
+            </FlexBox>
+            <Text style={{ fontSize: '0.85rem', color: '#6a7075', marginTop: '8px' }}>
+              The changes will be applied to the database once approved by the system workflow.
+            </Text>
+          </FlexBox>
+        )}
+      </MessageBox>
+
+      <Toast open={toastOpen} onClose={() => setToastOpen(false)} duration={3000}>
+        {toastMessage}
+      </Toast>
     </>
   )
 }

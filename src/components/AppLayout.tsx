@@ -26,10 +26,16 @@ interface AppLayoutProps {
 }
 
 const isEmbeddedInFLP = (): boolean => {
-  const path = window.location.pathname.toLowerCase()
-  const hash = window.location.hash
-  const hasFlp = path.includes('/flp') || path.includes('fiorilaunchpad.html')
-  return hasFlp && hash.startsWith('#')
+  try {
+    if (window.self !== window.top) {
+      return true
+    }
+    const path = window.location.pathname.toLowerCase()
+    const parentPath = window.parent && window.parent !== window ? window.parent.location.pathname.toLowerCase() : ''
+    return path.includes('/flp') || path.includes('fiorilaunchpad.html') || parentPath.includes('/flp') || parentPath.includes('fiorilaunchpad.html')
+  } catch {
+    return true
+  }
 }
 
 export default function AppLayout({

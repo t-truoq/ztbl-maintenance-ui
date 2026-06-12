@@ -29,6 +29,8 @@ interface DomainValueHelpProps {
   onChange: (value: string) => void;
   readonly: boolean;
   inputId?: string;
+  valueState?: 'None' | 'Negative' | 'Critical' | 'Positive' | 'Information';
+  valueStateMessage?: any;
 }
 
 export default function DomainValueHelp({
@@ -37,7 +39,9 @@ export default function DomainValueHelp({
   value,
   onChange,
   readonly,
-  inputId
+  inputId,
+  valueState,
+  valueStateMessage
 }: DomainValueHelpProps) {
   const domainKey = getDomainKey(field)
   const [options, setOptions] = useState<Array<{ value: string; description: string }>>([])
@@ -104,6 +108,8 @@ export default function DomainValueHelp({
           placeholder={`Type to search ${label}...`}
           filter="Contains"
           loading={loading}
+          valueState={valueState}
+          valueStateMessage={valueStateMessage}
           onOpen={() => {
             if (options.length === 0) loadOptions()
           }}
