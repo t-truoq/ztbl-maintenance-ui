@@ -1,0 +1,883 @@
+import { useState, useEffect, useRef, useId } from 'react'
+import {
+  loadTableContext,
+  getTableData,
+  createRecord,
+  updateRecord,
+  deleteRecord,
+  parseTableDataJson,
+  getFriendlyErrorMessage,
+  formatActionErrorMessage,
+  normalizeConfigUuid,
+  isOptimisticLockError,
+  isFKReferenceError,
+  parseFKErrorMessage
+} from '../../../services/tableConfigApi'
+import { clearDomainCache } from '../../../services/domainCache'
+import {
+  buildKeyRecord,
+  buildRecordKeyString,
+  buildFullRecordPayload,
+  buildEtagMap,
+  resolveEtagForUpdate,
+  mergeRecordForConcurrentEdit,
+  initFormValues,
+  validateMandatory,
+  isFieldReadonly,
+  isSystemGeneratedField
+} from '../../../utils/recordHelpers'
+import { validateInlineField } from '../../../utils/validationHelpers'
+import { extractApprovalCode } from '../../../utils/tableHelpers'
+import {
+  acquireTableLock,
+  releaseTableLock,
+  getActiveTableLock,
+  touchTableLock
+} from '../../../utils/tableLockService'
+import { FieldMeta, TableConfig, TableRowData } from '../../../types'
+
+export interface TableMaintenancePageProps {
+  selectedTable: TableConfig | null
+  tables: TableConfig[]
+  username: string
+  onRefreshTableList: () => Promise<void>
+  onSelectTable: (table: TableConfig | null) => void
+}
+
+export function useTableMaintenance({
+  selectedTable,
+  username,
+  onRefreshTableList
+}: TableMaintenancePageProps) {
+  // ─── Data & metadata ──────────────────────────────────────────────────────
+  const [allFields, setAllFields] = useState<FieldMeta[]>([])
+  const [fields, setFields] = useState<FieldMeta[]>([])
+  const [data, setData] = useState<TableRowData[]>([])
+  const [tableDataJson, setTableDataJson] = useState('')
+  const [etagMap, setEtagMap] = useState<Record<string, { field: string; value: string }>>({})
+  const [editSessionEtag, setEditSessionEtag] = useState<any>(null)
+
+  // ─── UI state ─────────────────────────────────────────────────────────────
+  const [dataLoading, setDataLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [successMsg, setSuccessMsg] = useState('')
+
+  // ─── Filters ──────────────────────────────────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterValues, setFilterValues] = useState<Record<string, string>>({})
+  const [appliedSearchQuery, setAppliedSearchQuery] = useState('')
+  const [appliedFilterValues, setAppliedFilterValues] = useState<Record<string, string>>({})
+
+  // ─── Inline edit ──────────────────────────────────────────────────────────
+  const [isEditingTable, setIsEditingTable] = useState(false)
+  const [editedData, setEditedData] = useState<TableRowData[]>([])
+  const [inlineErrors, setInlineErrors] = useState<Record<number, Record<string, string>>>({})
+
+  // ─── Record dialog ────────────────────────────────────────────────────────
+  const [recordDialogOpen, setRecordDialogOpen] = useState(false)
+  const [recordDialogMode, setRecordDialogMode] = useState<'create' | 'edit'>('create')
+  const [editingRow, setEditingRow] = useState<TableRowData | null>(null)
+
+  // ─── Delete dialog ────────────────────────────────────────────────────────
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deletingRow, setDeletingRow] = useState<TableRowData | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+
+  // ─── Error dialogs ────────────────────────────────────────────────────────
+  const [optimisticLockOpen, setOptimisticLockOpen] = useState(false)
+  const [fkErrorOpen, setFkErrorOpen] = useState(false)
+  const [fkErrorMessage, setFkErrorMessage] = useState('')
+
+  // ─── Toast & approval ─────────────────────────────────────────────────────
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastOpen, setToastOpen] = useState(false)
+  const [approvalInfo, setApprovalInfo] = useState<{
+    code: string
+    action: 'create' | 'update' | 'delete' | 'save'
+  } | null>(null)
+
+  // ─── Table lock ───────────────────────────────────────────────────────────
+  const [activeTableLock, setActiveTableLock] = useState<{ lockedBy: string } | null>(null)
+
+  const latestActiveTableUuidRef = useRef<string | null>(null)
+  const sessionId = useId()
+
+  // ─── Helpers ──────────────────────────────────────────────────────────────
+  function showError(message: string) {
+    setSuccessMsg('')
+    setError(message)
+  }
+
+  function showSuccess(message: string) {
+    setError('')
+    setSuccessMsg(message)
+  }
+
+  function showToast(message: string) {
+    setError('')
+    setSuccessMsg('')
+    setToastMessage(message)
+    setToastOpen(true)
+  }
+
+  function clearPageData() {
+    setAllFields([])
+    setFields([])
+    setData([])
+    setTableDataJson('')
+    setEtagMap({})
+    clearDomainCache()
+    setSearchQuery('')
+    setFilterValues({})
+    setAppliedSearchQuery('')
+    setAppliedFilterValues({})
+    setIsEditingTable(false)
+    setEditedData([])
+    setInlineErrors({})
+  }
+
+  function tryStartEditingTable(): boolean {
+    if (!selectedTable) return false
+    const lockRes = acquireTableLock(selectedTable.TableName, username, sessionId)
+    if (!lockRes.acquired) {
+      showError(`Cannot edit: Table is currently being edited by User ${lockRes.heldBy}`)
+      return false
+    }
+    setError('')
+    return true
+  }
+
+  function releaseTableLockIfHeld() {
+    if (selectedTable) {
+      releaseTableLock(selectedTable.TableName, sessionId)
+    }
+  }
+
+  // ─── Effects ──────────────────────────────────────────────────────────────
+
+  // Table lock polling
+  useEffect(() => {
+    if (!selectedTable) {
+      setActiveTableLock(null)
+      return undefined
+    }
+
+    const checkLock = () => {
+      const lock = getActiveTableLock(selectedTable.TableName, username, sessionId)
+      setActiveTableLock(lock)
+      if (isEditingTable || recordDialogOpen || deleteDialogOpen) {
+        touchTableLock(selectedTable.TableName, sessionId)
+      }
+    }
+
+    checkLock()
+    const interval = setInterval(checkLock, 5000)
+    const handleStorageChange = () => checkLock()
+    window.addEventListener('storage', handleStorageChange)
+
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('storage', handleStorageChange)
+      releaseTableLock(selectedTable.TableName, sessionId)
+    }
+  }, [selectedTable, username, sessionId, isEditingTable, recordDialogOpen, deleteDialogOpen])
+
+  // Load table on selection change
+  useEffect(() => {
+    if (selectedTable) {
+      loadTable(selectedTable)
+    } else {
+      clearPageData()
+    }
+  }, [selectedTable])
+
+  // Auto-clear success message
+  useEffect(() => {
+    if (!successMsg) return
+    const timer = setTimeout(() => setSuccessMsg(''), 3000)
+    return () => clearTimeout(timer)
+  }, [successMsg])
+
+  // Hide DynamicPage collapse toggle in shadow DOM
+  useEffect(() => {
+    const hideToggle = () => {
+      const dynamicPage = document.querySelector('ui5-dynamic-page')
+      if (dynamicPage && dynamicPage.shadowRoot) {
+        if (dynamicPage.shadowRoot.querySelector('#hide-collapse-style')) return
+        const style = document.createElement('style')
+        style.id = 'hide-collapse-style'
+        style.textContent = `
+          ui5-dynamic-page-header-actions {
+            display: none !important;
+          }
+        `
+        dynamicPage.shadowRoot.appendChild(style)
+      }
+    }
+    hideToggle()
+    const timer = setTimeout(hideToggle, 300)
+    return () => clearTimeout(timer)
+  }, [selectedTable])
+
+  // ─── Data loading ─────────────────────────────────────────────────────────
+
+  async function loadTable(table: TableConfig) {
+    const normalizedUuid = normalizeConfigUuid(table.ConfigUuid)
+    latestActiveTableUuidRef.current = normalizedUuid
+
+    setAllFields([])
+    setFields([])
+    setData([])
+    setTableDataJson('')
+    setEtagMap({})
+    setSearchQuery('')
+    setFilterValues({})
+    setAppliedSearchQuery('')
+    setAppliedFilterValues({})
+    setIsEditingTable(false)
+    setEditedData([])
+    setInlineErrors({})
+
+    try {
+      setDataLoading(true)
+      setError('')
+      setSuccessMsg('')
+
+      const { fieldMeta, tableData, rows } = await loadTableContext(
+        normalizedUuid,
+        table.TableName
+      )
+
+      if (latestActiveTableUuidRef.current !== normalizedUuid) return
+
+      setAllFields(fieldMeta)
+      setFields(fieldMeta.filter(f => !f.is_hidden && f.HiddenFlag !== 'X'))
+
+      const dataJson = tableData.data_json || ''
+      setData(rows)
+      setTableDataJson(dataJson)
+      setEtagMap(dataJson ? buildEtagMap(dataJson, fieldMeta, rows) : {})
+    } catch (e: any) {
+      if (latestActiveTableUuidRef.current === normalizedUuid) {
+        showError(getFriendlyErrorMessage(e))
+        clearPageData()
+      }
+    } finally {
+      if (latestActiveTableUuidRef.current === normalizedUuid) {
+        setDataLoading(false)
+      }
+    }
+  }
+
+  // ─── Inline edit handlers ─────────────────────────────────────────────────
+
+  /**
+   * Wrapper for validateInlineField that closes over the current component state
+   * (allFields, data) so call-sites only need to pass row-specific arguments.
+   */
+  function validateCell(
+    rowIndex: number,
+    fieldNameKey: string,
+    val: any,
+    row: TableRowData,
+    currentEditedData?: TableRowData[]
+  ): string {
+    return validateInlineField(
+      rowIndex,
+      fieldNameKey,
+      val,
+      row,
+      allFields,
+      data,
+      currentEditedData ?? editedData
+    )
+  }
+
+  const handleCellChange = (rowIndex: number, fieldName: string, newValue: any) => {
+    setEditedData(prev => {
+      const updated = [...prev]
+      const updatedRow = { ...updated[rowIndex], [fieldName]: newValue }
+      updated[rowIndex] = updatedRow
+
+      setInlineErrors(prevErrors => {
+        const nextErrors = { ...prevErrors }
+        const rowErrors = { ...(nextErrors[rowIndex] || {}) }
+        const errorMsg = validateCell(rowIndex, fieldName, newValue, updatedRow, updated)
+        if (errorMsg) {
+          rowErrors[fieldName] = errorMsg
+        } else {
+          delete rowErrors[fieldName]
+        }
+
+        // Re-validate sibling key fields to update cross-row duplicate errors
+        const field = allFields.find(f => (f.field_name || f.FieldName) === fieldName)
+        if (field && (field.is_key || field.IsKeyField === 'X') && updatedRow._isNew) {
+          const otherKeys = allFields.filter(
+            f => (f.is_key || f.IsKeyField === 'X') && (f.field_name || f.FieldName) !== fieldName
+          )
+          otherKeys.forEach(ok => {
+            const okName = ok.field_name || ok.FieldName
+            const okVal = updatedRow[okName] ?? ''
+            const okErr = validateCell(rowIndex, okName, okVal, updatedRow, updated)
+            if (okErr) {
+              rowErrors[okName] = okErr
+            } else {
+              delete rowErrors[okName]
+            }
+          })
+        }
+
+        if (Object.keys(rowErrors).length > 0) {
+          nextErrors[rowIndex] = rowErrors
+        } else {
+          delete nextErrors[rowIndex]
+        }
+
+        // Re-validate all other new rows if a key field changed
+        if (field && (field.is_key || field.IsKeyField === 'X') && updatedRow._isNew) {
+          updated.forEach((otherRow, otherIdx) => {
+            if (otherIdx === rowIndex || !otherRow._isNew) return
+
+            const otherRowErrors = { ...(nextErrors[otherIdx] || {}) }
+            const keyFields = allFields.filter(f => {
+              const k = f.is_key || f.IsKeyField === 'X'
+              const name = (f.field_name || f.FieldName || '').toUpperCase()
+              return k && name !== 'CLIENT' && name !== 'MANDT'
+            })
+            let keyChanged = false
+            keyFields.forEach(kf => {
+              const kfName = kf.field_name || kf.FieldName
+              const kfVal = otherRow[kfName] ?? ''
+              const kfErr = validateCell(otherIdx, kfName, kfVal, otherRow, updated)
+              if (kfErr) {
+                otherRowErrors[kfName] = kfErr
+                keyChanged = true
+              } else if (otherRowErrors[kfName]) {
+                delete otherRowErrors[kfName]
+                keyChanged = true
+              }
+            })
+            if (keyChanged) {
+              if (Object.keys(otherRowErrors).length > 0) {
+                nextErrors[otherIdx] = otherRowErrors
+              } else {
+                delete nextErrors[otherIdx]
+              }
+            }
+          })
+        }
+
+        return nextErrors
+      })
+
+      return updated
+    })
+  }
+
+  const handleAddRow = () => {
+    const newRecord = initFormValues(allFields, null)
+    newRecord._isNew = true
+    setEditedData(prev => [...prev, newRecord])
+  }
+
+  const handleCancelInlineEdits = () => {
+    setIsEditingTable(false)
+    setEditedData([])
+    setInlineErrors({})
+    setError('')
+    releaseTableLockIfHeld()
+  }
+
+  const handleRemoveNewRow = (rowIndex: number) => {
+    setEditedData(prev => {
+      const updated = prev.filter((_, idx) => idx !== rowIndex)
+
+      setInlineErrors(prevErrors => {
+        const nextErrors: Record<number, Record<string, string>> = {}
+        Object.entries(prevErrors).forEach(([idxStr, errs]) => {
+          const idx = parseInt(idxStr, 10)
+          if (idx < rowIndex) {
+            nextErrors[idx] = errs
+          } else if (idx > rowIndex) {
+            nextErrors[idx - 1] = errs
+          }
+        })
+
+        // Re-validate duplicate keys after row removal
+        updated.forEach((row, idx) => {
+          if (!row._isNew) return
+          const keyFields = allFields.filter(f => {
+            const k = f.is_key || f.IsKeyField === 'X'
+            const name = (f.field_name || f.FieldName || '').toUpperCase()
+            return k && name !== 'CLIENT' && name !== 'MANDT'
+          })
+          const rowErrors = { ...(nextErrors[idx] || {}) }
+          let keyChanged = false
+          keyFields.forEach(kf => {
+            const kfName = kf.field_name || kf.FieldName
+            const kfVal = row[kfName] ?? ''
+            const kfErr = validateCell(idx, kfName, kfVal, row, updated)
+            if (kfErr) {
+              rowErrors[kfName] = kfErr
+              keyChanged = true
+            } else if (rowErrors[kfName]) {
+              delete rowErrors[kfName]
+              keyChanged = true
+            }
+          })
+          if (keyChanged) {
+            if (Object.keys(rowErrors).length > 0) {
+              nextErrors[idx] = rowErrors
+            } else {
+              delete nextErrors[idx]
+            }
+          }
+        })
+
+        return nextErrors
+      })
+
+      return updated
+    })
+  }
+
+  async function handleSaveInlineEdits() {
+    if (!selectedTable) return
+    setError('')
+    setSuccessMsg('')
+
+    // Validation
+    const validationErrors: string[] = []
+    const newInlineErrors = { ...inlineErrors }
+    let hasValidationError = false
+
+    editedData.forEach((row, idx) => {
+      const missing = validateMandatory(fields, row)
+      if (missing.length > 0) {
+        validationErrors.push(`Row #${idx + 1}: Missing required fields: ${missing.join(', ')}`)
+        hasValidationError = true
+        const rowErrs = { ...(newInlineErrors[idx] || {}) }
+        missing.forEach(name => { rowErrs[name] = 'Field is required' })
+        newInlineErrors[idx] = rowErrs
+      }
+    })
+
+    if (hasValidationError) {
+      setInlineErrors(newInlineErrors)
+      showError(validationErrors.join(' | '))
+      return
+    }
+
+    if (Object.values(inlineErrors).some(row => Object.keys(row).length > 0)) {
+      showError('Please fix validation errors before saving.')
+      return
+    }
+
+    try {
+      setDataLoading(true)
+
+      const newRows = editedData.filter(r => r._isNew)
+      const modifiedRows = editedData.filter(row => {
+        if (row._isNew) return false
+        const keyStr = buildRecordKeyString(allFields, row)
+        const originalRow = data.find(orig => buildRecordKeyString(allFields, orig) === keyStr)
+        if (!originalRow) return true
+        return fields.some(f => {
+          if (isSystemGeneratedField(f)) return false
+          const name = f.field_name || f.FieldName
+          return row[name] !== originalRow[name]
+        })
+      })
+
+      if (newRows.length === 0 && modifiedRows.length === 0) {
+        showSuccess('No changes to save')
+        setIsEditingTable(false)
+        setEditedData([])
+        return
+      }
+
+      const approvalCodes: string[] = []
+
+      const successMessages: string[] = []
+      // Creates run sequentially to avoid SAP resource lock conflicts
+      for (const row of newRows) {
+        const payload = buildFullRecordPayload(allFields, row, null)
+        const res = await createRecord(selectedTable.ConfigUuid, selectedTable.TableName, payload)
+        if (res.success === false) throw new Error(res.message || 'Failed to create record')
+        const msg = res.message || res.value?.message || res.data?.message || res.data?.value?.message
+        if (msg && !successMessages.includes(msg)) successMessages.push(msg)
+        const code = extractApprovalCode(res)
+        if (code && !approvalCodes.includes(code)) approvalCodes.push(code)
+      }
+
+      // Updates run in parallel
+      const updatePromises = modifiedRows.map(async row => {
+        const recordKey = buildKeyRecord(allFields, row)
+        const keyStr = buildRecordKeyString(allFields, row)
+        const storedEtag = etagMap[keyStr] ?? null
+        const etagInfo = resolveEtagForUpdate(allFields, row, tableDataJson, recordKey, storedEtag)
+        const res = await updateRecord(
+          selectedTable.ConfigUuid,
+          selectedTable.TableName,
+          recordKey,
+          row,
+          etagInfo.field || '',
+          etagInfo.value || ''
+        )
+        if (res.success === false) throw new Error(res.message || 'Failed to update record')
+        return res
+      })
+
+      const updateResults = await Promise.all(updatePromises)
+      updateResults.forEach(res => {
+        const msg = res.message || res.value?.message || res.data?.message || res.data?.value?.message
+        if (msg && !successMessages.includes(msg)) successMessages.push(msg)
+        const code = extractApprovalCode(res)
+        if (code && !approvalCodes.includes(code)) approvalCodes.push(code)
+      })
+
+      setIsEditingTable(false)
+      setEditedData([])
+      releaseTableLockIfHeld()
+
+      if (selectedTable.ApprovalRequired === 'X') {
+        if (successMessages.length > 0) {
+          showToast(successMessages.join('\n'))
+        } else if (approvalCodes.length > 0) {
+          showToast(`Yêu cầu phê duyệt đã được gửi thành công. Mã chứng từ: ${approvalCodes.join(', ')}`)
+        } else {
+          showToast(`Yêu cầu phê duyệt đã được gửi thành công.`)
+        }
+      } else {
+        showToast(`Saved successfully (${newRows.length} created, ${modifiedRows.length} updated)`)
+      }
+      await loadTable(selectedTable)
+      await onRefreshTableList()
+    } catch (e: any) {
+      showError(getFriendlyErrorMessage(e))
+    } finally {
+      setDataLoading(false)
+    }
+  }
+
+  // ─── Dialog handlers ──────────────────────────────────────────────────────
+
+  function openEditDialog(row: TableRowData) {
+    if (!tryStartEditingTable()) return
+    setRecordDialogMode('edit')
+    setEditingRow(row)
+    const recordKey = buildKeyRecord(allFields, row)
+    const keyStr = buildRecordKeyString(allFields, row)
+    const stored = etagMap[keyStr] ?? null
+    setEditSessionEtag(resolveEtagForUpdate(allFields, row, tableDataJson, recordKey, stored))
+    setRecordDialogOpen(true)
+  }
+
+  function openDeleteDialog(row: TableRowData) {
+    if (!tryStartEditingTable()) return
+    setDeletingRow(row)
+    setDeleteDialogOpen(true)
+  }
+
+  function handleGo() {
+    setAppliedSearchQuery(searchQuery)
+    setAppliedFilterValues(filterValues)
+  }
+
+  function handleClear() {
+    setSearchQuery('')
+    setFilterValues({})
+    setAppliedSearchQuery('')
+    setAppliedFilterValues({})
+  }
+
+  async function handleOptimisticLockRefresh() {
+    setOptimisticLockOpen(false)
+    setRecordDialogOpen(false)
+    setEditingRow(null)
+    setEditSessionEtag(null)
+    if (selectedTable) {
+      await loadTable(selectedTable)
+      await onRefreshTableList()
+    }
+  }
+
+  // ─── Record CRUD ──────────────────────────────────────────────────────────
+
+  async function fetchRowByKey(table: TableConfig, recordKey: TableRowData) {
+    const dataResult = await getTableData(table.ConfigUuid, table.TableName)
+    const dataJson = dataResult.data_json || ''
+    const rows = parseTableDataJson(dataJson, allFields)
+    const keyStr = JSON.stringify(recordKey)
+    const row = rows.find(r => JSON.stringify(buildKeyRecord(allFields, r)) === keyStr) || null
+    return { row, dataJson }
+  }
+
+  async function updateRecordWithEtag(
+    recordKey: TableRowData,
+    fullRecord: TableRowData,
+    etagInfo: any
+  ) {
+    const { field, value, candidates } = etagInfo
+    const etagValue = value || candidates?.[0] || ''
+    if (!selectedTable) return { success: false, message: 'No table selected' }
+    return updateRecord(
+      selectedTable.ConfigUuid,
+      selectedTable.TableName,
+      recordKey,
+      fullRecord,
+      field || '',
+      etagValue
+    )
+  }
+
+  async function saveEditWithMerge(
+    formValues: Record<string, any>,
+    dirtyFieldNames: string[],
+    retryOnLock = true,
+    baselineRow: TableRowData | null = null,
+    sessionEtag: any = null
+  ): Promise<{ ok: boolean; message?: string }> {
+    if (!selectedTable) return { ok: false, message: 'No table selected' }
+
+    const baseline = baselineRow || editingRow
+    if (!baseline) return { ok: false, message: 'No editing baseline' }
+
+    const recordKey = buildKeyRecord(allFields, baseline)
+    const { row: freshRow, dataJson } = await fetchRowByKey(selectedTable, recordKey)
+    if (!freshRow) {
+      const message = 'Record not found. It may have been deleted.'
+      showError(message)
+      return { ok: false, message }
+    }
+
+    const { fullRecord, blocked, hasChanges } = mergeRecordForConcurrentEdit(
+      allFields,
+      baseline,
+      freshRow,
+      formValues,
+      dirtyFieldNames,
+      dataJson,
+      recordKey
+    )
+
+    if (!hasChanges) {
+      const message =
+        blocked.length > 0
+          ? `Cannot save: ${blocked.map(b => b.label).join(', ')} already changed by another user`
+          : 'No changes to save'
+      showError(message)
+      return { ok: false, message }
+    }
+
+    const etagForLock =
+      sessionEtag ??
+      editSessionEtag ??
+      etagMap[buildRecordKeyString(allFields, baseline)] ??
+      null
+    const etagInfo = resolveEtagForUpdate(allFields, baseline, tableDataJson, recordKey, etagForLock)
+    const result = await updateRecordWithEtag(recordKey, fullRecord, etagInfo)
+
+    if (result.success === false && retryOnLock && isOptimisticLockError(result.message)) {
+      const freshEtag = resolveEtagForUpdate(allFields, freshRow, dataJson, recordKey)
+      return saveEditWithMerge(formValues, dirtyFieldNames, false, freshRow, freshEtag)
+    }
+
+    if (result.success === false) {
+      if (isOptimisticLockError(result.message)) {
+        setOptimisticLockOpen(true)
+        return { ok: false, message: result.message }
+      }
+      const message = formatActionErrorMessage(result.message || 'Update failed')
+      showError(message)
+      return { ok: false, message }
+    }
+
+    setRecordDialogOpen(false)
+    setEditSessionEtag(null)
+    const approvalCode = extractApprovalCode(result)
+    const backendMessage = result.message || result.value?.message || result.data?.message || result.data?.value?.message
+    if (selectedTable.ApprovalRequired === 'X') {
+      showToast(backendMessage || `Yêu cầu phê duyệt đã được gửi thành công. Mã chứng từ: ${approvalCode || ''}`)
+    } else {
+      let msg = backendMessage || 'Record updated'
+      if (blocked.length > 0) {
+        msg += `. Skipped (locked by others): ${blocked.map(b => b.label).join(', ')}`
+      }
+      showToast(msg)
+    }
+    await loadTable(selectedTable)
+    await onRefreshTableList()
+    return { ok: true }
+  }
+
+  async function handleSaveRecord(
+    formValues: Record<string, any>,
+    dirtyFieldNames: string[] = []
+  ): Promise<{ ok: boolean; message?: string }> {
+    if (!selectedTable) return { ok: false, message: 'No table selected' }
+    try {
+      if (recordDialogMode === 'create') {
+        const recordPayload = buildFullRecordPayload(allFields, formValues, null)
+        const result = await createRecord(
+          selectedTable.ConfigUuid,
+          selectedTable.TableName,
+          recordPayload
+        )
+        if (result.success === false) {
+          const message = formatActionErrorMessage(result.message || 'Operation failed')
+          showError(message)
+          return { ok: false, message }
+        }
+        setRecordDialogOpen(false)
+        const approvalCode = extractApprovalCode(result)
+        const backendMessage = result.message || result.value?.message || result.data?.message || result.data?.value?.message
+        if (selectedTable.ApprovalRequired === 'X') {
+          showToast(backendMessage || `Yêu cầu phê duyệt đã được gửi thành công. Mã chứng từ: ${approvalCode || ''}`)
+        } else {
+          showToast(backendMessage || 'Record created successfully')
+        }
+        await loadTable(selectedTable)
+        await onRefreshTableList()
+        return { ok: true }
+      }
+
+      const editResult = await saveEditWithMerge(formValues, dirtyFieldNames)
+      if (editResult?.ok === false && editResult.message) {
+        return { ok: false, message: editResult.message }
+      }
+      return editResult ?? { ok: true }
+    } catch (e: any) {
+      const message = getFriendlyErrorMessage(e)
+      showError(message)
+      return { ok: false, message }
+    }
+  }
+
+  async function handleConfirmDelete() {
+    if (!deletingRow || !selectedTable) return
+    setDeleteLoading(true)
+    try {
+      const recordKey = buildKeyRecord(allFields, deletingRow)
+      const result = await deleteRecord(
+        selectedTable.ConfigUuid,
+        selectedTable.TableName,
+        recordKey
+      )
+      if (result.success === false) {
+        setDeleteDialogOpen(false)
+        releaseTableLockIfHeld()
+        if (isFKReferenceError(result.message)) {
+          setFkErrorMessage(parseFKErrorMessage(result.message))
+          setFkErrorOpen(true)
+        } else {
+          showError(result.message || 'Delete failed')
+        }
+        return
+      }
+      setDeleteDialogOpen(false)
+      setDeletingRow(null)
+      const approvalCode = extractApprovalCode(result)
+      const backendMessage = result.message || result.value?.message || result.data?.message || result.data?.value?.message
+      if (selectedTable.ApprovalRequired === 'X') {
+        showToast(backendMessage || `Yêu cầu phê duyệt đã được gửi thành công. Mã chứng từ: ${approvalCode || ''}`)
+      } else {
+        showToast(backendMessage || 'Record deleted successfully')
+      }
+      releaseTableLockIfHeld()
+      await loadTable(selectedTable)
+      await onRefreshTableList()
+    } catch (e: any) {
+      showError(getFriendlyErrorMessage(e))
+      releaseTableLockIfHeld()
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
+
+  // ─── Derived state ────────────────────────────────────────────────────────
+
+  const filteredData = data.filter(row => {
+    const matchesSearch =
+      appliedSearchQuery.trim() === '' ||
+      Object.values(row).some(v =>
+        String(v).toLowerCase().includes(appliedSearchQuery.toLowerCase())
+      )
+
+    const matchesKeys = Object.entries(appliedFilterValues).every(([field, val]) => {
+      if (!val.trim()) return true
+      const cellVal = String(row[field] ?? '')
+      return cellVal.toLowerCase().includes(val.toLowerCase())
+    })
+
+    return matchesSearch && matchesKeys
+  })
+
+  // ─── Exposed API ──────────────────────────────────────────────────────────
+  return {
+    // State
+    allFields,
+    fields,
+    data,
+    tableDataJson,
+    etagMap,
+    editSessionEtag,
+    setEditSessionEtag,
+    dataLoading,
+    error,
+    setError,
+    successMsg,
+    searchQuery,
+    setSearchQuery,
+    filterValues,
+    setFilterValues,
+    appliedSearchQuery,
+    appliedFilterValues,
+    isEditingTable,
+    setIsEditingTable,
+    editedData,
+    setEditedData,
+    inlineErrors,
+    recordDialogOpen,
+    setRecordDialogOpen,
+    recordDialogMode,
+    editingRow,
+    setEditingRow,
+    deleteDialogOpen,
+    setDeleteDialogOpen,
+    deletingRow,
+    setDeletingRow,
+    deleteLoading,
+    optimisticLockOpen,
+    setOptimisticLockOpen,
+    fkErrorOpen,
+    setFkErrorOpen,
+    fkErrorMessage,
+    toastOpen,
+    setToastOpen,
+    toastMessage,
+    approvalInfo,
+    setApprovalInfo,
+    activeTableLock,
+    filteredData,
+    // Handlers
+    loadTable,
+    handleCellChange,
+    handleAddRow,
+    handleCancelInlineEdits,
+    handleRemoveNewRow,
+    handleSaveInlineEdits,
+    openEditDialog,
+    openDeleteDialog,
+    handleGo,
+    handleClear,
+    handleSaveRecord,
+    handleConfirmDelete,
+    handleOptimisticLockRefresh,
+    releaseTableLockIfHeld,
+    tryStartEditingTable,
+    // utils forwarded for convenience
+    isFieldReadonly,
+    isSystemGeneratedField,
+  }
+}

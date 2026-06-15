@@ -133,11 +133,28 @@ ui5-filter-bar {
 }
 
 /* Ensure the native browser calendar picker indicator is visible inside Fiori UI */
+.fiori-native-date-input {
+  appearance: auto !important;
+  -webkit-appearance: auto !important;
+  -moz-appearance: auto !important;
+}
+
 .fiori-native-date-input::-webkit-calendar-picker-indicator {
   display: block !important;
   opacity: 1 !important;
-  cursor: pointer;
-  padding: 0;
-  margin: 0;
+  visibility: visible !important;
+  cursor: pointer !important;
+  padding: 0 !important;
+  margin: 0 !important;
 }
+
+/* Ensure Toast notification wraps text and handles long UUIDs without overflow/clipping */
+ui5-toast {
+  max-width: 90vw !important;
+  width: auto !important;
+  white-space: normal !important;
+  word-break: break-all !important;
+  overflow-wrap: break-word !important;
+}
+
 

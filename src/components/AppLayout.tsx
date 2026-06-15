@@ -30,19 +30,7 @@ const isRunningLocally = (): boolean => {
   return !isDeployedOnSAP()
 }
 
-const isEmbeddedInFLP = (): boolean => {
-  if (!isRunningLocally()) {
-    return true
-  }
-  try {
-    if (window.self !== window.top) {
-      return true
-    }
-  } catch {
-    return true
-  }
-  return false
-}
+
 
 export default function AppLayout({
   tables,
