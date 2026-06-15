@@ -735,6 +735,7 @@ export default function TableMaintenancePage({
       return (
         <input
           type="date"
+          className="fiori-native-date-input"
           value={nativeVal}
           onChange={(e) => handleCellChange(rowIndex, name, formatDateForSap(e.target.value))}
           title={cellError || ''}

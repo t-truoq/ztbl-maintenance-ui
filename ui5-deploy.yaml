@@ -17,6 +17,9 @@ builder:
           url: https://s40lp1.ucc.cit.tum.de
           client: '324'
           auth: basic
+          credentials:
+            username: env:SAP_USER
+            password: env:SAP_PASSWORD
         app:
           name: ZZTBL_MAINT_UI
           description: ZTable Maintenance UI

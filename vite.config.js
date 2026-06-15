@@ -6,6 +6,9 @@ export default defineConfig(({ command }) => ({
   // Dev server dùng '/' như bình thường
   base: command === 'build' ? './' : '/',
   plugins: [react()],
+  define: command === 'build' ? {
+    'import.meta.url': '(document.currentScript && document.currentScript.src || window.location.href)'
+  } : {},
   server: {
     port: 3000,
     proxy: {

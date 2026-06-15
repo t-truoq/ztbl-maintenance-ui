@@ -115,6 +115,7 @@ export async function getTables(): Promise<TableConfig[]> {
   const res = await api.get('/TableConfig', {
     params: {
       'sap-client': SAP_CLIENT,
+      '$filter': 'IsActiveEntity eq true',
       '$select': 'TableName,Description,ConfigUuid,ActiveFlag,ApprovalRequired'
     }
   })

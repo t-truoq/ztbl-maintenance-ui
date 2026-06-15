@@ -131,3 +131,13 @@ ui5-filter-bar ui5-filter-group-item {
 ui5-filter-bar {
   padding: 0.5rem 1rem !important;
 }
+
+/* Ensure the native browser calendar picker indicator is visible inside Fiori UI */
+.fiori-native-date-input::-webkit-calendar-picker-indicator {
+  display: block !important;
+  opacity: 1 !important;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+}
+

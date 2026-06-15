@@ -14,6 +14,7 @@ import {
   Text
 } from '@ui5/webcomponents-react'
 import { TableConfig } from '../types'
+import { isDeployedOnSAP } from '../services/apiClient'
 
 interface AppLayoutProps {
   tables: TableConfig[];
@@ -26,17 +27,7 @@ interface AppLayoutProps {
 }
 
 const isRunningLocally = (): boolean => {
-  const hostname = window.location.hostname
-  return (
-    hostname === 'localhost' ||
-    hostname === '127.0.0.1' ||
-    hostname === '[::1]' ||
-    hostname.includes('localhost') ||
-    hostname.startsWith('192.168.') ||
-    hostname.startsWith('10.') ||
-    hostname.startsWith('172.') ||
-    window.location.port === '3000'
-  )
+  return !isDeployedOnSAP()
 }
 
 const isEmbeddedInFLP = (): boolean => {
@@ -67,7 +58,7 @@ export default function AppLayout({
   const [profileOpen, setProfileOpen] = useState(false)
   const popoverRef = useRef<any>(null)
   
-  const hideShellBar = isEmbeddedInFLP()
+  const hideShellBar = !isRunningLocally()
   const showSidebarToggle = hideShellBar
   
   const userInitials = username ? username.slice(0, 2).toUpperCase() : 'U'
