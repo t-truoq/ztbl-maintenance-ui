@@ -1,0 +1,87 @@
+import { FieldMeta, TableRowData } from '../types'
+
+/**
+ * Validates a single inline-edited cell value.
+ * Returns an error message string, or '' if valid.
+ *
+ * @param rowIndex       - Index of the row being validated
+ * @param fieldNameKey   - Technical field name
+ * @param val            - Current cell value
+ * @param row            - Full row data (may be an updated draft)
+ * @param allFields      - All field metadata for the table
+ * @param data           - Committed database rows (for duplicate key check)
+ * @param editedData     - Current in-flight edited rows (for cross-row duplicate check)
+ */
+export function validateInlineField(
+  rowIndex: number,
+  fieldNameKey: string,
+  val: any,
+  row: TableRowData,
+  allFields: FieldMeta[],
+  data: TableRowData[],
+  editedData: TableRowData[]
+): string {
+  const field = allFields.find(f => (f.field_name || f.FieldName) === fieldNameKey)
+  if (!field) return ''
+
+  const isKey = field.is_key || field.IsKeyField === 'X'
+  const feType = field.fe_type || field.FeType
+
+  // 1. Mandatory validation
+  const isMandatory = field.is_mandatory || field.MandatoryFlag === 'X'
+  if (isMandatory && feType !== 'boolean') {
+    if (val === undefined || val === null || String(val).trim() === '') {
+      return 'Field is required'
+    }
+  }
+
+  // 2. Length validation
+  const len = field.length || field.Length || 0
+  if (len > 0 && (feType === 'text' || feType === 'uuid')) {
+    if (String(val).length > len) {
+      return `Maximum length is ${len} characters`
+    }
+  }
+
+  // 3. Duplicate Key Check
+  if (row._isNew && isKey) {
+    const keyFields = allFields.filter(f => {
+      const k = f.is_key || f.IsKeyField === 'X'
+      const name = (f.field_name || f.FieldName || '').toUpperCase()
+      return k && name !== 'CLIENT' && name !== 'MANDT'
+    })
+
+    const hasAllKeys = keyFields.every(kf => {
+      const name = kf.field_name || kf.FieldName
+      const kVal = row[name]
+      return kVal !== undefined && kVal !== null && String(kVal).trim() !== ''
+    })
+
+    if (hasAllKeys) {
+      const buildKeyString = (r: TableRowData) =>
+        keyFields
+          .map(kf => {
+            const name = kf.field_name || kf.FieldName
+            return String(r[name] ?? r[kf.FieldName] ?? '').trim().toUpperCase()
+          })
+          .join('|')
+
+      const currentKeyStr = buildKeyString(row)
+
+      const duplicateInDb = data.some(dbRow => buildKeyString(dbRow) === currentKeyStr)
+      if (duplicateInDb) {
+        return 'Primary Key combination already exists!'
+      }
+
+      const duplicateInEdited = editedData.some((otherRow, otherIdx) => {
+        if (otherIdx === rowIndex || !otherRow._isNew) return false
+        return buildKeyString(otherRow) === currentKeyStr
+      })
+      if (duplicateInEdited) {
+        return 'Duplicate key found in another new row!'
+      }
+    }
+  }
+
+  return ''
+}

@@ -55,11 +55,7 @@ body {
 }
 
 #root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
+  width: 100%;
   min-height: 100svh;
   display: flex;
   flex-direction: column;
@@ -109,3 +105,56 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* SAP Fiori Horizon UI Custom Spacing & Layout Overrides */
+
+/* 1. Reduce the huge empty space in DynamicPage headers */
+ui5-dynamic-page-title {
+  padding-bottom: 0.25rem !important;
+}
+
+ui5-dynamic-page-header {
+  padding: 0 !important;
+}
+
+/* 2. Fix FilterBar input spacing (prevent gluing/stuck search and filter fields) */
+ui5-filter-bar [slot="search"],
+ui5-filter-bar ui5-input[slot="search"] {
+  margin-right: 16px !important;
+}
+
+ui5-filter-bar ui5-filter-group-item {
+  margin-right: 16px !important;
+}
+
+/* Ensure the layout has nice breathing room */
+ui5-filter-bar {
+  padding: 0.5rem 1rem !important;
+}
+
+/* Ensure the native browser calendar picker indicator is visible inside Fiori UI */
+.fiori-native-date-input {
+  appearance: auto !important;
+  -webkit-appearance: auto !important;
+  -moz-appearance: auto !important;
+}
+
+.fiori-native-date-input::-webkit-calendar-picker-indicator {
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  cursor: pointer !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Ensure Toast notification wraps text and handles long UUIDs without overflow/clipping */
+ui5-toast {
+  max-width: 90vw !important;
+  width: auto !important;
+  white-space: normal !important;
+  word-break: break-all !important;
+  overflow-wrap: break-word !important;
+}
+
+

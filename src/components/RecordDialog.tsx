@@ -1,0 +1,512 @@
+import { useState, useEffect, useRef, useId } from 'react'
+import {
+  Dialog,
+  Bar,
+  Button,
+  FlexBox,
+  Label,
+  Input,
+  DatePicker,
+  CheckBox,
+  BusyIndicator,
+  Text,
+  MessageStrip
+} from '@ui5/webcomponents-react'
+import { formatDateForSap } from '../utils/displayHelpers'
+import {
+  getFormFields,
+  initFormValues,
+  validateMandatory,
+  isDisplayOnlyField,
+  isDomainField,
+  normalizeFieldValue,
+  getDirtyFieldNames,
+  buildKeyRecord
+} from '../utils/recordHelpers'
+import {
+  acquireFieldLock,
+  getFieldLocksForRecord,
+  releaseSessionLocks,
+  touchSessionLocks
+} from '../utils/fieldLockService'
+import DomainValueHelp from './DomainValueHelp'
+import { FieldMeta, TableRowData } from '../types'
+
+function fieldName(field: FieldMeta): string {
+  return field.field_name || field.FieldName
+}
+
+interface FieldLabelProps {
+  field: FieldMeta;
+}
+
+function FieldLabel({ field }: FieldLabelProps) {
+  const name = fieldName(field)
+  const title = field.label || field.LabelText || name
+  const inputId = `record-field-${name}`
+  const feType = field.fe_type || field.FeType
+
+  return (
+    <FlexBox direction="Column" gap="2px">
+      <Label
+        for={inputId}
+        showColon
+        required={!!(field.is_mandatory || field.MandatoryFlag === 'X')}
+      >
+        {title}
+        {(field.is_key || field.IsKeyField === 'X') ? ' (Key)' : ''}
+      </Label>
+      {title !== name && (
+        <Text style={{ fontSize: '0.8rem', color: '#6a7075' }}>
+          {name}
+          {feType ? ` · ${feType}` : ''}
+        </Text>
+      )}
+    </FlexBox>
+  )
+}
+
+interface RecordDialogProps {
+  open: boolean;
+  mode: 'create' | 'edit';
+  configUuid: string;
+  allFields: FieldMeta[];
+  initialRow: TableRowData | null;
+  tableName: string;
+  username: string;
+  data: TableRowData[];
+  onSave: (formValues: TableRowData, dirtyFieldNames: string[]) => Promise<{ ok: boolean; message?: string }>;
+  onClose: () => void;
+}
+
+export default function RecordDialog({
+  open,
+  mode,
+  configUuid,
+  allFields,
+  initialRow,
+  tableName,
+  username,
+  data,
+  onSave,
+  onClose
+}: RecordDialogProps) {
+  const formFields = getFormFields(allFields, mode)
+  const [values, setValues] = useState<Record<string, any>>({})
+  const [saving, setSaving] = useState(false)
+  const [validationError, setValidationError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [foreignLocks, setForeignLocks] = useState<Record<string, string>>({})
+  const sessionId = useId()
+  const baselineRowRef = useRef<TableRowData | null>(null)
+
+  const recordKey =
+    mode === 'edit' && initialRow ? buildKeyRecord(allFields, initialRow) : null
+
+  const validateField = (fieldNameKey: string, val: any, currentValues: Record<string, any>): string => {
+    const field = formFields.find(f => fieldName(f) === fieldNameKey)
+    if (!field) return ''
+
+    const isKey = field.is_key || field.IsKeyField === 'X'
+    const feType = field.fe_type || field.FeType
+    
+    // 1. Mandatory validation
+    const isMandatory = field.is_mandatory || field.MandatoryFlag === 'X'
+    if (isMandatory && feType !== 'boolean') {
+      if (val === undefined || val === null || String(val).trim() === '') {
+        return 'Field is required'
+      }
+    }
+
+    // 2. Length validation
+    const len = field.length || field.Length || 0
+    if (len > 0 && (feType === 'text' || feType === 'uuid')) {
+      if (String(val).length > len) {
+        return `Maximum length is ${len} characters`
+      }
+    }
+
+    // 3. Duplicate Key Check
+    if (mode === 'create' && isKey) {
+      const pendingRecord = { ...currentValues, [fieldNameKey]: val }
+      const keyFields = allFields.filter(f => {
+        const isKey = f.is_key || f.IsKeyField === 'X'
+        const name = (f.field_name || f.FieldName || '').toUpperCase()
+        return isKey && name !== 'CLIENT' && name !== 'MANDT'
+      })
+
+      const hasAllKeys = keyFields.every(kf => {
+        const name = kf.field_name || kf.FieldName
+        const kVal = pendingRecord[name]
+        return kVal !== undefined && kVal !== null && String(kVal).trim() !== ''
+      })
+
+      if (hasAllKeys) {
+        const buildKeyString = (row: TableRowData) => {
+          return keyFields.map(kf => {
+            const name = kf.field_name || kf.FieldName
+            return String(row[name] ?? row[kf.FieldName] ?? '').trim().toUpperCase()
+          }).join('|')
+        }
+
+        const currentKeyStr = buildKeyString(pendingRecord)
+        const duplicate = data.some(row => buildKeyString(row) === currentKeyStr)
+        if (duplicate) {
+          return 'Primary Key combination already exists!'
+        }
+      }
+    }
+
+    return ''
+  }
+
+  function refreshForeignLocks() {
+    if (mode !== 'edit' || !tableName || !recordKey || !username) {
+      setForeignLocks({})
+      return
+    }
+    setForeignLocks(getFieldLocksForRecord(tableName, recordKey, username, sessionId))
+  }
+
+  useEffect(() => {
+    if (!open) return
+    baselineRowRef.current = mode === 'edit' ? initialRow : null
+    setValues(initFormValues(formFields, initialRow))
+    setValidationError('')
+    setFieldErrors({})
+    refreshForeignLocks()
+
+    const onStorage = () => refreshForeignLocks()
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [open, mode, allFields, initialRow])
+
+  useEffect(() => {
+    if (!open || mode !== 'edit') return undefined
+    const timer = setInterval(() => {
+      touchSessionLocks(sessionId)
+      refreshForeignLocks()
+    }, 60000)
+    return () => clearInterval(timer)
+  }, [open, mode, tableName, recordKey, username])
+
+  useEffect(() => {
+    if (!open) {
+      releaseSessionLocks(sessionId)
+    }
+  }, [open, sessionId])
+
+  function handleClose() {
+    releaseSessionLocks(sessionId)
+    onClose()
+  }
+
+  function isLockedByOther(fieldNameKey: string): boolean {
+    return Boolean(foreignLocks[fieldNameKey])
+  }
+
+  function tryAcquireField(fieldNameKey: string): boolean {
+    if (mode !== 'edit' || !tableName || !recordKey || !username) return true
+    if (isLockedByOther(fieldNameKey)) return false
+
+    const result = acquireFieldLock(tableName, recordKey, fieldNameKey, username, sessionId)
+    if (!result.acquired) {
+      setForeignLocks(prev => ({ ...prev, [fieldNameKey]: result.heldBy || '' }))
+      return false
+    }
+    refreshForeignLocks()
+    return true
+  }
+
+  function updateValue(fieldNameKey: string, value: any) {
+    if (!tryAcquireField(fieldNameKey)) return
+    const nextValues = { ...values, [fieldNameKey]: value }
+    setValues(nextValues)
+    setValidationError('')
+
+    // Perform validation
+    const errorMsg = validateField(fieldNameKey, value, nextValues)
+    
+    setFieldErrors(prev => {
+      const updated = { ...prev }
+      if (errorMsg) {
+        updated[fieldNameKey] = errorMsg
+      } else {
+        delete updated[fieldNameKey]
+      }
+
+      // Re-validate other key fields since the key combination has changed
+      const field = formFields.find(f => fieldName(f) === fieldNameKey)
+      if (field && (field.is_key || field.IsKeyField === 'X') && mode === 'create') {
+        const otherKeys = formFields.filter(f => (f.is_key || f.IsKeyField === 'X') && fieldName(f) !== fieldNameKey)
+        otherKeys.forEach(ok => {
+          const name = fieldName(ok)
+          const okVal = nextValues[name] ?? ''
+          const okErr = validateField(name, okVal, nextValues)
+          if (okErr) {
+            updated[name] = okErr
+          } else {
+            delete updated[name]
+          }
+        })
+      }
+
+      return updated
+    })
+  }
+
+  async function handleSave() {
+    if (Object.keys(fieldErrors).length > 0) {
+      setValidationError('Please fix the errors before saving.')
+      return
+    }
+
+    const missing = validateMandatory(formFields, values)
+    if (missing.length > 0) {
+      setValidationError(`Required fields: ${missing.join(', ')}`)
+      return
+    }
+
+    const normalized: TableRowData = {}
+    formFields.forEach(f => {
+      const name = fieldName(f)
+      normalized[name] = normalizeFieldValue(f, values[name])
+    })
+
+    const dirtyFields =
+      mode === 'edit'
+        ? getDirtyFieldNames(formFields, baselineRowRef.current, normalized)
+        : []
+
+    if (mode === 'edit' && dirtyFields.length === 0) {
+      setValidationError('No changes to save')
+      return
+    }
+
+    if (mode === 'edit' && dirtyFields.length > 0) {
+      const blockedDirty = dirtyFields.filter(name => isLockedByOther(name))
+      if (blockedDirty.length === dirtyFields.length) {
+        setValidationError(
+          `Cannot save: ${blockedDirty.map(n => foreignLocks[n] || n).join(', ')}`
+        )
+        return
+      }
+    }
+
+    setSaving(true)
+    try {
+      const result = await onSave(normalized, dirtyFields)
+      if (result?.ok === false && result.message) {
+        setValidationError(result.message)
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function renderDisplayValue(field: FieldMeta) {
+    const name = fieldName(field)
+    const value = values[name] ?? ''
+    const feType = field.fe_type || field.FeType
+
+    if (feType === 'boolean') {
+      return <Text>{value === 'X' ? 'Yes' : 'No'}</Text>
+    }
+    return <Text>{value}</Text>
+  }
+
+  function renderField(field: FieldMeta) {
+    const name = fieldName(field)
+    const lockedBy = foreignLocks[name]
+    const fieldLocked = Boolean(lockedBy)
+    const feType = field.fe_type || field.FeType
+
+    if (isDisplayOnlyField(field, mode) || fieldLocked) {
+      return (
+        <FlexBox direction="Column" gap="4px">
+          {renderDisplayValue(field)}
+          {fieldLocked && (
+            <Text style={{ fontSize: '0.8rem', color: '#bb0000' }}>
+              Locked by {lockedBy}
+            </Text>
+          )}
+        </FlexBox>
+      )
+    }
+
+    const value = values[name] ?? ''
+    const inputId = `record-field-${name}`
+
+    if (isDomainField(field)) {
+      return (
+        <DomainValueHelp
+          configUuid={configUuid}
+          field={field}
+          value={value}
+          inputId={inputId}
+          readonly={false}
+          onChange={v => updateValue(name, v)}
+          valueState={fieldErrors[name] ? 'Negative' : 'None'}
+          valueStateMessage={
+            fieldErrors[name] ? <div slot="valueStateMessage">{fieldErrors[name]}</div> : undefined
+          }
+        />
+      )
+    }
+
+    switch (feType) {
+      case 'uuid':
+        return (
+          <Input
+            id={inputId}
+            value={value}
+            valueState={fieldErrors[name] ? 'Negative' : 'None'}
+            valueStateMessage={
+              fieldErrors[name] ? <div slot="valueStateMessage">{fieldErrors[name]}</div> : undefined
+            }
+            readonly={mode === 'edit' && !!(field.is_key || field.IsKeyField === 'X')}
+            onInput={(e: any) => updateValue(name, e.target.value)}
+          />
+        )
+      case 'date':
+        return (
+          <DatePicker
+            id={inputId}
+            value={value}
+            valueState={fieldErrors[name] ? 'Negative' : 'None'}
+            valueStateMessage={
+              fieldErrors[name] ? <div slot="valueStateMessage">{fieldErrors[name]}</div> : undefined
+            }
+            onChange={(e: any) => updateValue(name, formatDateForSap(e.target.value))}
+          />
+        )
+      case 'boolean':
+        return (
+          <CheckBox
+            id={inputId}
+            checked={value === 'X'}
+            onChange={(e: any) => updateValue(name, e.target.checked ? 'X' : '')}
+          />
+        )
+      case 'decimal':
+        return (
+          <Input
+            id={inputId}
+            type="Number"
+            value={value}
+            valueState={fieldErrors[name] ? 'Negative' : 'None'}
+            valueStateMessage={
+              fieldErrors[name] ? <div slot="valueStateMessage">{fieldErrors[name]}</div> : undefined
+            }
+            placeholder={field.label || field.LabelText || name}
+            onInput={(e: any) => updateValue(name, e.target.value)}
+          />
+        )
+      case 'integer':
+        return (
+          <Input
+            id={inputId}
+            type="Number"
+            value={value}
+            valueState={fieldErrors[name] ? 'Negative' : 'None'}
+            valueStateMessage={
+              fieldErrors[name] ? <div slot="valueStateMessage">{fieldErrors[name]}</div> : undefined
+            }
+            placeholder={field.label || field.LabelText || name}
+            onInput={(e: any) => updateValue(name, e.target.value)}
+          />
+        )
+      case 'time':
+        return (
+          <Input
+            id={inputId}
+            value={value}
+            valueState={fieldErrors[name] ? 'Negative' : 'None'}
+            valueStateMessage={
+              fieldErrors[name] ? <div slot="valueStateMessage">{fieldErrors[name]}</div> : undefined
+            }
+            placeholder="HH:MM:SS"
+            onInput={(e: any) => updateValue(name, e.target.value)}
+          />
+        )
+      case 'text':
+      default:
+        return (
+          <Input
+            id={inputId}
+            value={value}
+            valueState={fieldErrors[name] ? 'Negative' : 'None'}
+            valueStateMessage={
+              fieldErrors[name] ? <div slot="valueStateMessage">{fieldErrors[name]}</div> : undefined
+            }
+            maxlength={field.length || field.Length || undefined}
+            placeholder={field.label || field.LabelText || name}
+            onInput={(e: any) => updateValue(name, e.target.value)}
+          />
+        )
+    }
+  }
+
+  const lockedFieldLabels = Object.entries(foreignLocks).map(
+    ([name, user]) => `${name} (${user})`
+  )
+
+  return (
+    <Dialog
+      open={open}
+      headerText={mode === 'create' ? 'Create Record' : 'Edit Record'}
+      style={{ width: '720px' }}
+      footer={
+        <Bar
+          design="Footer"
+          endContent={
+            <>
+              <Button design="Transparent" onClick={handleClose} disabled={saving}>
+                Cancel
+              </Button>
+              <Button design="Emphasized" onClick={handleSave} disabled={saving || Object.keys(fieldErrors).length > 0}>
+                Save
+              </Button>
+            </>
+          }
+        />
+      }
+    >
+      {saving && (
+        <BusyIndicator active size="M" style={{ marginBottom: '1rem' }} />
+      )}
+      {validationError && (
+        <Text style={{ color: '#bb0000', marginBottom: '0.5rem' }}>{validationError}</Text>
+      )}
+      {lockedFieldLabels.length > 0 && (
+        <MessageStrip design="Information" style={{ marginBottom: '0.75rem' }}>
+          Fields locked by another user: {lockedFieldLabels.join(', ')}
+        </MessageStrip>
+      )}
+
+      <FlexBox direction="Column" style={{ gap: '1rem', padding: '0.25rem 0' }}>
+        {formFields.map(field => {
+          const feType = field.fe_type || field.FeType
+          const name = fieldName(field)
+          const errorMsg = fieldErrors[name]
+          return (
+            <FlexBox
+              key={name}
+              direction="Column"
+              style={{ gap: '0.35rem' }}
+            >
+              {feType !== 'boolean' && !isDomainField(field) && <FieldLabel field={field} />}
+              {isDomainField(field) && <FieldLabel field={field} />}
+              {renderField(field)}
+              {errorMsg && (
+                <Text style={{ color: 'var(--sapNegativeTextColor, #bb0000)', fontSize: '0.8rem', marginTop: '2px' }}>
+                  {errorMsg}
+                </Text>
+              )}
+            </FlexBox>
+          )
+        })}
+      </FlexBox>
+    </Dialog>
+  )
+}

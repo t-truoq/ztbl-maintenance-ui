@@ -6,6 +6,7 @@ import {
   normalizeUuidFromBe,
   abapToIso
 } from './fieldMeta.js'
+import { buildKeyRecord } from './recordHelpers'
 
 const meta = [
   {
@@ -132,3 +133,22 @@ describe('abapToIso', () => {
     expect(abapToIso('00000000')).toBe('')
   })
 })
+
+describe('buildKeyRecord', () => {
+  it('excludes CLIENT and MANDT fields from key data', () => {
+    const fields = [
+      { field_name: 'CLIENT', is_key: true },
+      { field_name: 'MANDT', is_key: true },
+      { field_name: 'COURSE_ID', is_key: true }
+    ]
+    const values = {
+      CLIENT: '324',
+      MANDT: '324',
+      COURSE_ID: '9',
+      COURSE_NAME: 'Test Course'
+    }
+    const key = buildKeyRecord(fields, values)
+    expect(key).toEqual({ COURSE_ID: '9' })
+  })
+})
+
