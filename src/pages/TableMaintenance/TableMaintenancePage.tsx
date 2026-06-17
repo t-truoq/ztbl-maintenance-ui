@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   DynamicPage,
   DynamicPageTitle,
@@ -8,7 +9,6 @@ import {
   Button,
   Input,
   MessageStrip,
-  Icon,
   TabContainer,
   Tab,
   Toast,
@@ -87,6 +87,11 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
   } = useTableMaintenance(props)
 
   const { selectedTable, tables, username, onRefreshTableList, onSelectTable } = props
+  const [showAllFilters, setShowAllFilters] = useState(false)
+  const filterFields = fields.filter(f => {
+    if (showAllFilters) return true
+    return f.is_key || f.IsKeyField === 'X'
+  })
 
   // ── Welcome dashboard (no table selected) ─────────────────────────────────
   if (!selectedTable) {
@@ -125,6 +130,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
       )}
 
       <DynamicPage
+        hidePinButton
         titleArea={
           <DynamicPageTitle
             heading={
@@ -164,37 +170,40 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
                     placeholder="Search records..."
                     value={searchQuery}
                     onInput={(e: any) => setSearchQuery(e.target.value)}
-                    icon={<Icon name="search" />}
-                    style={{ width: '250px' }}
+                    style={{ minWidth: '220px' }}
                   />
                 </FlexBox>
 
-                {/* Key field filters */}
-                {fields
-                  .filter(f => f.is_key || f.IsKeyField === 'X')
-                  .map(f => {
-                    const name = f.field_name || f.FieldName
-                    const label = f.label || f.LabelText || name
-                    return (
-                      <FlexBox key={name} direction="Column" gap="4px">
-                        <span style={{ fontSize: '0.875rem' }}>{label}</span>
-                        <Input
-                          placeholder={`Filter by ${label}...`}
-                          value={filterValues[name] ?? ''}
-                          onInput={(e: any) =>
-                            setFilterValues(prev => ({ ...prev, [name]: e.target.value }))
-                          }
-                          style={{ minWidth: '220px' }}
-                        />
-                      </FlexBox>
-                    )
-                  })}
+                {/* Field filters */}
+                {filterFields.map(f => {
+                  const name = f.field_name || f.FieldName
+                  const label = f.label || f.LabelText || name
+                  return (
+                    <FlexBox key={name} direction="Column" gap="4px">
+                      <span style={{ fontSize: '0.875rem' }}>{label}</span>
+                      <Input
+                        placeholder={`Filter by ${label}...`}
+                        value={filterValues[name] ?? ''}
+                        onInput={(e: any) =>
+                          setFilterValues(prev => ({ ...prev, [name]: e.target.value }))
+                        }
+                        style={{ minWidth: '220px' }}
+                      />
+                    </FlexBox>
+                  )
+                })}
               </FlexBox>
 
               {/* Go / Clear buttons */}
               <FlexBox gap="8px" alignItems="Center" style={{ marginLeft: 'auto' }}>
                 <Button design="Emphasized" onClick={handleGo}>
                   Go
+                </Button>
+                <Button
+                  design="Transparent"
+                  onClick={() => setShowAllFilters(prev => !prev)}
+                >
+                  {showAllFilters ? 'Basic Filters' : 'More Filters'}
                 </Button>
                 <Button design="Transparent" onClick={handleClear}>
                   Clear
@@ -215,8 +224,6 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
               editedData={editedData}
               inlineErrors={inlineErrors}
               activeTableLock={activeTableLock}
-              searchQuery={searchQuery}
-              onSearchQueryChange={setSearchQuery}
               onCellChange={handleCellChange}
               onAddRow={handleAddRow}
               onRemoveNewRow={handleRemoveNewRow}

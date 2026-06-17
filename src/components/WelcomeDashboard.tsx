@@ -4,8 +4,6 @@ import {
   Text,
   Button,
   Label,
-  Card,
-  CardHeader,
   ComboBox,
   ComboBoxItem,
   Tag,
@@ -76,36 +74,42 @@ export default function WelcomeDashboard({
       </div>
 
       {/* Searchable ComboBox Z-Table Selector */}
-      <Card style={{ border: '1px solid #e2e8f0', boxShadow: '0 2px 5px rgba(0,0,0,0.02)' }}>
-        <div style={{ padding: '1.5rem' }}>
-          <FlexBox direction="Column" gap="8px">
-            <Label style={{ fontSize: '0.95rem', fontWeight: 'bold' }} showColon>
-              Select Z-Table to Maintain
-            </Label>
-            <FlexBox gap="12px" alignItems="Center" wrap="Wrap">
-              <ComboBox
-                placeholder="Type to search and select a table..."
-                style={{ width: '400px' }}
-                filter="Contains"
-                onSelectionChange={(e: any) => {
-                  const selected = e.detail.item
-                  if (selected) {
-                    const match = tables.find(t => t.TableName === selected.text)
-                    if (match) onSelectTable(match)
-                  }
-                }}
-              >
-                {tables.map(t => (
-                  <ComboBoxItem key={t.ConfigUuid} text={t.TableName} />
-                ))}
-              </ComboBox>
-              <Text style={{ color: '#6a7075', fontSize: '0.85rem' }}>
-                Quick Search: Type standard table name (e.g. Z251, ZTPC)
-              </Text>
-            </FlexBox>
+      <div
+        style={{
+          background: '#fff',
+          borderRadius: '8px',
+          padding: '1.5rem',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+          boxSizing: 'border-box',
+        }}
+      >
+        <FlexBox direction="Column" gap="8px">
+          <Label style={{ fontSize: '0.95rem', fontWeight: 'bold' }} showColon>
+            Select Z-Table to Maintain
+          </Label>
+          <FlexBox gap="12px" alignItems="Center" wrap="Wrap">
+            <ComboBox
+              placeholder="Type to search and select a table..."
+              style={{ width: '400px', maxWidth: '100%' }}
+              filter="Contains"
+              onSelectionChange={(e: any) => {
+                const selected = e.detail.item
+                if (selected) {
+                  const match = tables.find(t => t.TableName === selected.text)
+                  if (match) onSelectTable(match)
+                }
+              }}
+            >
+              {tables.map(t => (
+                <ComboBoxItem key={t.ConfigUuid} text={t.TableName} />
+              ))}
+            </ComboBox>
+            <Text style={{ color: '#6a7075', fontSize: '0.85rem' }}>
+              Quick Search: Type standard table name (e.g. Z251, ZTPC)
+            </Text>
           </FlexBox>
-        </div>
-      </Card>
+        </FlexBox>
+      </div>
 
       {/* Dashboard Title & Stats */}
       <FlexBox justifyContent="SpaceBetween" alignItems="Center" style={{ marginTop: '0.5rem' }}>
@@ -139,14 +143,23 @@ export default function WelcomeDashboard({
           }}
         >
           {tables.map(t => (
-            <Card
+            <div
               key={t.ConfigUuid}
               onClick={() => onSelectTable(t)}
+              role="button"
+              tabIndex={0}
               style={{
                 cursor: 'pointer',
-                border: '1px solid #e2e8f0',
-                boxShadow: '0 2px 5px rgba(0,0,0,0.02)',
+                background: '#fff',
+                borderRadius: '8px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
                 transition: 'transform 0.15s, box-shadow 0.15s',
+                padding: '1rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem',
+                minHeight: '208px',
+                boxSizing: 'border-box',
               }}
               onMouseOver={(e: any) => {
                 e.currentTarget.style.transform = 'translateY(-2px)'
@@ -154,57 +167,64 @@ export default function WelcomeDashboard({
               }}
               onMouseOut={(e: any) => {
                 e.currentTarget.style.transform = 'none'
-                e.currentTarget.style.boxShadow = '0 2px 5px rgba(0,0,0,0.02)'
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'
+              }}
+              onKeyDown={(e: any) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  onSelectTable(t)
+                }
               }}
             >
-              <CardHeader
-                titleText={t.TableName}
-                subtitleText={t.Description || 'Database Table'}
-              />
+              <FlexBox direction="Column" gap="8px">
+                <Title level="H5" style={{ margin: 0 }}>
+                  {t.TableName}
+                </Title>
+                <Text style={{ color: '#48617d' }}>
+                  {t.Description || 'Database Table'}
+                </Text>
+              </FlexBox>
+
+              {t.ApprovalRequired === 'X' && (
+                <FlexBox gap="8px" wrap="Wrap">
+                  <Tag colorScheme="6">Approval Required</Tag>
+                </FlexBox>
+              )}
+
               <div
-                style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
+                style={{
+                  borderTop: '1px solid #f0f0f0',
+                  marginTop: 'auto',
+                  paddingTop: '0.5rem',
+                }}
               >
-                {t.ApprovalRequired === 'X' && (
-                  <FlexBox gap="8px" wrap="Wrap">
-                    <Tag colorScheme="6">Approval Required</Tag>
-                  </FlexBox>
-                )}
-
-                <div
-                  style={{
-                    borderTop: '1px solid #f0f0f0',
-                    marginTop: '0.25rem',
-                    paddingTop: '0.5rem',
-                  }}
-                >
-                  <FlexBox direction="Column" gap="4px">
-                    <Label style={{ fontSize: '0.75rem', color: '#6a7075' }}>Config UUID</Label>
-                    <Text
-                      style={{
-                        fontSize: '0.8rem',
-                        fontFamily: 'monospace',
-                        color: '#32363a',
-                      }}
-                    >
-                      {t.ConfigUuid}
-                    </Text>
-                  </FlexBox>
-                </div>
-
-                <FlexBox justifyContent="End" style={{ marginTop: '0.25rem' }}>
-                  <Button
-                    design="Emphasized"
-                    icon="navigation-right-arrow"
-                    onClick={(e: any) => {
-                      e.stopPropagation()
-                      onSelectTable(t)
+                <FlexBox direction="Column" gap="4px">
+                  <Label style={{ fontSize: '0.75rem', color: '#6a7075' }}>Config UUID</Label>
+                  <Text
+                    style={{
+                      fontSize: '0.8rem',
+                      fontFamily: 'monospace',
+                      color: '#32363a',
                     }}
                   >
-                    Maintain Data
-                  </Button>
+                    {t.ConfigUuid}
+                  </Text>
                 </FlexBox>
               </div>
-            </Card>
+
+              <FlexBox justifyContent="End" style={{ marginTop: '0.25rem' }}>
+                <Button
+                  design="Emphasized"
+                  icon="navigation-right-arrow"
+                  onClick={(e: any) => {
+                    e.stopPropagation()
+                    onSelectTable(t)
+                  }}
+                >
+                  Maintain Data
+                </Button>
+              </FlexBox>
+            </div>
           ))}
         </div>
       )}

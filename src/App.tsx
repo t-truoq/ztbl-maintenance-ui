@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getTables, normalizeConfigUuid } from './services/tableConfigApi'
-import { clearCredentials } from './services/apiClient'
+import { clearCredentials, isDeployedOnSAP } from './services/apiClient'
 import { clearDomainCache } from './services/domainCache'
 import AppLayout from './components/AppLayout'
 import TableMaintenancePage from './pages/TableMaintenance/TableMaintenancePage'
@@ -25,8 +25,12 @@ export default function App({ credentials, onLogout }: AppProps) {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    loadTables()
-  }, [])
+    if (credentials || isDeployedOnSAP()) {
+      loadTables()
+    } else {
+      setTables([])
+    }
+  }, [credentials?.username])
 
   useEffect(() => {
     const handler = () => {

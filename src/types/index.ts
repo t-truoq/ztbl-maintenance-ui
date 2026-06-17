@@ -44,6 +44,7 @@ export interface TableConfig {
   ConfigUuid: string;
   ActiveFlag: string;
   ApprovalRequired: string;
+  IsActiveEntity?: boolean;
 }
 
 export interface AuditLogEntry {

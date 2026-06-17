@@ -79,9 +79,6 @@ export function isDeployedOnSAP(): boolean {
 }
 
 api.interceptors.request.use(config => {
-  if (!isDeployedOnSAP() && !credentials?.token) {
-    return Promise.reject(new Error('Not authenticated'))
-  }
   return config
 })
 

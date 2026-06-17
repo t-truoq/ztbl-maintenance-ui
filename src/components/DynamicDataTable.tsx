@@ -4,7 +4,6 @@ import {
   TableHeaderCell,
   TableRow,
   TableCell,
-  Input,
   BusyIndicator,
   Text,
   Button,
@@ -12,7 +11,6 @@ import {
   Title,
   Toolbar,
   ToolbarSpacer,
-  ToolbarSeparator,
   FlexBox,
   Icon,
   ObjectStatus,
@@ -32,8 +30,6 @@ interface DynamicDataTableProps {
   editedData: TableRowData[]
   inlineErrors: Record<number, Record<string, string>>
   activeTableLock: { lockedBy: string } | null
-  searchQuery: string
-  onSearchQueryChange: (v: string) => void
   onCellChange: (rowIndex: number, fieldName: string, newValue: any) => void
   onAddRow: () => void
   onRemoveNewRow: (rowIndex: number) => void
@@ -55,8 +51,6 @@ export default function DynamicDataTable({
   editedData,
   inlineErrors,
   activeTableLock,
-  searchQuery,
-  onSearchQueryChange,
   onCellChange,
   onAddRow,
   onRemoveNewRow,
@@ -70,6 +64,7 @@ export default function DynamicDataTable({
 }: DynamicDataTableProps) {
   const fieldsWithWidths = fields.map(f => {
     const headerLabel = formatHeaderLabel(f)
+    const technicalName = f.field_name || f.FieldName
     const feType = f.fe_type || f.FeType
     const isDate = feType === 'date'
     const isDomain = feType === 'domain'
@@ -77,7 +72,7 @@ export default function DynamicDataTable({
       isDate ? 220 : isDomain ? 200 : 150,
       headerLabel.length * 10 + 50
     )
-    return { field: f, minColWidth, headerLabel }
+    return { field: f, minColWidth, headerLabel, technicalName }
   })
 
   const totalTableWidth = fieldsWithWidths.reduce((sum, item) => sum + item.minColWidth, 100)
@@ -137,15 +132,6 @@ export default function DynamicDataTable({
             </Button>
           </>
         )}
-        <ToolbarSeparator />
-        <Input
-          placeholder="Search..."
-          icon={'search' as any}
-          value={searchQuery}
-          onInput={(e: any) => onSearchQueryChange(e.target.value)}
-          style={{ width: '250px' }}
-          disabled={isEditingTable}
-        />
       </Toolbar>
 
       {/* ── Loading indicator ─────────────────────────────────────────── */}
