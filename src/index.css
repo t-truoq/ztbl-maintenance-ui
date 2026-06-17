@@ -137,15 +137,55 @@ ui5-filter-bar {
   appearance: auto !important;
   -webkit-appearance: auto !important;
   -moz-appearance: auto !important;
+  color-scheme: light !important;
+  min-width: 0 !important;
+  padding-right: 2rem !important;
 }
 
 .fiori-native-date-input::-webkit-calendar-picker-indicator {
   display: block !important;
   opacity: 1 !important;
   visibility: visible !important;
+  width: 1rem !important;
+  height: 1rem !important;
   cursor: pointer !important;
-  padding: 0 !important;
+  padding: 0.25rem !important;
   margin: 0 !important;
+  filter: invert(25%) sepia(18%) saturate(964%) hue-rotate(170deg) brightness(91%) contrast(86%) !important;
+}
+
+.fiori-date-input-wrap {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.fiori-date-trailing-button {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--sapContent_IconColor, #5b738b);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.fiori-date-trailing-button:hover {
+  color: var(--sapContent_IconColor, #0a6ed1);
+}
+
+.fiori-native-date-input--trailing::-webkit-calendar-picker-indicator {
+  opacity: 0 !important;
+  width: 0 !important;
+  padding: 0 !important;
 }
 
 /* Ensure Toast notification wraps text and handles long UUIDs without overflow/clipping */

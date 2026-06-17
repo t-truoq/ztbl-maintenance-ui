@@ -17,7 +17,8 @@ sap.ui.define([
     createContent: function () {
       var sModulePath = sap.ui.require.toUrl("ztbl/maintenance/ui");
       var sComponentId = this.getId();
-      var sAppVersion = "20260617-1745";
+      var sAppVersion = "20260617-232951";
+      var sCacheToken = sAppVersion + "-" + Date.now();
 
       // Load index.css dynamically if not already loaded
       var sCssId = "ztbl-maintenance-css";
@@ -27,10 +28,10 @@ sap.ui.define([
         oLink.id = sCssId;
         oLink.rel = "stylesheet";
         oLink.type = "text/css";
-        oLink.href = sModulePath + "/index.css?v=" + sAppVersion;
+        oLink.href = sModulePath + "/index.css?v=" + sCacheToken;
         document.head.appendChild(oLink);
       } else if (oLink.getAttribute("data-version") !== sAppVersion) {
-        oLink.href = sModulePath + "/index.css?v=" + sAppVersion;
+        oLink.href = sModulePath + "/index.css?v=" + sCacheToken;
       }
       oLink.setAttribute("data-version", sAppVersion);
 
@@ -66,7 +67,7 @@ sap.ui.define([
               oScript.id = sScriptId;
               oScript.setAttribute("data-version", sAppVersion);
               oScript.type = "module"; // Critical for loading Vite-compiled ESM bundle
-              oScript.src = sModulePath + "/index.js?v=" + sAppVersion;
+              oScript.src = sModulePath + "/index.js?v=" + sCacheToken;
               oScript.onload = mountApp;
               document.body.appendChild(oScript);
             } else {

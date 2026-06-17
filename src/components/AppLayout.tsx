@@ -43,9 +43,9 @@ export default function AppLayout({
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <div style={{
-          width: collapsed ? '48px' : '260px',
-          minWidth: collapsed ? '48px' : '260px',
-          maxWidth: collapsed ? '48px' : '260px',
+          width: collapsed ? '48px' : '300px',
+          minWidth: collapsed ? '48px' : '300px',
+          maxWidth: collapsed ? '48px' : '300px',
           flexShrink: 0,
           borderRight: '1px solid var(--sapContent_BorderColor, #d9d9d9)',
           background: 'var(--sapContent_NavigationBackgroundColor, #ffffff)',
@@ -57,7 +57,7 @@ export default function AppLayout({
         }}>
           {!collapsed && (
             <div style={{
-              padding: '12px 16px',
+              padding: '16px',
               borderBottom: '1px solid var(--sapContent_BorderColor, #f0f0f0)',
               display: 'flex',
               flexDirection: 'column',
@@ -68,7 +68,7 @@ export default function AppLayout({
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
+                gap: '12px',
                 minWidth: 0
               }}>
                 <Button
@@ -82,13 +82,10 @@ export default function AppLayout({
                     fontWeight: 'bold',
                     flex: 1,
                     minWidth: 0,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'normal',
-                    lineHeight: '1.2',
-                    display: '-webkit-box',
-                    WebkitBoxOrient: 'vertical',
-                    WebkitLineClamp: 2
+                    overflow: 'visible',
+                    textOverflow: 'clip',
+                    whiteSpace: 'nowrap',
+                    lineHeight: '1.2'
                   }}
                 >
                   Select Z-Table to Maintain
@@ -119,7 +116,7 @@ export default function AppLayout({
             </div>
           )}
 
-          <SideNavigation collapsed={collapsed} style={{ flex: 1 }}>
+          <SideNavigation collapsed={collapsed} style={{ flex: 1, width: '100%' }}>
             {filteredTables.map(t => (
               <SideNavigationItem
                 key={t.ConfigUuid}
