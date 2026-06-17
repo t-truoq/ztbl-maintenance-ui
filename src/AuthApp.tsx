@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import App from './App'
-import LoginScreen from './components/LoginScreen'
+import LocalBasicAuthPrompt from './components/LocalBasicAuthPrompt'
 import {
   clearCredentials,
   SAP_SERVICE,
@@ -9,6 +9,13 @@ import {
 } from './services/apiClient'
 import { clearDomainCache } from './services/domainCache'
 import { SessionUser } from './types'
+
+function getShellUsername(): string {
+  const shellUser = (window as any).sap?.ushell?.Container?.getUser?.()
+  const fullName = shellUser?.getFullName?.()
+  if (fullName && fullName !== 'Default User') return fullName
+  return shellUser?.getId?.() || ''
+}
 
 /**
  * When deployed on the SAP server, the user is already authenticated
@@ -37,7 +44,7 @@ async function probeSSOSession(): Promise<string | null> {
     if (!Array.isArray(data?.value)) return null
     // Probe succeeded — read username from SAP header if available,
     // fall back to 'sso-user' as a safe placeholder
-    return res.headers.get('x-sap-login-name') || 'sso-user'
+    return getShellUsername() || res.headers.get('x-sap-login-name') || 'SAP User'
   } catch {
     return null
   }
@@ -116,7 +123,27 @@ export default function AuthApp() {
   }
 
   if (!auth) {
-    return <LoginScreen onLogin={setAuth} />
+    if (!isDeployedOnSAP()) {
+      return (
+        <>
+          <App
+            credentials={null}
+            onLogout={handleLogout}
+          />
+          <LocalBasicAuthPrompt
+            origin={window.location.origin}
+            onLogin={setAuth}
+          />
+        </>
+      )
+    }
+
+    return (
+      <App
+        credentials={{ username: getShellUsername() || 'SAP User' }}
+        onLogout={handleLogout}
+      />
+    )
   }
 
   return (

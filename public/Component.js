@@ -1,3 +1,4 @@
+/* global sap */
 sap.ui.define([
   "sap/ui/core/UIComponent",
   "sap/ui/core/HTML"
@@ -16,17 +17,22 @@ sap.ui.define([
     createContent: function () {
       var sModulePath = sap.ui.require.toUrl("ztbl/maintenance/ui");
       var sComponentId = this.getId();
+      var sAppVersion = "20260617-1745";
 
       // Load index.css dynamically if not already loaded
       var sCssId = "ztbl-maintenance-css";
-      if (!document.getElementById(sCssId)) {
-        var oLink = document.createElement("link");
+      var oLink = document.getElementById(sCssId);
+      if (!oLink) {
+        oLink = document.createElement("link");
         oLink.id = sCssId;
         oLink.rel = "stylesheet";
         oLink.type = "text/css";
-        oLink.href = sModulePath + "/index.css";
+        oLink.href = sModulePath + "/index.css?v=" + sAppVersion;
         document.head.appendChild(oLink);
+      } else if (oLink.getAttribute("data-version") !== sAppVersion) {
+        oLink.href = sModulePath + "/index.css?v=" + sAppVersion;
       }
+      oLink.setAttribute("data-version", sAppVersion);
 
       // Generate a unique ID for the container element to avoid collisions in Fiori Launchpad
       var sContainerId = sComponentId + "-react-root";
@@ -43,17 +49,24 @@ sap.ui.define([
             }
           }
 
-          if (window.ZtblMaintenanceApp) {
+          if (window.ZtblMaintenanceApp && window.ZtblMaintenanceApp.version === sAppVersion) {
             mountApp();
           } else {
             // Load index.js dynamically if not already loaded
             var sScriptId = "ztbl-maintenance-js";
             var oScript = document.getElementById(sScriptId);
+            if (oScript && oScript.getAttribute("data-version") !== sAppVersion) {
+              oScript.parentNode.removeChild(oScript);
+              oScript = null;
+              window.ZtblMaintenanceApp = null;
+            }
+
             if (!oScript) {
               oScript = document.createElement("script");
               oScript.id = sScriptId;
+              oScript.setAttribute("data-version", sAppVersion);
               oScript.type = "module"; // Critical for loading Vite-compiled ESM bundle
-              oScript.src = sModulePath + "/index.js";
+              oScript.src = sModulePath + "/index.js?v=" + sAppVersion;
               oScript.onload = mountApp;
               document.body.appendChild(oScript);
             } else {

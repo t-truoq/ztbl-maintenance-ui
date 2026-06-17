@@ -42,6 +42,7 @@ if (standaloneRoot) {
 }
 
 ;(window as any).ZtblMaintenanceApp = {
+  version: '20260617-1745',
   mount: mountReactApp,
   unmount: unmountReactApp
 }

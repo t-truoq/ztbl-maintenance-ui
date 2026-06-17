@@ -116,10 +116,17 @@ export async function getTables(): Promise<TableConfig[]> {
     params: {
       'sap-client': SAP_CLIENT,
       '$filter': 'IsActiveEntity eq true',
-      '$select': 'TableName,Description,ConfigUuid,ActiveFlag,ApprovalRequired'
+      '$select': 'TableName,Description,ConfigUuid,ActiveFlag,ApprovalRequired,IsActiveEntity'
     }
   })
-  return res.data.value
+  const rows: TableConfig[] = res.data.value || []
+  const activeRows = rows.filter(row => row.IsActiveEntity !== false)
+  return Array.from(
+    new Map(activeRows.map(row => [normalizeConfigUuid(row.ConfigUuid), {
+      ...row,
+      ConfigUuid: normalizeConfigUuid(row.ConfigUuid)
+    }])).values()
+  )
 }
 
 function extractActionResponseBody(data: any): any {

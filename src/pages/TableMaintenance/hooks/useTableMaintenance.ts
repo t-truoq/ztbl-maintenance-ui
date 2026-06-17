@@ -198,27 +198,6 @@ export function useTableMaintenance({
     return () => clearTimeout(timer)
   }, [successMsg])
 
-  // Hide DynamicPage collapse toggle in shadow DOM
-  useEffect(() => {
-    const hideToggle = () => {
-      const dynamicPage = document.querySelector('ui5-dynamic-page')
-      if (dynamicPage && dynamicPage.shadowRoot) {
-        if (dynamicPage.shadowRoot.querySelector('#hide-collapse-style')) return
-        const style = document.createElement('style')
-        style.id = 'hide-collapse-style'
-        style.textContent = `
-          ui5-dynamic-page-header-actions {
-            display: none !important;
-          }
-        `
-        dynamicPage.shadowRoot.appendChild(style)
-      }
-    }
-    hideToggle()
-    const timer = setTimeout(hideToggle, 300)
-    return () => clearTimeout(timer)
-  }, [selectedTable])
-
   // ─── Data loading ─────────────────────────────────────────────────────────
 
   async function loadTable(table: TableConfig) {
