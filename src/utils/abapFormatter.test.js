@@ -13,7 +13,7 @@ import {
   formatEtagValueForAbap,
   isJsonFormatError,
   enhanceJsonFormatError
-} from './abapFormatter'
+} from './abapFormatter.js'
 
 describe('toAbapDate', () => {
   it('converts ISO date to YYYYMMDD', () => {

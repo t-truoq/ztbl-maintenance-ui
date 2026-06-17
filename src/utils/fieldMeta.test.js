@@ -5,7 +5,7 @@ import {
   parseFieldMetaJson,
   normalizeUuidFromBe,
   abapToIso
-} from './fieldMeta'
+} from './fieldMeta.js'
 import { buildKeyRecord } from './recordHelpers'
 
 const meta = [
