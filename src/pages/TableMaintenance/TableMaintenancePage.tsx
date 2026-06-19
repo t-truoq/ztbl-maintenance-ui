@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   DynamicPage,
   DynamicPageTitle,
@@ -22,6 +22,7 @@ import WelcomeDashboard from '../../components/WelcomeDashboard'
 import DynamicDataTable from '../../components/DynamicDataTable'
 import FieldSchemaTab from '../../components/FieldSchemaTab'
 import AuditLogPanel from '../../components/AuditLogPanel'
+import RepositoryInfoTab from '../../components/RepositoryInfoTab'
 import RecordDialog from '../../components/RecordDialog'
 import DeleteConfirmDialog from '../../components/dialogs/DeleteConfirmDialog'
 import OptimisticLockDialog from '../../components/dialogs/OptimisticLockDialog'
@@ -88,10 +89,15 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
 
   const { selectedTable, tables, username, onRefreshTableList, onSelectTable } = props
   const [showAllFilters, setShowAllFilters] = useState(false)
+  const [activeTab, setActiveTab] = useState('tableData')
   const filterFields = fields.filter(f => {
     if (showAllFilters) return true
     return f.is_key || f.IsKeyField === 'X'
   })
+
+  useEffect(() => {
+    setActiveTab('tableData')
+  }, [selectedTable?.ConfigUuid])
 
   // ── Welcome dashboard (no table selected) ─────────────────────────────────
   if (!selectedTable) {
@@ -213,8 +219,16 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
           </DynamicPageHeader>
         }
       >
-        <TabContainer>
-          <Tab text="Table Data" selected>
+        <TabContainer
+          onTabSelect={(e: any) => {
+            const text = e.detail?.tab?.text
+            if (text === 'Field Schema') setActiveTab('fieldSchema')
+            else if (text === 'Audit Log') setActiveTab('auditLog')
+            else if (text === 'Dependencies') setActiveTab('dependencies')
+            else setActiveTab('tableData')
+          }}
+        >
+          <Tab text="Table Data" selected={activeTab === 'tableData'}>
             <DynamicDataTable
               selectedTable={selectedTable}
               fields={fields}
@@ -248,11 +262,19 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
               onDeleteRow={openDeleteDialog}
             />
           </Tab>
-          <Tab text="Field Schema">
+          <Tab text="Field Schema" selected={activeTab === 'fieldSchema'}>
             <FieldSchemaTab allFields={allFields} />
           </Tab>
-          <Tab text="Audit Log">
+          <Tab text="Audit Log" selected={activeTab === 'auditLog'}>
             <AuditLogPanel tableName={selectedTable.TableName} />
+          </Tab>
+          <Tab text="Dependencies" selected={activeTab === 'dependencies'}>
+            {activeTab === 'dependencies' && (
+              <RepositoryInfoTab
+                configUuid={selectedTable.ConfigUuid}
+                tableName={selectedTable.TableName}
+              />
+            )}
           </Tab>
         </TabContainer>
       </DynamicPage>

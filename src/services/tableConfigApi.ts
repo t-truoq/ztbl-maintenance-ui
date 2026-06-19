@@ -307,6 +307,72 @@ export async function getTableData(configUuid: string, tableName: string, maxRow
   return res.data
 }
 
+const REPOSITORY_JSON_PARSE_LIMIT = 500_000
+const REPOSITORY_ROWS_LIMIT = 300
+
+function parseJsonArray(value: any, label = 'Repository field'): any[] {
+  if (!value) return []
+  if (Array.isArray(value)) return value
+  const raw = String(value)
+  if (raw.length > REPOSITORY_JSON_PARSE_LIMIT) {
+    return [{
+      __repoNotice: `${label} is too large to parse safely in the browser (${Math.round(raw.length / 1024)} KB). Ask BE to page or summarize this section.`
+    }]
+  }
+  try {
+    const parsed = JSON.parse(raw)
+    const rows = Array.isArray(parsed) ? parsed : [parsed]
+    if (rows.length > REPOSITORY_ROWS_LIMIT) {
+      return [
+        ...rows.slice(0, REPOSITORY_ROWS_LIMIT),
+        {
+          __repoNotice: `Showing first ${REPOSITORY_ROWS_LIMIT} rows. BE returned ${rows.length} rows for ${label}.`
+        }
+      ]
+    }
+    return rows
+  } catch (e: any) {
+    console.warn('[getRepositoryInfo] failed to parse JSON field:', e.message)
+    return [{
+      __repoNotice: `${label} could not be parsed as JSON.`
+    }]
+  }
+}
+
+export interface RepositoryInfo {
+  tableName: string;
+  errorMsg: string;
+  dataElements: any[];
+  searchHelps: any[];
+  functionModules: any[];
+  cdsViews: any[];
+  foreignKeys: any[];
+}
+
+export async function getRepositoryInfo(configUuid: string, signal?: AbortSignal): Promise<RepositoryInfo> {
+  const res = await apiPostWithCsrf(
+    actionUrl(configUuid, 'getRepositoryInfo'),
+    {},
+    {
+      params: { 'sap-client': SAP_CLIENT },
+      signal,
+      timeout: 12000
+    }
+  )
+
+  const body = extractActionResponseBody(res.data)
+
+  return {
+    tableName: body.table_name ?? body.TableName ?? '',
+    errorMsg: body.error_msg ?? body.ErrorMsg ?? '',
+    dataElements: parseJsonArray(body.data_elements_json ?? body.DataElementsJson, 'Data Elements'),
+    searchHelps: parseJsonArray(body.search_helps_json ?? body.SearchHelpsJson, 'Search Helps'),
+    functionModules: parseJsonArray(body.function_modules_json ?? body.FunctionModulesJson, 'Function Modules'),
+    cdsViews: parseJsonArray(body.cds_views_json ?? body.CdsViewsJson, 'Repository Objects'),
+    foreignKeys: parseJsonArray(body.foreign_keys_json ?? body.ForeignKeysJson, 'Relationships')
+  }
+}
+
 function asRecordDataJson(recordData: any): string {
   return typeof recordData === 'string' ? recordData : JSON.stringify(recordData)
 }

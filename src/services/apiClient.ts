@@ -111,10 +111,12 @@ export function isCsrfError(error: any): boolean {
   return /csrf/i.test(msg)
 }
 
-export async function fetchCsrfToken(): Promise<string> {
+export async function fetchCsrfToken(config: any = {}): Promise<string> {
   const res = await api.get('/', {
     headers: { 'X-CSRF-Token': 'Fetch' },
-    params: { 'sap-client': SAP_CLIENT }
+    params: { 'sap-client': SAP_CLIENT },
+    signal: config.signal,
+    timeout: config.timeout
   })
   csrfToken = readCsrfHeader(res.headers)
   return csrfToken
@@ -122,7 +124,10 @@ export async function fetchCsrfToken(): Promise<string> {
 
 export async function apiPostWithCsrf(url: string, body: any, config: any = {}): Promise<any> {
   if (!csrfToken) {
-    await fetchCsrfToken()
+    await fetchCsrfToken({
+      signal: config.signal,
+      timeout: config.timeout
+    })
   }
   const headers = {
     'X-CSRF-Token': csrfToken,
@@ -133,7 +138,10 @@ export async function apiPostWithCsrf(url: string, body: any, config: any = {}):
     return await api.post(url, body, { ...config, headers })
   } catch (error) {
     if (!isCsrfError(error)) throw error
-    await fetchCsrfToken()
+    await fetchCsrfToken({
+      signal: config.signal,
+      timeout: config.timeout
+    })
     return await api.post(url, body, {
       ...config,
       headers: { ...headers, 'X-CSRF-Token': csrfToken }
