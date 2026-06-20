@@ -197,4 +197,542 @@ ui5-toast {
   overflow-wrap: break-word !important;
 }
 
+/* Excel import/export workspace */
+.excel-workspace {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 0.625rem 0.75rem 0.875rem;
+  box-sizing: border-box;
+}
 
+.excel-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.375rem;
+  border-bottom: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+}
+
+.excel-hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.excel-primary-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.excel-muted {
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.875rem;
+}
+
+.excel-label {
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.excel-flow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.375rem;
+}
+
+.excel-flow-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  min-height: 3rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  border-radius: 6px;
+  background: var(--sapList_Background, #fff);
+  box-sizing: border-box;
+}
+
+.excel-flow-step--active {
+  border-color: var(--sapSelectedColor, #0a6ed1);
+  background: var(--sapList_SelectionBackgroundColor, #e5f0fa);
+}
+
+.excel-flow-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: var(--sapButton_Background, #fff);
+  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  color: var(--sapTextColor, #32363a);
+  font-weight: 700;
+  font-size: 0.75rem;
+  flex: 0 0 auto;
+}
+
+.excel-flow-step--active .excel-flow-index {
+  background: var(--sapSelectedColor, #0a6ed1);
+  border-color: var(--sapSelectedColor, #0a6ed1);
+  color: var(--sapContent_ContrastTextColor, #fff);
+}
+
+.excel-flow-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.excel-flow-title {
+  color: var(--sapTextColor, #32363a);
+  font-weight: 700;
+  line-height: 1rem;
+  font-size: 0.8125rem;
+}
+
+.excel-flow-text {
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.6875rem;
+  line-height: 0.875rem;
+}
+
+.excel-action-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.85fr) minmax(360px, 1.15fr);
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.excel-dropzone,
+.excel-summary-card {
+  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  border-radius: 8px;
+  background: var(--sapList_Background, #fff);
+  box-shadow: 0 1px 2px rgba(34, 53, 72, 0.06);
+}
+
+.excel-dropzone {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 5.75rem;
+  padding: 0.75rem;
+  cursor: pointer;
+  border-style: dashed;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.excel-dropzone:hover,
+.excel-dropzone--active {
+  border-color: var(--sapSelectedColor, #0a6ed1);
+  background: var(--sapList_SelectionBackgroundColor, #e5f0fa);
+}
+
+.excel-dropzone-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+  color: var(--sapContent_NonInteractiveIconColor, #5b738b);
+}
+
+.excel-dropzone-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.excel-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.625rem;
+}
+
+.excel-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.excel-parse-details {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+.excel-parse-details-body {
+  width: 100%;
+  max-height: 7.5rem;
+  overflow: auto;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  border-radius: 6px;
+  background: var(--sapInformationBackground, #f5faff);
+  color: var(--sapTextColor, #32363a);
+  box-sizing: border-box;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.excel-diff-row--new {
+  background: #f1fdf6;
+  border-left: 4px solid #107e3e;
+}
+
+.excel-diff-row--changed {
+  background: #fff8e6;
+  border-left: 4px solid #e09d00;
+}
+
+.excel-diff-row--error {
+  background: #fff5f5;
+  border-left: 4px solid #bb0000;
+}
+
+.excel-diff-row--unchanged {
+  background: var(--sapList_Background, #fff);
+}
+
+.excel-diff-note {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.375rem;
+  min-width: 0;
+  padding: 0.25rem 0.375rem;
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.excel-diff-note--changed {
+  background: #fff3cc;
+  color: #6b4c00;
+}
+
+.excel-diff-note--error {
+  background: #ffe5e5;
+  color: #8b0000;
+}
+
+.excel-diff-note-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex: 0 0 auto;
+  margin-top: 0.125rem;
+}
+
+@media (max-width: 980px) {
+  .excel-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .excel-primary-actions {
+    justify-content: flex-start;
+  }
+
+  .excel-flow,
+  .excel-action-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .excel-workspace {
+    padding: 0.75rem;
+  }
+
+  .excel-flow,
+  .excel-action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .excel-dropzone {
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+
+  .excel-summary-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+/* Compact SAP Horizon-style audit trail */
+.audit-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem 1rem;
+  box-sizing: border-box;
+}
+
+.audit-toolbar {
+  width: 100%;
+  box-sizing: border-box;
+  padding-inline: 0 !important;
+}
+
+.audit-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.audit-muted {
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.875rem;
+}
+
+.audit-count {
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.audit-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 150px 150px 150px;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.audit-search-input {
+  width: 100%;
+}
+
+.audit-date-input {
+  height: 2.25rem;
+  border: 1px solid var(--sapField_BorderColor, #89919a);
+  border-radius: 4px;
+  background: var(--sapField_Background, #fff);
+  color: var(--sapField_TextColor, #32363a);
+  box-sizing: border-box;
+  padding: 0 0.625rem;
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.audit-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 9rem;
+}
+
+.audit-message {
+  margin-top: 0.25rem;
+}
+
+.audit-list {
+  display: grid;
+  gap: 0.625rem;
+}
+
+.audit-card {
+  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  border-left: 4px solid;
+  border-radius: 8px;
+  background: var(--sapList_Background, #fff);
+  box-shadow: 0 1px 2px rgba(34, 53, 72, 0.06);
+}
+
+.audit-card-grid {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.7fr) minmax(360px, 1.3fr);
+  gap: 0.75rem;
+  padding: 0.75rem 0.875rem;
+}
+
+.audit-card-meta {
+  display: grid;
+  gap: 0.375rem;
+  align-content: start;
+}
+
+.audit-card-changes {
+  min-width: 0;
+  align-content: start;
+}
+
+.audit-action-badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 0.375rem;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 0.125rem 0.5rem;
+}
+
+.audit-action-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.audit-meta-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.audit-meta-label {
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.75rem;
+  line-height: 1.125rem;
+}
+
+.audit-meta-value {
+  color: var(--sapTextColor, #32363a);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.125rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-change-table {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.7fr) minmax(140px, 1fr) minmax(140px, 1fr);
+  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--sapList_Background, #fff);
+}
+
+.audit-change-header {
+  padding: 0.375rem 0.5rem;
+  background: var(--sapList_HeaderBackground, #f7f7f7);
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-bottom: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+}
+
+.audit-change-row {
+  display: contents;
+}
+
+.audit-change-row > div,
+.audit-single-value-row {
+  padding: 0.375rem 0.5rem;
+  border-top: 1px solid var(--sapList_BorderColor, #e5e5e5);
+  min-width: 0;
+}
+
+.audit-change-row:first-of-type > div {
+  border-top: 0;
+}
+
+.audit-change-field {
+  color: var(--sapTextColor, #32363a);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.audit-old-value {
+  color: var(--sapContent_LabelColor, #6a6d70);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: rgba(106, 109, 112, 0.65);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.audit-new-value {
+  color: var(--sapTextColor, #32363a);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.audit-single-value {
+  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.audit-single-value-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.45fr) minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.audit-empty-state {
+  min-height: 14rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px dashed var(--sapGroup_BorderColor, #d9d9d9);
+  border-radius: 8px;
+  background: var(--sapList_Background, #fff);
+}
+
+.audit-empty-icon {
+  width: 2rem;
+  height: 2rem;
+  color: var(--sapContent_NonInteractiveIconColor, #5b738b);
+}
+
+@media (max-width: 980px) {
+  .audit-filter-bar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .audit-card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .audit-panel {
+    padding: 0.75rem;
+  }
+
+  .audit-filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .audit-card-grid {
+    padding: 0.625rem;
+  }
+
+  .audit-change-table {
+    grid-template-columns: 1fr;
+  }
+
+  .audit-change-header {
+    display: none;
+  }
+
+  .audit-change-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    border-top: 1px solid var(--sapList_BorderColor, #e5e5e5);
+  }
+}

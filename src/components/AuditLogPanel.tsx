@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   BusyIndicator,
   Button,
   Icon,
-  Label,
+  Input,
   MessageStrip,
+  ObjectStatus,
+  Option,
+  Select,
   Text,
   Title,
   Toolbar,
@@ -15,15 +18,28 @@ import { getFriendlyErrorMessage } from '../services/apiClient'
 import { getAuditDisplayCells } from '../utils/auditFormatters'
 import { AuditLogEntry } from '../types'
 
-const ACTION_LABELS: Record<string, string> = { C: 'Created', U: 'Updated', D: 'Deleted' }
-const ACTION_META: Record<string, { icon: string; color: string; background: string }> = {
-  C: { icon: 'add', color: '#107e3e', background: '#e4f5e9' },
-  U: { icon: 'edit', color: '#0a6ed1', background: '#eaf4ff' },
-  D: { icon: 'delete', color: '#bb0000', background: '#ffebeb' }
+const ACTION_LABELS: Record<string, string> = {
+  C: 'Created',
+  U: 'Updated',
+  D: 'Deleted'
+}
+
+const ACTION_META: Record<string, { icon: string; state: 'Positive' | 'Information' | 'Negative' | 'None'; border: string; bg: string }> = {
+  C: { icon: 'add', state: 'Positive', border: '#107e3e', bg: '#f1fdf6' },
+  U: { icon: 'edit', state: 'Information', border: '#0a6ed1', bg: '#f5faff' },
+  D: { icon: 'delete', state: 'Negative', border: '#bb0000', bg: '#fff5f5' }
 }
 
 interface AuditLogPanelProps {
-  tableName: string;
+  tableName: string
+}
+
+type ActionFilter = 'ALL' | 'C' | 'U' | 'D'
+
+interface AuditChange {
+  field: string
+  oldValue: string
+  newValue: string
 }
 
 function formatDateTime(value?: string): string {
@@ -37,9 +53,17 @@ function formatDateTime(value?: string): string {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
+    minute: '2-digit'
   })
+}
+
+function dateInputValue(value?: string): string {
+  if (!value) return ''
+  const raw = String(value)
+  const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T')
+  const date = new Date(normalized)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toISOString().slice(0, 10)
 }
 
 function splitAuditParts(value: string): Array<{ key: string; value: string }> {
@@ -61,229 +85,156 @@ function partsToMap(parts: Array<{ key: string; value: string }>): Map<string, s
   return new Map(parts.filter(part => part.key).map(part => [part.key, part.value]))
 }
 
-function changedParts(oldValue: string, newValue: string): Array<{ key: string; oldValue: string; newValue: string }> {
+function getChangedFields(entry: AuditLogEntry): AuditChange[] {
+  const { fieldName, oldValue, newValue } = getAuditDisplayCells(entry)
+
+  if (entry.ActionType !== 'U') {
+    return [{
+      field: normalizeDash(fieldName) || 'Record',
+      oldValue,
+      newValue
+    }].filter(change => change.oldValue || change.newValue)
+  }
+
   const oldMap = partsToMap(splitAuditParts(oldValue))
   const newMap = partsToMap(splitAuditParts(newValue))
   const keys = Array.from(new Set([...oldMap.keys(), ...newMap.keys()]))
 
-  return keys
+  const changes = keys
     .map(key => ({
-      key,
+      field: key,
       oldValue: oldMap.get(key) || '',
       newValue: newMap.get(key) || ''
     }))
-    .filter(part => part.oldValue !== part.newValue)
+    .filter(change => change.oldValue !== change.newValue)
+
+  if (changes.length > 0) return changes
+
+  if (normalizeDash(fieldName) && (oldValue || newValue) && oldValue !== newValue) {
+    return [{ field: normalizeDash(fieldName), oldValue, newValue }]
+  }
+
+  return []
 }
 
-function ActionBadge({ actionType }: { actionType: string }) {
-  const actionLabel = ACTION_LABELS[actionType] || actionType
-  const meta = ACTION_META[actionType] || { icon: 'question-mark', color: '#556b82', background: '#eef2f5' }
+function normalizeDash(value?: string): string {
+  const text = String(value || '').trim()
+  if (!text || text === '-' || text === '—' || text === 'â€”') return ''
+  return text
+}
+
+function getRecordKey(entry: AuditLogEntry): string {
+  const anyEntry = entry as any
+  return (
+    anyEntry.RecordKey ||
+    anyEntry.record_key ||
+    anyEntry.RecordId ||
+    anyEntry.KeyValue ||
+    anyEntry.ObjectKey ||
+    anyEntry.AuditId ||
+    '-'
+  )
+}
+
+function includesText(value: unknown, query: string): boolean {
+  return String(value ?? '').toLowerCase().includes(query)
+}
+
+function actionLabel(actionType: string): string {
+  return ACTION_LABELS[actionType] || actionType || 'Unknown'
+}
+
+function AuditActionBadge({ actionType }: { actionType: string }) {
+  const meta = ACTION_META[actionType] || { icon: 'question-mark', state: 'None' as const, border: '#6a6d70', bg: '#f7f7f7' }
 
   return (
     <div
+      className="audit-action-badge"
       style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '0.4rem',
-        padding: '0.25rem 0.55rem',
-        borderRadius: '999px',
-        color: meta.color,
-        background: meta.background,
-        fontWeight: 700
+        borderColor: meta.border,
+        background: meta.bg
       }}
     >
-      <Icon name={meta.icon} style={{ width: '0.9rem', height: '0.9rem', color: meta.color }} />
-      <span>{actionLabel}</span>
+      <Icon name={meta.icon} className="audit-action-icon" style={{ color: meta.border }} />
+      <ObjectStatus state={meta.state}>{actionLabel(actionType)}</ObjectStatus>
     </div>
   )
 }
 
-function ValueBlock({ title, value, emptyText }: { title: string; value: string; emptyText: string }) {
-  const parts = splitAuditParts(value)
-
+function AuditMetaRow({ label, value }: { label: string; value: string }) {
   return (
-    <div
-      style={{
-        minWidth: 0,
-        border: '1px solid var(--sapGroup_BorderColor, #d9e0e7)',
-        borderRadius: '6px',
-        background: 'var(--sapList_Background, #fff)'
-      }}
-    >
-      <div
-        style={{
-          padding: '0.5rem 0.75rem',
-          borderBottom: '1px solid var(--sapGroup_BorderColor, #d9e0e7)',
-          background: 'var(--sapList_HeaderBackground, #f7f7f7)'
-        }}
-      >
-        <Label>{title}</Label>
-      </div>
-      <div style={{ padding: '0.6rem 0.75rem' }}>
-        {parts.length === 0 ? (
-          <Text style={{ color: '#6a7075' }}>{emptyText}</Text>
-        ) : (
-          <div style={{ display: 'grid', gap: '0.35rem' }}>
-            {parts.map((part, index) => (
-              <div
-                key={`${part.key}-${index}`}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: part.key ? 'minmax(110px, 34%) 1fr' : '1fr',
-                  gap: '0.5rem',
-                  alignItems: 'start'
-                }}
-              >
-                {part.key && (
-                  <Text style={{ color: '#6a7075', fontSize: '0.82rem', wordBreak: 'break-word' }}>
-                    {part.key}
-                  </Text>
-                )}
-                <Text style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
-                  {part.value || '-'}
-                </Text>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+    <div className="audit-meta-row">
+      <span className="audit-meta-label">{label}</span>
+      <span className="audit-meta-value" title={value}>{value || '-'}</span>
     </div>
   )
 }
 
-function DiffBlock({ oldValue, newValue }: { oldValue: string; newValue: string }) {
-  const changes = changedParts(oldValue, newValue)
+function ChangedFields({ entry, changes }: { entry: AuditLogEntry; changes: AuditChange[] }) {
+  if (changes.length === 0) {
+    return <Text className="audit-muted">No field-level details available.</Text>
+  }
+
+  if (entry.ActionType === 'U') {
+    return (
+      <div className="audit-change-table">
+        <div className="audit-change-header">Field</div>
+        <div className="audit-change-header">Old Value</div>
+        <div className="audit-change-header">New Value</div>
+        {changes.map((change, index) => (
+          <div className="audit-change-row" key={`${change.field}-${index}`}>
+            <div className="audit-change-field">{change.field || '-'}</div>
+            <div className="audit-old-value">{change.oldValue || '-'}</div>
+            <div className="audit-new-value">{change.newValue || '-'}</div>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   return (
-    <div
-      style={{
-        minWidth: 0,
-        border: '1px solid var(--sapGroup_BorderColor, #d9e0e7)',
-        borderRadius: '6px',
-        background: 'var(--sapList_Background, #fff)'
-      }}
-    >
-      <div
-        style={{
-          padding: '0.5rem 0.75rem',
-          borderBottom: '1px solid var(--sapGroup_BorderColor, #d9e0e7)',
-          background: 'var(--sapList_HeaderBackground, #f7f7f7)'
-        }}
-      >
-        <Label>Changed Fields</Label>
-      </div>
-      <div style={{ padding: '0.6rem 0.75rem' }}>
-        {changes.length === 0 ? (
-          <Text style={{ color: '#6a7075' }}>No changed fields detected.</Text>
-        ) : (
-          <div style={{ display: 'grid', gap: '0.6rem' }}>
-            {changes.map(change => (
-              <div
-                key={change.key}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'minmax(180px, 28%) minmax(120px, 1fr) minmax(160px, 1.25fr)',
-                  gap: '0.75rem',
-                  alignItems: 'start',
-                  paddingBottom: '0.6rem',
-                  borderBottom: '1px solid var(--sapList_BorderColor, #edf0f2)'
-                }}
-              >
-                <Text style={{ fontWeight: 700, overflowWrap: 'anywhere' }}>{change.key}</Text>
-                <div>
-                  <Label>Old</Label>
-                  <Text style={{ display: 'block', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
-                    {change.oldValue || '-'}
-                  </Text>
-                </div>
-                <div
-                  style={{
-                    borderLeft: '3px solid #0a6ed1',
-                    paddingLeft: '0.6rem',
-                    background: '#f5faff'
-                  }}
-                >
-                  <Label>New</Label>
-                  <Text style={{ display: 'block', fontWeight: 700, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
-                    {change.newValue || '-'}
-                  </Text>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function AuditEntryItem({ entry }: { entry: AuditLogEntry }) {
-  const { fieldName, oldValue, newValue } = getAuditDisplayCells(entry)
-  const isUpdate = entry.ActionType === 'U'
-
-  return (
-    <article
-      style={{
-        borderTop: '1px solid var(--sapList_BorderColor, #e5e5e5)',
-        padding: '1rem 0'
-      }}
-    >
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(150px, 200px) minmax(0, 1fr)',
-          gap: '1rem',
-          alignItems: 'start'
-        }}
-      >
-        <div style={{ display: 'grid', gap: '0.45rem' }}>
-          <div>
-            <ActionBadge actionType={entry.ActionType} />
-          </div>
-          <div>
-            <Label>Changed By</Label>
-            <Text style={{ display: 'block', marginTop: '0.15rem' }}>
-              {entry.ChangedBy || '-'}
-            </Text>
-          </div>
-          <div>
-            <Label>Changed At</Label>
-            <Text style={{ display: 'block', marginTop: '0.15rem' }}>
-              {formatDateTime(entry.ChangedAt)}
-            </Text>
-          </div>
-          {fieldName && fieldName !== '-' && fieldName !== '—' && (
-            <div>
-              <Label>Field</Label>
-              <Text style={{ display: 'block', marginTop: '0.15rem', wordBreak: 'break-word' }}>
-                {fieldName}
-              </Text>
-            </div>
-          )}
+    <div className="audit-single-value">
+      {changes.map((change, index) => (
+        <div key={`${change.field}-${index}`} className="audit-single-value-row">
+          <span className="audit-change-field">{change.field}</span>
+          <span className={entry.ActionType === 'D' ? 'audit-old-value' : 'audit-new-value'}>
+            {entry.ActionType === 'D' ? change.oldValue : change.newValue}
+          </span>
         </div>
+      ))}
+    </div>
+  )
+}
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: isUpdate ? 'minmax(0, 1fr) minmax(0, 1fr)' : 'minmax(0, 1fr)',
-            gap: '0.75rem'
-          }}
-        >
-          {isUpdate ? (
-            <DiffBlock oldValue={oldValue} newValue={newValue} />
-          ) : (
-            <>
-              {entry.ActionType !== 'C' && (
-            <ValueBlock title="Old Value" value={oldValue} emptyText="No previous value" />
-              )}
-              {entry.ActionType !== 'D' && (
-            <ValueBlock title="New Value" value={newValue} emptyText="No new value" />
-              )}
-            </>
-          )}
-        </div>
+function AuditCard({ entry }: { entry: AuditLogEntry }) {
+  const { fieldName } = getAuditDisplayCells(entry)
+  const changes = getChangedFields(entry)
+
+  return (
+    <article className="audit-card" style={{ borderLeftColor: ACTION_META[entry.ActionType]?.border || '#6a6d70' }}>
+      <div className="audit-card-grid">
+        <section className="audit-card-meta">
+          <AuditActionBadge actionType={entry.ActionType} />
+          <AuditMetaRow label="Changed By" value={entry.ChangedBy || '-'} />
+          <AuditMetaRow label="Changed At" value={formatDateTime(entry.ChangedAt)} />
+          <AuditMetaRow label="Record Key" value={getRecordKey(entry)} />
+          <AuditMetaRow label="Field" value={normalizeDash(fieldName) || '-'} />
+        </section>
+        <section className="audit-card-changes">
+          <ChangedFields entry={entry} changes={changes} />
+        </section>
       </div>
     </article>
+  )
+}
+
+function EmptyState() {
+  return (
+    <div className="audit-empty-state">
+      <Icon name="history" className="audit-empty-icon" />
+      <Title level="H5">No audit records found</Title>
+      <Text className="audit-muted">Try changing the search or filter criteria.</Text>
+    </div>
   )
 }
 
@@ -291,6 +242,10 @@ export default function AuditLogPanel({ tableName }: AuditLogPanelProps) {
   const [entries, setEntries] = useState<AuditLogEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [actionFilter, setActionFilter] = useState<ActionFilter>('ALL')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
 
   useEffect(() => {
     if (tableName) loadAuditLog()
@@ -310,49 +265,101 @@ export default function AuditLogPanel({ tableName }: AuditLogPanelProps) {
     }
   }
 
+  const filteredEntries = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+
+    return entries.filter(entry => {
+      if (actionFilter !== 'ALL' && entry.ActionType !== actionFilter) return false
+
+      const entryDate = dateInputValue(entry.ChangedAt)
+      if (dateFrom && entryDate && entryDate < dateFrom) return false
+      if (dateTo && entryDate && entryDate > dateTo) return false
+
+      if (!query) return true
+
+      const display = getAuditDisplayCells(entry)
+      const recordKey = getRecordKey(entry)
+      return (
+        includesText(entry.ChangedBy, query) ||
+        includesText(entry.FieldName, query) ||
+        includesText(display.fieldName, query) ||
+        includesText(display.oldValue, query) ||
+        includesText(display.newValue, query) ||
+        includesText(recordKey, query) ||
+        includesText(actionLabel(entry.ActionType), query)
+      )
+    })
+  }, [entries, searchQuery, actionFilter, dateFrom, dateTo])
+
   return (
-    <div style={{ padding: '0.5rem 0' }}>
-      <Toolbar design="Solid">
+    <section className="audit-panel">
+      <Toolbar design="Transparent" className="audit-toolbar">
+        <div className="audit-title-block">
+          <Title level="H4">Audit Trail</Title>
+          <Text className="audit-muted">Latest changes are listed first</Text>
+        </div>
+        <ToolbarSpacer />
+        <Text className="audit-count">{filteredEntries.length} audit record(s)</Text>
         <Button icon={'refresh' as any} onClick={loadAuditLog} disabled={loading}>
           Refresh
         </Button>
-        <ToolbarSpacer />
-        <Text style={{ fontSize: '13px', color: '#6a7075' }}>
-          {entries.length} audit record(s)
-        </Text>
       </Toolbar>
 
+      <div className="audit-filter-bar">
+        <Input
+          placeholder="Search by user, field, value..."
+          value={searchQuery}
+          icon={<Icon name="search" />}
+          onInput={(event: any) => setSearchQuery(event.target.value)}
+          className="audit-search-input"
+        />
+        <Select
+          value={actionFilter}
+          onChange={(event: any) => setActionFilter(event.detail.selectedOption.value as ActionFilter)}
+        >
+          <Option value="ALL">All</Option>
+          <Option value="C">Created</Option>
+          <Option value="U">Updated</Option>
+          <Option value="D">Deleted</Option>
+        </Select>
+        <input
+          className="audit-date-input"
+          type="date"
+          value={dateFrom}
+          onChange={event => setDateFrom(event.target.value)}
+          aria-label="Audit date from"
+        />
+        <input
+          className="audit-date-input"
+          type="date"
+          value={dateTo}
+          onChange={event => setDateTo(event.target.value)}
+          aria-label="Audit date to"
+        />
+      </div>
+
       {loading && (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
+        <div className="audit-loading">
           <BusyIndicator active size="M" />
+          <Text>Loading audit records...</Text>
         </div>
       )}
 
       {error && (
-        <MessageStrip design="Negative" hideCloseButton style={{ marginTop: '0.75rem' }}>
+        <MessageStrip design="Negative" hideCloseButton className="audit-message">
           {error}
         </MessageStrip>
       )}
 
-      {!loading && !error && entries.length === 0 && (
-        <MessageStrip design="Information" hideCloseButton style={{ marginTop: '0.75rem' }}>
-          No audit records found for this table.
-        </MessageStrip>
-      )}
+      {!loading && !error && filteredEntries.length === 0 && <EmptyState />}
 
-      {!loading && !error && entries.length > 0 && (
-        <section style={{ padding: '0.75rem 0.75rem 0' }}>
-          <Title level="H5" style={{ marginBottom: '0.25rem' }}>Audit Trail</Title>
-          <Text style={{ color: '#6a7075' }}>
-            Latest changes are listed first. Created and deleted records show one value block; updates show old and new values side by side.
-          </Text>
-          <div style={{ marginTop: '0.75rem' }}>
-            {entries.map(entry => (
-              <AuditEntryItem key={entry.AuditId} entry={entry} />
-            ))}
-          </div>
-        </section>
+      {!loading && !error && filteredEntries.length > 0 && (
+        <div className="audit-list">
+          {filteredEntries.map(entry => (
+            <AuditCard key={entry.AuditId} entry={entry} />
+          ))}
+        </div>
       )}
-    </div>
+    </section>
   )
 }
