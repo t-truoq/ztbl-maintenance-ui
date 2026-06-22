@@ -292,7 +292,7 @@ export function formatPayload(formData: Record<string, any>, meta: FieldMeta[], 
   return JSON.stringify(payload)
 }
 
-/** Visible fields for form (non-hidden, non auto-key on create, non-system field) */
+/** Visible fields for form (non-hidden, non-system field). Technical IDs remain visible but read-only. */
 export function getFormFieldsFromMeta(meta: FieldMeta[], mode = 'create'): FieldMeta[] {
   const SYSTEM_FIELD_NAMES = new Set([
     'CREATED_BY',
@@ -313,7 +313,6 @@ export function getFormFieldsFromMeta(meta: FieldMeta[], mode = 'create'): Field
     const name = (f.field_name || f.FieldName || '').toUpperCase()
     if (SYSTEM_FIELD_NAMES.has(name)) return false
     if (/^(CREATED|CHANGED)_(BY|AT|ON|DATE|TIME)$/i.test(name)) return false
-    if (mode === 'create' && f.is_key && f.fe_type === 'uuid') return false
     return true
   })
 }

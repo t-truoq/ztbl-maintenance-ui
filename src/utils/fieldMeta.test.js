@@ -4,9 +4,10 @@ import {
   parseTableData,
   parseFieldMetaJson,
   normalizeUuidFromBe,
-  abapToIso
+  abapToIso,
+  getFormFieldsFromMeta
 } from './fieldMeta.js'
-import { buildKeyRecord } from './recordHelpers'
+import { buildKeyRecord, isFieldReadonly } from './recordHelpers'
 
 const meta = [
   {
@@ -113,6 +114,40 @@ describe('parseFieldMetaJson', () => {
     )
     expect(list[0].field_name).toBe('ID')
     expect(list[1].field_name).toBe('NAME')
+  })
+})
+
+describe('getFormFieldsFromMeta', () => {
+  it('keeps key ID fields visible in record forms', () => {
+    const fields = parseFieldMetaJson(
+      JSON.stringify([
+        { field_name: 'ENTITY_ID', fe_type: 'text', FieldType: 'RAW16', is_key: true },
+        { field_name: 'CATEGORY_ID', fe_type: 'text', is_key: true },
+        { field_name: 'DESCRIPTION', fe_type: 'text' }
+      ])
+    )
+
+    expect(getFormFieldsFromMeta(fields, 'create').map(f => f.field_name)).toEqual([
+      'ENTITY_ID',
+      'CATEGORY_ID',
+      'DESCRIPTION'
+    ])
+    expect(getFormFieldsFromMeta(fields, 'edit').map(f => f.field_name)).toEqual([
+      'ENTITY_ID',
+      'CATEGORY_ID',
+      'DESCRIPTION'
+    ])
+  })
+})
+
+describe('isFieldReadonly', () => {
+  it('makes generated key ID fields readonly in create and edit', () => {
+    const field = parseFieldMetaJson(
+      JSON.stringify({ field_name: 'CATEGORY_ID', fe_type: 'text', is_key: true })
+    )[0]
+
+    expect(isFieldReadonly(field, 'create')).toBe(true)
+    expect(isFieldReadonly(field, 'edit')).toBe(true)
   })
 })
 
