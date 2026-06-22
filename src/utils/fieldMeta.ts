@@ -254,6 +254,9 @@ export function formatPayload(formData: Record<string, any>, meta: FieldMeta[], 
     if (field.is_hidden) continue
 
     const key = field.field_name
+    // CLIENT / MANDT is auto-managed by the ABAP compiler — never send it
+    if (key.toUpperCase() === 'CLIENT' || key.toUpperCase() === 'MANDT') continue
+
     const raw = formData[key]
 
     switch (field.fe_type) {
