@@ -304,6 +304,11 @@ export function getFormFieldsFromMeta(meta: FieldMeta[], _mode = 'create'): Fiel
     'CREATED_AT',
     'CHANGED_BY',
     'CHANGED_AT',
+    'CREATED_ON',
+    'CHANGED_ON',
+    'LAST_CHANGED_BY',
+    'LAST_CHANGED_AT',
+    'LOCAL_LAST_CHANGED_AT',
     'ERNAM',
     'ERDAT',
     'ERZET',
@@ -317,7 +322,7 @@ export function getFormFieldsFromMeta(meta: FieldMeta[], _mode = 'create'): Fiel
     if (f.is_hidden) return false
     const name = (f.field_name || f.FieldName || '').toUpperCase()
     if (SYSTEM_FIELD_NAMES.has(name)) return false
-    if (/^(CREATED|CHANGED)_(BY|AT|ON|DATE|TIME)$/i.test(name)) return false
+    if (/^(CREATED|CHANGED|LAST_CHANGED|LOCAL_LAST_CHANGED)_(BY|AT|ON|DATE|TIME)$/i.test(name)) return false
     return true
   })
 }

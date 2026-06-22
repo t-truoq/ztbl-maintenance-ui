@@ -138,6 +138,25 @@ describe('getFormFieldsFromMeta', () => {
       'DESCRIPTION'
     ])
   })
+
+  it('hides SAP-managed audit fields from record forms', () => {
+    const fields = parseFieldMetaJson(
+      JSON.stringify([
+        { field_name: 'SCHEDULE_ID', fe_type: 'text', is_key: true },
+        { field_name: 'STATUS', fe_type: 'text' },
+        { field_name: 'CREATED_ON', fe_type: 'text' },
+        { field_name: 'CHANGED_BY', fe_type: 'text' },
+        { field_name: 'LAST_CHANGED_BY', fe_type: 'domain' },
+        { field_name: 'LAST_CHANGED_AT', fe_type: 'text' },
+        { field_name: 'LOCAL_LAST_CHANGED_AT', fe_type: 'text' }
+      ])
+    )
+
+    expect(getFormFieldsFromMeta(fields, 'edit').map(f => f.field_name)).toEqual([
+      'SCHEDULE_ID',
+      'STATUS'
+    ])
+  })
 })
 
 describe('isFieldReadonly', () => {

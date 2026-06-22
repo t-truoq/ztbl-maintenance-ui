@@ -142,6 +142,15 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
           <DynamicPageTitle
             heading={
               <FlexBox alignItems="Center" gap="8px">
+                <Button
+                  design="Transparent"
+                  icon={'navigation-left-arrow' as any}
+                  accessibleName="Back to table overview"
+                  onClick={() => {
+                    releaseTableLockIfHeld()
+                    onSelectTable(null)
+                  }}
+                />
                 <Title>{selectedTable.TableName}</Title>
               </FlexBox>
             }
