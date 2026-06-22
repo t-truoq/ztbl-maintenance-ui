@@ -373,12 +373,35 @@ export async function getRepositoryInfo(configUuid: string, signal?: AbortSignal
   }
 }
 
+function stripClientFields(record: any): any {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) return record
+  const cleaned = { ...record }
+  for (const key of Object.keys(cleaned)) {
+    const normalized = key.toUpperCase()
+    if (normalized === 'CLIENT' || normalized === 'MANDT') {
+      delete cleaned[key]
+    }
+  }
+  return cleaned
+}
+
+function asClientSafeJson(value: any): string {
+  if (typeof value === 'string') {
+    try {
+      return JSON.stringify(stripClientFields(JSON.parse(value)))
+    } catch {
+      return value
+    }
+  }
+  return JSON.stringify(stripClientFields(value))
+}
+
 function asRecordDataJson(recordData: any): string {
-  return typeof recordData === 'string' ? recordData : JSON.stringify(recordData)
+  return asClientSafeJson(recordData)
 }
 
 function asRecordKeyJson(recordKey: any): string {
-  return typeof recordKey === 'string' ? recordKey : JSON.stringify(recordKey)
+  return asClientSafeJson(recordKey)
 }
 
 export async function createRecord(configUuid: string, tableName: string, recordData: any): Promise<any> {
