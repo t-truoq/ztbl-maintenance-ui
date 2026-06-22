@@ -254,6 +254,9 @@ export function formatPayload(formData: Record<string, any>, meta: FieldMeta[], 
     if (field.is_hidden) continue
 
     const key = field.field_name
+    // CLIENT / MANDT is auto-managed by the ABAP compiler — never send it
+    if (key.toUpperCase() === 'CLIENT' || key.toUpperCase() === 'MANDT') continue
+
     const raw = formData[key]
 
     switch (field.fe_type) {
@@ -293,7 +296,7 @@ export function formatPayload(formData: Record<string, any>, meta: FieldMeta[], 
 }
 
 /** Visible fields for form (non-hidden, non-system field). Technical IDs remain visible but read-only. */
-export function getFormFieldsFromMeta(meta: FieldMeta[], mode = 'create'): FieldMeta[] {
+export function getFormFieldsFromMeta(meta: FieldMeta[], _mode = 'create'): FieldMeta[] {
   const SYSTEM_FIELD_NAMES = new Set([
     'CREATED_BY',
     'CREATED_AT',
