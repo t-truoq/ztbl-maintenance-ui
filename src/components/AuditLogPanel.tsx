@@ -61,10 +61,21 @@ function partsToMap(parts: Array<{ key: string; value: string }>): Map<string, s
   return new Map(parts.filter(part => part.key).map(part => [part.key, part.value]))
 }
 
-function changedParts(oldValue: string, newValue: string): Array<{ key: string; oldValue: string; newValue: string }> {
-  const oldMap = partsToMap(splitAuditParts(oldValue))
-  const newMap = partsToMap(splitAuditParts(newValue))
+function changedParts(oldValue: string, newValue: string, fieldName = ''): Array<{ key: string; oldValue: string; newValue: string }> {
+  const oldParts = splitAuditParts(oldValue)
+  const newParts = splitAuditParts(newValue)
+  const oldMap = partsToMap(oldParts)
+  const newMap = partsToMap(newParts)
   const keys = Array.from(new Set([...oldMap.keys(), ...newMap.keys()]))
+
+  if (keys.length === 0) {
+    const oldScalar = oldParts.find(part => !part.key)?.value || oldValue || ''
+    const newScalar = newParts.find(part => !part.key)?.value || newValue || ''
+    const key = fieldName && fieldName !== '-' && fieldName !== '—' ? fieldName : 'Value'
+    return oldScalar !== newScalar
+      ? [{ key, oldValue: oldScalar, newValue: newScalar }]
+      : []
+  }
 
   return keys
     .map(key => ({
@@ -151,8 +162,8 @@ function ValueBlock({ title, value, emptyText }: { title: string; value: string;
   )
 }
 
-function DiffBlock({ oldValue, newValue }: { oldValue: string; newValue: string }) {
-  const changes = changedParts(oldValue, newValue)
+function DiffBlock({ fieldName, oldValue, newValue }: { fieldName: string; oldValue: string; newValue: string }) {
+  const changes = changedParts(oldValue, newValue, fieldName)
 
   return (
     <div
@@ -270,7 +281,7 @@ function AuditEntryItem({ entry }: { entry: AuditLogEntry }) {
           }}
         >
           {isUpdate ? (
-            <DiffBlock oldValue={oldValue} newValue={newValue} />
+            <DiffBlock fieldName={fieldName} oldValue={oldValue} newValue={newValue} />
           ) : (
             <>
               {entry.ActionType !== 'C' && (
@@ -344,7 +355,7 @@ export default function AuditLogPanel({ tableName }: AuditLogPanelProps) {
         <section style={{ padding: '0.75rem 0.75rem 0' }}>
           <Title level="H5" style={{ marginBottom: '0.25rem' }}>Audit Trail</Title>
           <Text style={{ color: '#6a7075' }}>
-            Latest changes are listed first. Created and deleted records show one value block; updates show old and new values side by side.
+            Latest changes are listed first. Updates show only the changed field values.
           </Text>
           <div style={{ marginTop: '0.75rem' }}>
             {entries.map(entry => (
