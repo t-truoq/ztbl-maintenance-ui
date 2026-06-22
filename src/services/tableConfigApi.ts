@@ -444,7 +444,6 @@ export async function updateRecord(
 }
 
 export async function deleteRecord(configUuid: string, tableName: string, recordKey: any): Promise<any> {
-  console.log('[deleteRecord] configUuid:', configUuid, 'tableName:', tableName, 'recordKey:', recordKey)
   const res = await apiPostWithCsrf(
     actionUrl(configUuid, 'deleteRecord'),
     {

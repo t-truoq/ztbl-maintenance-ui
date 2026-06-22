@@ -99,6 +99,9 @@ function mergeFormIntoRecord(allFields: FieldMeta[], formValues: Record<string, 
     if (isSystemGeneratedField(f)) return
 
     const name = fieldName(f)
+    // CLIENT/MANDT is always managed by SAP — never include in any payload
+    if (name.toUpperCase() === 'CLIENT' || name.toUpperCase() === 'MANDT') return
+
     const hidden = f.is_hidden || f.HiddenFlag === 'X'
 
     if (hidden) {

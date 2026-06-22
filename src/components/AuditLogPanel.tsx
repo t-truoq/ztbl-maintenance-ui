@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   BusyIndicator,
   Button,
+  DatePicker,
   Icon,
   Input,
   Label,
@@ -106,7 +107,7 @@ function changedParts(oldValue: string, newValue: string, fieldName = ''): Array
     .filter(part => part.oldValue !== part.newValue)
 }
 
-function getRecordKey(entry: AuditLogEntry): string {
+function getRawRecordKey(entry: AuditLogEntry): string {
   const anyEntry = entry as any
   return (
     anyEntry.RecordKey ||
@@ -117,6 +118,24 @@ function getRecordKey(entry: AuditLogEntry): string {
     anyEntry.AuditId ||
     '-'
   )
+}
+
+function getRecordKey(entry: AuditLogEntry): string {
+  const rawKey = getRawRecordKey(entry)
+  if (!rawKey || rawKey === '-') return '-'
+
+  try {
+    const parsed = JSON.parse(rawKey)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return rawKey
+
+    const visibleParts = Object.entries(parsed)
+      .filter(([key]) => !['CLIENT', 'MANDT'].includes(key.toUpperCase()))
+      .map(([key, value]) => `${key}: ${String(value)}`)
+
+    return visibleParts.length > 0 ? visibleParts.join(', ') : '-'
+  } catch {
+    return rawKey
+  }
 }
 
 function includesText(value: unknown, query: string): boolean {
@@ -307,7 +326,7 @@ function AuditEntryItem({ entry }: { entry: AuditLogEntry }) {
           </div>
           <div>
             <Label>Record Key</Label>
-            <Text style={{ display: 'block', marginTop: '0.15rem', wordBreak: 'break-word' }}>
+            <Text className="audit-record-key">
               {getRecordKey(entry)}
             </Text>
           </div>
@@ -387,6 +406,7 @@ export default function AuditLogPanel({ tableName }: AuditLogPanelProps) {
 
       const display = getAuditDisplayCells(entry)
       const recordKey = getRecordKey(entry)
+      const rawRecordKey = getRawRecordKey(entry)
       return (
         includesText(entry.ChangedBy, query) ||
         includesText(entry.FieldName, query) ||
@@ -394,6 +414,7 @@ export default function AuditLogPanel({ tableName }: AuditLogPanelProps) {
         includesText(display.oldValue, query) ||
         includesText(display.newValue, query) ||
         includesText(recordKey, query) ||
+        includesText(rawRecordKey, query) ||
         includesText(actionLabel(entry.ActionType), query)
       )
     })
@@ -413,37 +434,49 @@ export default function AuditLogPanel({ tableName }: AuditLogPanelProps) {
         </Button>
       </Toolbar>
 
-      <div className="audit-filter-bar">
-        <Input
-          placeholder="Search by user, field, value..."
-          value={searchQuery}
-          icon={<Icon name="search" />}
-          onInput={(event: any) => setSearchQuery(event.target.value)}
-          className="audit-search-input"
-        />
-        <Select
-          value={actionFilter}
-          onChange={(event: any) => setActionFilter(event.detail.selectedOption.value as ActionFilter)}
-        >
-          <Option value="ALL">All</Option>
-          <Option value="C">Created</Option>
-          <Option value="U">Updated</Option>
-          <Option value="D">Deleted</Option>
-        </Select>
-        <input
-          className="audit-date-input"
-          type="date"
-          value={dateFrom}
-          onChange={event => setDateFrom(event.target.value)}
-          aria-label="Audit date from"
-        />
-        <input
-          className="audit-date-input"
-          type="date"
-          value={dateTo}
-          onChange={event => setDateTo(event.target.value)}
-          aria-label="Audit date to"
-        />
+      <div className="audit-filter-bar" aria-label="Audit filters">
+        <div className="audit-filter-field audit-filter-search">
+          <Label>Search</Label>
+          <Input
+            placeholder="User, field, value, record key..."
+            value={searchQuery}
+            icon={<Icon name="search" />}
+            onInput={(event: any) => setSearchQuery(event.target.value)}
+            className="audit-search-input"
+          />
+        </div>
+        <div className="audit-filter-field audit-filter-action">
+          <Label>Action</Label>
+          <Select
+            value={actionFilter}
+            onChange={(event: any) => setActionFilter(event.detail.selectedOption.value as ActionFilter)}
+          >
+            <Option value="ALL">All</Option>
+            <Option value="C">Created</Option>
+            <Option value="U">Updated</Option>
+            <Option value="D">Deleted</Option>
+          </Select>
+        </div>
+        <div className="audit-filter-field audit-filter-date">
+          <Label>From</Label>
+          <DatePicker
+            className="audit-date-picker"
+            formatPattern="yyyy-MM-dd"
+            value={dateFrom}
+            onChange={(event: any) => setDateFrom(event.target.value)}
+            aria-label="Audit date from"
+          />
+        </div>
+        <div className="audit-filter-field audit-filter-date">
+          <Label>To</Label>
+          <DatePicker
+            className="audit-date-picker"
+            formatPattern="yyyy-MM-dd"
+            value={dateTo}
+            onChange={(event: any) => setDateTo(event.target.value)}
+            aria-label="Audit date to"
+          />
+        </div>
       </div>
 
       {loading && (

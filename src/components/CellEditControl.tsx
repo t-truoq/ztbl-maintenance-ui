@@ -1,5 +1,4 @@
-import { useRef } from 'react'
-import { Input, CheckBox, Icon } from '@ui5/webcomponents-react'
+import { Input, CheckBox, DatePicker } from '@ui5/webcomponents-react'
 import { formatDateForSap } from '../utils/displayHelpers'
 import { formatCellValue } from '../utils/displayHelpers'
 import { isFieldReadonly, isSystemGeneratedField } from '../utils/recordHelpers'
@@ -28,7 +27,6 @@ export default function CellEditControl({
   configUuid,
   onCellChange,
 }: CellEditControlProps) {
-  const dateInputRef = useRef<HTMLInputElement | null>(null)
   const name = f.field_name || f.FieldName
   const val = row[name] ?? ''
   const isNewRow = !!row._isNew
@@ -50,65 +48,22 @@ export default function CellEditControl({
   const feType = f.fe_type || f.FeType
   const cellError = inlineErrors[rowIndex]?.[name]
 
-  // ── Date ──────────────────────────────────────────────────────────────────
-  // Use native HTML date input — UI5 DatePicker's calendar button is rendered
-  // outside its host element and gets clipped by the table cell's overflow:hidden.
   if (feType === 'date') {
-    const nativeVal = val ? String(val).substring(0, 10) : ''
+    const dateValue = val ? String(val).substring(0, 10) : ''
     return (
-      <span className="fiori-date-input-wrap">
-        <button
-          type="button"
-          className="fiori-date-trailing-button"
-          aria-label="Choose date"
-          onMouseDown={e => e.preventDefault()}
-          onClick={() => {
-            const input = dateInputRef.current as any
-            if (input?.showPicker) input.showPicker()
-            else dateInputRef.current?.focus()
-          }}
-        >
-          <Icon name="calendar" />
-        </button>
-        <input
-          ref={dateInputRef}
-          type="date"
-          className="fiori-native-date-input fiori-native-date-input--trailing"
-          value={nativeVal}
-          onChange={e => onCellChange(rowIndex, name, formatDateForSap(e.target.value))}
-          title={cellError || ''}
-          style={{
-            width: '100%',
-            height: '36px',
-            padding: '0 2.25rem 0 8px',
-            border: cellError
-              ? '2px solid var(--sapField_InvalidColor, #bb0000)'
-              : '1px solid var(--sapField_BorderColor, #89919a)',
-            borderRadius: '4px',
-            background: 'var(--sapField_Background, #fff)',
-            color: 'var(--sapTextColor, #32363a)',
-            fontSize: '0.875rem',
-            fontFamily: 'inherit',
-            boxSizing: 'border-box',
-            outline: 'none',
-            cursor: 'pointer',
-          }}
-          onFocus={e => {
-            e.target.style.border = cellError
-              ? '2px solid var(--sapField_InvalidColor, #bb0000)'
-              : '2px solid var(--sapField_Hover_BorderColor, #0a6ed1)'
-          }}
-          onBlur={e => {
-            e.target.style.border = cellError
-              ? '2px solid var(--sapField_InvalidColor, #bb0000)'
-              : '1px solid var(--sapField_BorderColor, #89919a)'
-          }}
-        />
-      </span>
+      <DatePicker
+        className="table-date-picker"
+        formatPattern="yyyy-MM-dd"
+        value={dateValue}
+        onChange={(e: any) => onCellChange(rowIndex, name, formatDateForSap(e.target.value))}
+        valueState={cellError ? 'Negative' : 'None'}
+        valueStateMessage={
+          cellError ? <div slot="valueStateMessage">{cellError}</div> : undefined
+        }
+      />
     )
   }
 
-  // ── Boolean ───────────────────────────────────────────────────────────────
   if (feType === 'boolean') {
     const isChecked = val === 'X' || val === true
     return (
@@ -119,7 +74,6 @@ export default function CellEditControl({
     )
   }
 
-  // ── Domain ────────────────────────────────────────────────────────────────
   if (feType === 'domain') {
     return (
       <DomainValueHelp
@@ -136,7 +90,6 @@ export default function CellEditControl({
     )
   }
 
-  // ── Text (default) ────────────────────────────────────────────────────────
   return (
     <Input
       value={val}

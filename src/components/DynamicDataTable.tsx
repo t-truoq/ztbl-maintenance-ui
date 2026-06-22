@@ -69,7 +69,7 @@ export default function DynamicDataTable({
     const isDate = feType === 'date'
     const isDomain = feType === 'domain'
     const minColWidth = Math.max(
-      isDate ? 220 : isDomain ? 200 : 150,
+      isDate ? 260 : isDomain ? 200 : 150,
       headerLabel.length * 10 + 50
     )
     return { field: f, minColWidth, headerLabel, technicalName }
@@ -197,8 +197,15 @@ export default function DynamicDataTable({
                 <TableRow key={i} style={{ gridTemplateColumns: columnsStyle }}>
                   {fieldsWithWidths.map(({ field: f, minColWidth }) => {
                     const name = f.field_name || f.FieldName
+                    const feType = f.fe_type || f.FeType
                     return (
-                      <TableCell key={name} style={{ minWidth: `${minColWidth}px` }}>
+                      <TableCell
+                        key={name}
+                        style={{
+                          minWidth: `${minColWidth}px`,
+                          overflow: feType === 'date' ? 'visible' : undefined,
+                        }}
+                      >
                         <CellEditControl
                           row={row}
                           rowIndex={i}

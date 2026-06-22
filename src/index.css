@@ -132,60 +132,9 @@ ui5-filter-bar {
   padding: 0.5rem 1rem !important;
 }
 
-/* Ensure the native browser calendar picker indicator is visible inside Fiori UI */
-.fiori-native-date-input {
-  appearance: auto !important;
-  -webkit-appearance: auto !important;
-  -moz-appearance: auto !important;
-  color-scheme: light !important;
-  min-width: 0 !important;
-  padding-right: 2rem !important;
-}
-
-.fiori-native-date-input::-webkit-calendar-picker-indicator {
-  display: block !important;
-  opacity: 1 !important;
-  visibility: visible !important;
-  width: 1rem !important;
-  height: 1rem !important;
-  cursor: pointer !important;
-  padding: 0.25rem !important;
-  margin: 0 !important;
-  filter: invert(25%) sepia(18%) saturate(964%) hue-rotate(170deg) brightness(91%) contrast(86%) !important;
-}
-
-.fiori-date-input-wrap {
-  position: relative;
-  display: block;
+.table-date-picker {
   width: 100%;
-}
-
-.fiori-date-trailing-button {
-  position: absolute;
-  right: 0.5rem;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 1;
-  width: 1.5rem;
-  height: 1.5rem;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--sapContent_IconColor, #5b738b);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.fiori-date-trailing-button:hover {
-  color: var(--sapContent_IconColor, #0a6ed1);
-}
-
-.fiori-native-date-input--trailing::-webkit-calendar-picker-indicator {
-  opacity: 0 !important;
-  width: 0 !important;
-  padding: 0 !important;
+  max-width: 100%;
 }
 
 /* Ensure Toast notification wraps text and handles long UUIDs without overflow/clipping */
@@ -511,25 +460,54 @@ ui5-toast {
 
 .audit-filter-bar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 150px 150px 150px;
-  gap: 0.5rem;
-  align-items: center;
+  grid-template-columns: minmax(22rem, 1fr) 11rem 13rem 13rem;
+  gap: 0.625rem;
+  align-items: flex-end;
+  padding: 0.625rem 0 0.75rem;
+}
+
+.audit-filter-field {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.audit-filter-field ui5-label {
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.75rem;
+}
+
+.audit-filter-search {
+  min-width: 0;
+}
+
+.audit-filter-action {
+  min-width: 0;
+}
+
+.audit-filter-date {
+  min-width: 0;
 }
 
 .audit-search-input {
   width: 100%;
 }
 
-.audit-date-input {
-  height: 2.25rem;
-  border: 1px solid var(--sapField_BorderColor, #89919a);
-  border-radius: 4px;
-  background: var(--sapField_Background, #fff);
-  color: var(--sapField_TextColor, #32363a);
-  box-sizing: border-box;
-  padding: 0 0.625rem;
-  font: inherit;
-  font-size: 0.875rem;
+.audit-filter-action ui5-select {
+  width: 100%;
+}
+
+.audit-date-picker {
+  width: 100%;
+  min-width: 0;
+}
+
+.audit-record-key {
+  display: block;
+  margin-top: 0.15rem;
+  max-width: 13rem;
+  word-break: break-word;
+  color: var(--sapTextColor, #32363a);
 }
 
 .audit-loading {
@@ -701,7 +679,8 @@ ui5-toast {
 
 @media (max-width: 980px) {
   .audit-filter-bar {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(16rem, 1fr) minmax(9rem, 0.45fr);
+    align-items: stretch;
   }
 
   .audit-card-grid {
@@ -718,8 +697,11 @@ ui5-toast {
     grid-template-columns: 1fr;
   }
 
-  .audit-card-grid {
-    padding: 0.625rem;
+  .audit-filter-search,
+  .audit-filter-action,
+  .audit-filter-date {
+    width: 100%;
+    max-width: none;
   }
 
   .audit-change-table {
