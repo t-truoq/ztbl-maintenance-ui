@@ -137,6 +137,23 @@ ui5-filter-bar {
   max-width: 100%;
 }
 
+.dynamic-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-gutter: stable;
+}
+
+.dynamic-table-scroll--editing {
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.dynamic-table-bottom-spacer {
+  height: max(5rem, env(safe-area-inset-bottom));
+  flex: 0 0 auto;
+}
+
 /* Ensure Toast notification wraps text and handles long UUIDs without overflow/clipping */
 ui5-toast {
   max-width: 90vw !important;

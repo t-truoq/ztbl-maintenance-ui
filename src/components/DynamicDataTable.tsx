@@ -142,7 +142,7 @@ export default function DynamicDataTable({
       )}
 
       {/* ── Scrollable Table Wrapper ───────────────────────────────────── */}
-      <div style={{ width: '100%', overflowX: 'auto' }}>
+      <div className={`dynamic-table-scroll${isEditingTable ? ' dynamic-table-scroll--editing' : ''}`}>
         <Table
           overflowMode="Scroll"
           style={{ minWidth: `${totalTableWidth}px`, width: '100%' }}
@@ -309,6 +309,7 @@ export default function DynamicDataTable({
           )}
         </Table>
       </div>
+      <div className="dynamic-table-bottom-spacer" aria-hidden="true" />
     </div>
   )
 }

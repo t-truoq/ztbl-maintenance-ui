@@ -92,14 +92,21 @@ export default function AppLayout({
     <div
       ref={rootRef}
       style={{
-        height: '100vh',
+        height: shellTopOffset ? `calc(100dvh - ${shellTopOffset}px)` : '100dvh',
         paddingTop: shellTopOffset ? `${shellTopOffset}px` : 0,
         boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column'
       }}
     >
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <div
+        style={{
+          display: 'flex',
+          flex: 1,
+          minHeight: 0,
+          overflow: 'hidden'
+        }}
+      >
         <div style={{
           width: collapsed ? '48px' : '300px',
           minWidth: collapsed ? '48px' : '300px',
@@ -187,7 +194,15 @@ export default function AppLayout({
           </SideNavigation>
         </div>
 
-        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', overflowX: 'hidden', background: '#f5f6f7' }}>
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            background: '#f5f6f7'
+          }}
+        >
           {children}
         </div>
       </div>
