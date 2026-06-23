@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   SideNavigation,
   SideNavigationItem,
@@ -7,6 +7,7 @@ import {
   Input,
   Icon,
 } from '@ui5/webcomponents-react'
+import { isDeployedOnSAP } from '../services/apiClient'
 import { TableConfig } from '../types'
 
 interface AppLayoutProps {
@@ -28,8 +29,56 @@ export default function AppLayout({
   onLogout: _onLogout,
   children
 }: AppLayoutProps) {
+  const rootRef = useRef<HTMLDivElement | null>(null)
   const [collapsed, setCollapsed] = useState(false)
   const [sidebarSearch, setSidebarSearch] = useState('')
+  const [shellTopOffset, setShellTopOffset] = useState(0)
+
+  useEffect(() => {
+    if (!isDeployedOnSAP()) return undefined
+
+    const headerSelectors = [
+      '#shell-header',
+      '#shell-header-hdr',
+      '.sapUshellShellHeader',
+      '.sapUshellShellHead',
+      '.sapUshellShellFloatingContainer'
+    ]
+
+    const measureShellOverlap = () => {
+      const root = rootRef.current
+      if (!root) return
+
+      const header = headerSelectors
+        .map(selector => document.querySelector(selector) as HTMLElement | null)
+        .find(element => {
+          if (!element) return false
+          const rect = element.getBoundingClientRect()
+          return rect.height > 0 && rect.bottom > 0
+        })
+
+      if (!header) {
+        setShellTopOffset(0)
+        return
+      }
+
+      const headerRect = header.getBoundingClientRect()
+      const rootRect = root.getBoundingClientRect()
+      const overlap = Math.max(0, Math.ceil(headerRect.bottom - rootRect.top))
+      setShellTopOffset(prev => (prev === overlap ? prev : overlap))
+    }
+
+    measureShellOverlap()
+    const interval = window.setInterval(measureShellOverlap, 1000)
+    window.addEventListener('resize', measureShellOverlap)
+    window.addEventListener('scroll', measureShellOverlap, true)
+
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('resize', measureShellOverlap)
+      window.removeEventListener('scroll', measureShellOverlap, true)
+    }
+  }, [])
 
   const filteredTables = tables.filter(t => {
     if (!sidebarSearch.trim()) return true
@@ -40,7 +89,16 @@ export default function AppLayout({
   })
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div
+      ref={rootRef}
+      style={{
+        height: '100vh',
+        paddingTop: shellTopOffset ? `${shellTopOffset}px` : 0,
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column'
+      }}
+    >
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <div style={{
           width: collapsed ? '48px' : '300px',
