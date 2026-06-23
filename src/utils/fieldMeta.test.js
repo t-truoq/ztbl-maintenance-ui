@@ -160,12 +160,12 @@ describe('getFormFieldsFromMeta', () => {
 })
 
 describe('isFieldReadonly', () => {
-  it('makes generated key ID fields readonly in create and edit', () => {
+  it('allows key ID fields in create and keeps them readonly in edit', () => {
     const field = parseFieldMetaJson(
       JSON.stringify({ field_name: 'CATEGORY_ID', fe_type: 'text', is_key: true })
     )[0]
 
-    expect(isFieldReadonly(field, 'create')).toBe(true)
+    expect(isFieldReadonly(field, 'create')).toBe(false)
     expect(isFieldReadonly(field, 'edit')).toBe(true)
   })
 })
