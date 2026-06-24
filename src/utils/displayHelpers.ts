@@ -10,8 +10,8 @@ export function formatCellValue(field: FieldMeta, value: any): string {
     return str === 'X' ? 'Yes' : ''
   }
 
-  if (feType === 'uuid' || field.FieldType === 'UUID') {
-    const hex = str.replace(/-/g, '')
+  const hex = str.replace(/-/g, '')
+  if (feType === 'uuid' || field.FieldType === 'UUID' || /^[0-9A-F]{32}$/i.test(hex)) {
     if (hex.length >= 8) return `${hex.substring(0, 8)}...`
     return str
   }

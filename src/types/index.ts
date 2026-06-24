@@ -3,7 +3,7 @@ export interface Credentials {
   token: string;
 }
 
-export type FeType = 'text' | 'date' | 'time' | 'uuid' | 'boolean' | 'decimal' | 'integer' | 'domain';
+export type FeType = 'text' | 'date' | 'time' | 'uuid' | 'boolean' | 'decimal' | 'integer' | 'domain' | 'fk_select';
 
 export interface FieldMeta {
   field_name: string;
@@ -17,6 +17,8 @@ export interface FieldMeta {
   domain_name?: string;
   display_order?: number;
   is_hidden?: boolean;
+  is_fk_key?: boolean;
+  fk_ref_table?: string;
 
   /* Legacy field aliases for existing UI helpers */
   FieldName: string;
@@ -33,6 +35,8 @@ export interface FieldMeta {
   Length: number;
   Decimals: number;
   ReadonlyFlag?: string;
+  IsFkKey?: string;
+  FkRefTable?: string;
   _raw?: any;
 }
 

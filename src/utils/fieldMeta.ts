@@ -112,6 +112,8 @@ export function normalizeFieldMetaRow(raw: Record<string, any>): FieldMeta {
   )
   const domainName = String(raw.domain_name ?? raw.DomainName ?? raw.DOMAIN_NAME ?? raw.domname ?? raw.DomName ?? raw.DOMNAME ?? '')
   const rollName = String(raw.rollname ?? raw.RollName ?? raw.ROLLNAME ?? '')
+  const isFkKey = isTruthyFlag(raw.is_fk_key) || raw.IsFkKey === 'X' || isTruthyFlag(raw.IS_FK_KEY)
+  const fkRefTable = String(raw.fk_ref_table ?? raw.FkRefTable ?? raw.FK_REF_TABLE ?? '')
 
   return {
     _raw: raw,
@@ -126,6 +128,8 @@ export function normalizeFieldMetaRow(raw: Record<string, any>): FieldMeta {
     domain_name: domainName,
     display_order: Number(raw.display_order ?? raw.DisplayOrder ?? raw.DISPLAY_ORDER ?? 0),
     is_hidden: isTruthyFlag(raw.is_hidden) || raw.HiddenFlag === 'X' || isTruthyFlag(raw.IS_HIDDEN) || raw.Hidden === 'X',
+    is_fk_key: isFkKey,
+    fk_ref_table: fkRefTable,
     ReadonlyFlag: isTruthyFlag(raw.readonly_flag) || raw.ReadonlyFlag === 'X' || isTruthyFlag(raw.READONLY_FLAG) || isTruthyFlag(raw.Readonly) || isTruthyFlag(raw.READONLY) ? 'X' : '',
     /** Legacy aliases for existing UI helpers */
     FieldName: fieldName,
@@ -140,7 +144,9 @@ export function normalizeFieldMetaRow(raw: Record<string, any>): FieldMeta {
     rollname: rollName,
     DisplayOrder: Number(raw.display_order ?? raw.DisplayOrder ?? raw.DISPLAY_ORDER ?? 0),
     Length: Number(raw.length ?? raw.Length ?? raw.LENGTH ?? raw.leng ?? raw.Leng ?? raw.LENG ?? 0),
-    Decimals: Number(raw.decimals ?? raw.Decimals ?? raw.DECIMALS ?? 0)
+    Decimals: Number(raw.decimals ?? raw.Decimals ?? raw.DECIMALS ?? 0),
+    IsFkKey: isFkKey ? 'X' : '',
+    FkRefTable: fkRefTable
   }
 }
 
@@ -167,7 +173,10 @@ function normalizeFeType(value: any): FeType {
     integer: 'integer',
     int: 'integer',
     domain: 'domain',
-    doma: 'domain'
+    doma: 'domain',
+    fk_select: 'fk_select',
+    foreign_key: 'fk_select',
+    foreignkey: 'fk_select'
   }
   return map[t] || 'text'
 }
@@ -189,9 +198,29 @@ function feTypeToLegacyFieldType(feType: FeType): string {
       return 'INTEGER'
     case 'domain':
       return 'DOMAIN'
+    case 'fk_select':
+      return 'DOMAIN'
     default:
       return 'CHAR'
   }
+}
+
+function isFkKeyField(field: FieldMeta): boolean {
+  const raw = field._raw || {}
+  return (
+    field.is_fk_key === true ||
+    field.IsFkKey === 'X' ||
+    raw.is_fk_key === true ||
+    raw.is_fk_key === 'X' ||
+    raw.IS_FK_KEY === true ||
+    raw.IS_FK_KEY === 'X' ||
+    field.fe_type === 'fk_select' ||
+    field.FeType === 'fk_select'
+  )
+}
+
+function isGeneratedUuidCreateKey(field: FieldMeta): boolean {
+  return !!(field.is_key || field.IsKeyField === 'X') && field.fe_type === 'uuid' && !isFkKeyField(field)
 }
 
 /**
@@ -279,7 +308,7 @@ export function formatPayload(formData: Record<string, any>, meta: FieldMeta[], 
 
     switch (field.fe_type) {
       case 'uuid':
-        if (isCreate && field.is_key) {
+        if (isCreate && isGeneratedUuidCreateKey(field)) {
           payload[key] = ''
         } else {
           payload[key] = String(raw ?? '')
@@ -360,7 +389,7 @@ export function initFormValuesFromMeta(formFields: FieldMeta[], row: TableRowDat
 }
 
 export function isDomainFieldMeta(field: FieldMeta): boolean {
-  return field.fe_type === 'domain'
+  return field.fe_type === 'domain' || field.fe_type === 'fk_select'
 }
 
 export function getDomainKeyFromMeta(field: FieldMeta): string {

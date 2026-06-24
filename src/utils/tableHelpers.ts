@@ -9,6 +9,10 @@ export function formatHeaderLabel(f: FieldMeta): string {
   if (rawLabel) return rawLabel
 
   const technicalName = f.field_name || f.FieldName || ''
+  return formatTechnicalFieldName(technicalName)
+}
+
+function formatTechnicalFieldName(technicalName: string): string {
   return technicalName
     .toLowerCase()
     .split('_')

@@ -216,6 +216,11 @@ export async function loadFieldMetaForTable(configUuid: string, tableName: strin
     )
     if (!custom) return dbField
 
+    const mergedFeType =
+      dbField.fe_type === 'uuid'
+        ? dbField.fe_type
+        : custom.fe_type || dbField.fe_type
+
     return {
       ...dbField,
       label: custom.label || dbField.label,
@@ -225,8 +230,8 @@ export async function loadFieldMetaForTable(configUuid: string, tableName: strin
       is_hidden: custom.is_hidden,
       HiddenFlag: custom.HiddenFlag,
       ReadonlyFlag: custom.ReadonlyFlag,
-      fe_type: custom.fe_type || dbField.fe_type,
-      FeType: custom.FeType || dbField.FeType
+      fe_type: mergedFeType,
+      FeType: mergedFeType
     }
   }).sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))
 }
