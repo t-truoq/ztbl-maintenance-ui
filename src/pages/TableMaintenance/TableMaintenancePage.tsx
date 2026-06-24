@@ -54,8 +54,8 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
     editingRow,
     deleteDialogOpen,
     setDeleteDialogOpen,
-    deletingRow,
-    setDeletingRow,
+    deletingRows,
+    setDeletingRows,
     deleteLoading,
     optimisticLockOpen,
     setOptimisticLockOpen,
@@ -263,8 +263,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
                 }
               }}
               onRefresh={() => loadTable(selectedTable)}
-              onEditRow={openEditDialog}
-              onDeleteRow={openDeleteDialog}
+              onDeleteRows={openDeleteDialog}
             />
           </Tab>
           <Tab text="Excel" selected={activeTab === 'excel'}>
@@ -310,13 +309,13 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
 
       <DeleteConfirmDialog
         open={deleteDialogOpen}
-        deletingRow={deletingRow}
+        deletingRows={deletingRows}
         allFields={allFields}
         deleteLoading={deleteLoading}
         onConfirm={handleConfirmDelete}
         onCancel={() => {
           setDeleteDialogOpen(false)
-          setDeletingRow(null)
+          setDeletingRows([])
           releaseTableLockIfHeld()
         }}
       />
