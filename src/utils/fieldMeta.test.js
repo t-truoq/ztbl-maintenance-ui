@@ -4,9 +4,10 @@ import {
   parseTableData,
   parseFieldMetaJson,
   normalizeUuidFromBe,
-  abapToIso
+  abapToIso,
+  getFormFieldsFromMeta
 } from './fieldMeta.js'
-import { buildKeyRecord } from './recordHelpers'
+import { buildKeyRecord, isFieldReadonly } from './recordHelpers'
 
 const meta = [
   {
@@ -113,6 +114,83 @@ describe('parseFieldMetaJson', () => {
     )
     expect(list[0].field_name).toBe('ID')
     expect(list[1].field_name).toBe('NAME')
+  })
+})
+
+describe('getFormFieldsFromMeta', () => {
+  it('keeps key ID fields visible in record forms', () => {
+    const fields = parseFieldMetaJson(
+      JSON.stringify([
+        { field_name: 'ENTITY_ID', fe_type: 'text', FieldType: 'RAW16', is_key: true },
+        { field_name: 'CATEGORY_ID', fe_type: 'text', is_key: true },
+        { field_name: 'DESCRIPTION', fe_type: 'text' }
+      ])
+    )
+
+    expect(getFormFieldsFromMeta(fields, 'create').map(f => f.field_name)).toEqual([
+      'ENTITY_ID',
+      'CATEGORY_ID',
+      'DESCRIPTION'
+    ])
+    expect(getFormFieldsFromMeta(fields, 'edit').map(f => f.field_name)).toEqual([
+      'ENTITY_ID',
+      'CATEGORY_ID',
+      'DESCRIPTION'
+    ])
+  })
+
+  it('hides SAP-managed audit fields from record forms', () => {
+    const fields = parseFieldMetaJson(
+      JSON.stringify([
+        { field_name: 'SCHEDULE_ID', fe_type: 'text', is_key: true },
+        { field_name: 'STATUS', fe_type: 'text' },
+        { field_name: 'CREATED_ON', fe_type: 'text' },
+        { field_name: 'CHANGED_BY', fe_type: 'text' },
+        { field_name: 'LAST_CHANGED_BY', fe_type: 'domain' },
+        { field_name: 'LAST_CHANGED_AT', fe_type: 'text' },
+        { field_name: 'LOCAL_LAST_CHANGED_AT', fe_type: 'text' }
+      ])
+    )
+
+    expect(getFormFieldsFromMeta(fields, 'edit').map(f => f.field_name)).toEqual([
+      'SCHEDULE_ID',
+      'STATUS'
+    ])
+  })
+})
+
+describe('isFieldReadonly', () => {
+  it('allows business key ID fields in create and keeps them readonly in edit', () => {
+    const field = parseFieldMetaJson(
+      JSON.stringify({ field_name: 'CATEGORY_ID', fe_type: 'text', is_key: true })
+    )[0]
+
+    expect(isFieldReadonly(field, 'create')).toBe(false)
+    expect(isFieldReadonly(field, 'edit')).toBe(true)
+  })
+
+  it('makes UUID-like key fields readonly in create and edit', () => {
+    const raw16Key = parseFieldMetaJson(
+      JSON.stringify({ field_name: 'ENTITY_ID', fe_type: 'text', abap_type: 'RAW16', is_key: true })
+    )[0]
+    const uuidDomainKey = parseFieldMetaJson(
+      JSON.stringify({ field_name: 'ID', fe_type: 'text', abap_type: 'CHAR', Length: 32, DomainName: 'SYSUUID_C32', is_key: true })
+    )[0]
+    const ddicRawKey = parseFieldMetaJson(
+      JSON.stringify({ field_name: 'ANY_TECH_KEY', fe_type: 'text', inttype: 'X', leng: 16, is_key: true })
+    )[0]
+    const entityIdWithoutUuidMeta = parseFieldMetaJson(
+      JSON.stringify({ field_name: 'ENTITY_ID', fe_type: 'text', is_key: true })
+    )[0]
+
+    expect(isFieldReadonly(raw16Key, 'create')).toBe(true)
+    expect(isFieldReadonly(raw16Key, 'edit')).toBe(true)
+    expect(isFieldReadonly(uuidDomainKey, 'create')).toBe(true)
+    expect(isFieldReadonly(uuidDomainKey, 'edit')).toBe(true)
+    expect(isFieldReadonly(ddicRawKey, 'create')).toBe(true)
+    expect(isFieldReadonly(ddicRawKey, 'edit')).toBe(true)
+    expect(isFieldReadonly(entityIdWithoutUuidMeta, 'create')).toBe(false)
+    expect(isFieldReadonly(entityIdWithoutUuidMeta, 'edit')).toBe(true)
   })
 })
 

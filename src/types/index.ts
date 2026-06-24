@@ -27,6 +27,8 @@ export interface FieldMeta {
   MandatoryFlag: string;
   HiddenFlag: string;
   DomainName: string;
+  RollName?: string;
+  rollname?: string;
   DisplayOrder: number;
   Length: number;
   Decimals: number;

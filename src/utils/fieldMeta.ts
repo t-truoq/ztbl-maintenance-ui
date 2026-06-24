@@ -98,18 +98,32 @@ export function buildFieldMetaFromFieldList(
 export function normalizeFieldMetaRow(raw: Record<string, any>): FieldMeta {
   const fieldName = String(raw.field_name ?? raw.FieldName ?? raw.FIELD_NAME ?? '')
   const feType = normalizeFeType(raw.fe_type ?? raw.FeType ?? raw.FieldType ?? raw.FE_TYPE)
+  const abapType = String(
+    raw.abap_type ??
+    raw.AbapType ??
+    raw.ABAP_TYPE ??
+    raw.field_type ??
+    raw.FieldTypeRaw ??
+    raw.FIELD_TYPE ??
+    raw.inttype ??
+    raw.IntType ??
+    raw.INTTYPE ??
+    ''
+  )
+  const domainName = String(raw.domain_name ?? raw.DomainName ?? raw.DOMAIN_NAME ?? raw.domname ?? raw.DomName ?? raw.DOMNAME ?? '')
+  const rollName = String(raw.rollname ?? raw.RollName ?? raw.ROLLNAME ?? '')
 
   return {
     _raw: raw,
     field_name: fieldName,
-    abap_type: String(raw.abap_type ?? raw.AbapType ?? raw.ABAP_TYPE ?? ''),
+    abap_type: abapType,
     fe_type: feType,
-    length: Number(raw.length ?? raw.Length ?? raw.LENGTH ?? 0),
+    length: Number(raw.length ?? raw.Length ?? raw.LENGTH ?? raw.leng ?? raw.Leng ?? raw.LENG ?? 0),
     decimals: Number(raw.decimals ?? raw.Decimals ?? raw.DECIMALS ?? 0),
     is_key: isTruthyFlag(raw.is_key) || raw.IsKeyField === 'X' || isTruthyFlag(raw.IS_KEY),
     is_mandatory: isTruthyFlag(raw.is_mandatory) || raw.MandatoryFlag === 'X' || isTruthyFlag(raw.IS_MANDATORY),
     label: String(raw.label ?? raw.LabelText ?? raw.LABEL ?? fieldName),
-    domain_name: String(raw.domain_name ?? raw.DomainName ?? raw.DOMAIN_NAME ?? ''),
+    domain_name: domainName,
     display_order: Number(raw.display_order ?? raw.DisplayOrder ?? raw.DISPLAY_ORDER ?? 0),
     is_hidden: isTruthyFlag(raw.is_hidden) || raw.HiddenFlag === 'X' || isTruthyFlag(raw.IS_HIDDEN) || raw.Hidden === 'X',
     ReadonlyFlag: isTruthyFlag(raw.readonly_flag) || raw.ReadonlyFlag === 'X' || isTruthyFlag(raw.READONLY_FLAG) || isTruthyFlag(raw.Readonly) || isTruthyFlag(raw.READONLY) ? 'X' : '',
@@ -121,9 +135,11 @@ export function normalizeFieldMetaRow(raw: Record<string, any>): FieldMeta {
     IsKeyField: isTruthyFlag(raw.is_key) || raw.IsKeyField === 'X' || isTruthyFlag(raw.IS_KEY) ? 'X' : '',
     MandatoryFlag: isTruthyFlag(raw.is_mandatory) || raw.MandatoryFlag === 'X' || isTruthyFlag(raw.IS_MANDATORY) ? 'X' : '',
     HiddenFlag: isTruthyFlag(raw.is_hidden) || raw.HiddenFlag === 'X' || isTruthyFlag(raw.IS_HIDDEN) || raw.Hidden === 'X' ? 'X' : '',
-    DomainName: String(raw.domain_name ?? raw.DomainName ?? raw.DOMAIN_NAME ?? ''),
+    DomainName: domainName,
+    RollName: rollName,
+    rollname: rollName,
     DisplayOrder: Number(raw.display_order ?? raw.DisplayOrder ?? raw.DISPLAY_ORDER ?? 0),
-    Length: Number(raw.length ?? raw.Length ?? raw.LENGTH ?? 0),
+    Length: Number(raw.length ?? raw.Length ?? raw.LENGTH ?? raw.leng ?? raw.Leng ?? raw.LENG ?? 0),
     Decimals: Number(raw.decimals ?? raw.Decimals ?? raw.DECIMALS ?? 0)
   }
 }
@@ -247,11 +263,16 @@ export function normalizeUuidFromBe(value: any): string {
  * @param {boolean} isCreate
  * @returns {string}
  */
+/** SAP system-managed fields that must never be sent in any payload */
+const SAP_CLIENT_FIELDS = new Set(['CLIENT', 'MANDT'])
+
 export function formatPayload(formData: Record<string, any>, meta: FieldMeta[], isCreate: boolean): string {
   const payload: Record<string, any> = {}
 
   for (const field of meta) {
     if (field.is_hidden) continue
+    // CLIENT/MANDT is always managed by SAP — never send it in any payload
+    if (SAP_CLIENT_FIELDS.has((field.field_name || '').toUpperCase())) continue
 
     const key = field.field_name
     // CLIENT / MANDT is auto-managed by the ABAP compiler — never send it
@@ -295,13 +316,18 @@ export function formatPayload(formData: Record<string, any>, meta: FieldMeta[], 
   return JSON.stringify(payload)
 }
 
-/** Visible fields for form (non-hidden, non auto-key on create, non-system field) */
-export function getFormFieldsFromMeta(meta: FieldMeta[], mode = 'create'): FieldMeta[] {
+/** Visible fields for form (non-hidden, non-system field). Technical IDs remain visible but read-only. */
+export function getFormFieldsFromMeta(meta: FieldMeta[], _mode = 'create'): FieldMeta[] {
   const SYSTEM_FIELD_NAMES = new Set([
     'CREATED_BY',
     'CREATED_AT',
     'CHANGED_BY',
     'CHANGED_AT',
+    'CREATED_ON',
+    'CHANGED_ON',
+    'LAST_CHANGED_BY',
+    'LAST_CHANGED_AT',
+    'LOCAL_LAST_CHANGED_AT',
     'ERNAM',
     'ERDAT',
     'ERZET',
@@ -315,8 +341,7 @@ export function getFormFieldsFromMeta(meta: FieldMeta[], mode = 'create'): Field
     if (f.is_hidden) return false
     const name = (f.field_name || f.FieldName || '').toUpperCase()
     if (SYSTEM_FIELD_NAMES.has(name)) return false
-    if (/^(CREATED|CHANGED)_(BY|AT|ON|DATE|TIME)$/i.test(name)) return false
-    if (mode === 'create' && f.is_key && f.fe_type === 'uuid') return false
+    if (/^(CREATED|CHANGED|LAST_CHANGED|LOCAL_LAST_CHANGED)_(BY|AT|ON|DATE|TIME)$/i.test(name)) return false
     return true
   })
 }

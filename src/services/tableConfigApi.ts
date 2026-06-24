@@ -115,12 +115,12 @@ export async function getTables(): Promise<TableConfig[]> {
   const res = await api.get('/TableConfig', {
     params: {
       'sap-client': SAP_CLIENT,
-      '$filter': 'IsActiveEntity eq true',
+      '$filter': "IsActiveEntity eq true and ActiveFlag eq 'X'",
       '$select': 'TableName,Description,ConfigUuid,ActiveFlag,ApprovalRequired,IsActiveEntity'
     }
   })
   const rows: TableConfig[] = res.data.value || []
-  const activeRows = rows.filter(row => row.IsActiveEntity !== false)
+  const activeRows = rows.filter(row => row.IsActiveEntity !== false && row.ActiveFlag === 'X')
   return Array.from(
     new Map(activeRows.map(row => [normalizeConfigUuid(row.ConfigUuid), {
       ...row,
@@ -444,7 +444,6 @@ export async function updateRecord(
 }
 
 export async function deleteRecord(configUuid: string, tableName: string, recordKey: any): Promise<any> {
-  console.log('[deleteRecord] configUuid:', configUuid, 'tableName:', tableName, 'recordKey:', recordKey)
   const res = await apiPostWithCsrf(
     actionUrl(configUuid, 'deleteRecord'),
     {

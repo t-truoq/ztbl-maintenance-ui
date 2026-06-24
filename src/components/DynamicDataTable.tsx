@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react'
 import {
   Table,
   TableHeaderRow,
@@ -7,6 +8,7 @@ import {
   BusyIndicator,
   Text,
   Button,
+  CheckBox,
   Label,
   Title,
   Toolbar,
@@ -18,6 +20,7 @@ import {
 import CellEditControl from './CellEditControl'
 import { formatHeaderLabel } from '../utils/tableHelpers'
 import { formatCellValue } from '../utils/displayHelpers'
+import { buildRecordKeyString } from '../utils/recordHelpers'
 
 import { FieldMeta, TableConfig, TableRowData } from '../types'
 
@@ -38,8 +41,7 @@ interface DynamicDataTableProps {
   onStartEditing: () => void
   onStartCreating: () => void
   onRefresh: () => void
-  onEditRow: (row: TableRowData) => void
-  onDeleteRow: (row: TableRowData) => void
+  onDeleteRows: (rows: TableRowData[]) => void
 }
 
 export default function DynamicDataTable({
@@ -59,9 +61,10 @@ export default function DynamicDataTable({
   onStartEditing,
   onStartCreating,
   onRefresh,
-  onEditRow,
-  onDeleteRow,
+  onDeleteRows,
 }: DynamicDataTableProps) {
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(new Set())
+
   const fieldsWithWidths = fields.map(f => {
     const headerLabel = formatHeaderLabel(f)
     const technicalName = f.field_name || f.FieldName
@@ -69,15 +72,102 @@ export default function DynamicDataTable({
     const isDate = feType === 'date'
     const isDomain = feType === 'domain'
     const minColWidth = Math.max(
-      isDate ? 220 : isDomain ? 200 : 150,
+      isDate ? 260 : isDomain ? 200 : 150,
       headerLabel.length * 10 + 50
     )
     return { field: f, minColWidth, headerLabel, technicalName }
   })
 
-  const totalTableWidth = fieldsWithWidths.reduce((sum, item) => sum + item.minColWidth, 100)
+  const getRowKey = (row: TableRowData, fallbackIndex: number) => {
+    if (row._isNew) return `new-${fallbackIndex}`
+    try {
+      return buildRecordKeyString(fields, row)
+    } catch {
+      return `row-${fallbackIndex}`
+    }
+  }
+
+  const filteredRowKeys = useMemo(
+    () => filteredData.map((row, index) => getRowKey(row, index)),
+    [filteredData, fields]
+  )
+
+  useEffect(() => {
+    if (isEditingTable) return
+    setSelectedRowKeys(prev => {
+      if (prev.size === 0) return prev
+      const visible = new Set(filteredRowKeys)
+      const next = new Set([...prev].filter(key => visible.has(key)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [filteredRowKeys, isEditingTable])
+
+  useEffect(() => {
+    setSelectedRowKeys(new Set())
+  }, [selectedTable.ConfigUuid])
+
+  const selectedRowCount = selectedRowKeys.size
+  const selectedRows = filteredData.filter((row, index) => selectedRowKeys.has(getRowKey(row, index)))
+  const hasNewRows = isEditingTable && editedData.some(row => row._isNew)
+  const allVisibleRowsSelected =
+    filteredRowKeys.length > 0 && filteredRowKeys.every(key => selectedRowKeys.has(key))
+
+  const toggleRowSelection = (rowKey: string, checked: boolean) => {
+    setSelectedRowKeys(prev => {
+      const next = new Set(prev)
+      if (checked) next.add(rowKey)
+      else next.delete(rowKey)
+      return next
+    })
+  }
+
+  const toggleAllVisibleRows = (checked: boolean) => {
+    setSelectedRowKeys(prev => {
+      const next = new Set(prev)
+      filteredRowKeys.forEach(key => {
+        if (checked) next.add(key)
+        else next.delete(key)
+      })
+      return next
+    })
+  }
+
+  const startEditingSelectedRows = () => {
+    if (selectedRowKeys.size === 0) return
+    onStartEditing()
+  }
+
+  const deleteSelectedRow = () => {
+    if (selectedRows.length === 0) return
+    onDeleteRows(selectedRows)
+  }
+
+  const startCreatingNewRow = () => {
+    setSelectedRowKeys(new Set())
+    onStartCreating()
+  }
+
+  const cancelInlineEditing = () => {
+    setSelectedRowKeys(new Set())
+    onCancelInlineEdits()
+  }
+
+  const selectionColumnWidth = 72
+  const totalTableWidth = fieldsWithWidths.reduce(
+    (sum, item) => sum + item.minColWidth,
+    selectionColumnWidth + (hasNewRows ? 100 : 0)
+  )
   const columnsStyle =
-    fieldsWithWidths.map(item => `${item.minColWidth}px`).join(' ') + ' 100px'
+    `${selectionColumnWidth}px ${fieldsWithWidths.map(item => `${item.minColWidth}px`).join(' ')}${hasNewRows ? ' 100px' : ''}`
+  const tableColumnCount = fields.length + 1 + (hasNewRows ? 1 : 0)
+  const selectionCellStyle = {
+    minWidth: `${selectionColumnWidth}px`,
+    boxSizing: 'border-box',
+    display: 'flex',
+    justifyContent: 'center',
+    paddingInline: '12px',
+    overflow: 'visible',
+  } as const
 
   return (
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -97,7 +187,7 @@ export default function DynamicDataTable({
             >
               Save
             </Button>
-            <Button design="Transparent" icon={'decline' as any} onClick={onCancelInlineEdits}>
+            <Button design="Transparent" icon={'decline' as any} onClick={cancelInlineEditing}>
               Cancel
             </Button>
             <Button design="Transparent" icon={'add' as any} onClick={onAddRow}>
@@ -109,16 +199,24 @@ export default function DynamicDataTable({
             <Button
               design="Emphasized"
               icon={'edit' as any}
-              disabled={!!activeTableLock}
-              onClick={onStartEditing}
+              disabled={!!activeTableLock || selectedRowCount === 0}
+              onClick={startEditingSelectedRows}
             >
-              Edit
+              {selectedRowCount > 0 ? `Edit (${selectedRowCount})` : 'Edit'}
+            </Button>
+            <Button
+              design="Transparent"
+              icon={'delete' as any}
+              disabled={!!activeTableLock || selectedRowCount === 0}
+              onClick={deleteSelectedRow}
+            >
+              {selectedRowCount > 1 ? `Delete (${selectedRowCount})` : 'Delete'}
             </Button>
             <Button
               design="Transparent"
               icon={'add' as any}
               disabled={!!activeTableLock}
-              onClick={onStartCreating}
+              onClick={startCreatingNewRow}
             >
               Create
             </Button>
@@ -142,12 +240,19 @@ export default function DynamicDataTable({
       )}
 
       {/* ── Scrollable Table Wrapper ───────────────────────────────────── */}
-      <div style={{ width: '100%', overflowX: 'auto' }}>
+      <div className={`dynamic-table-scroll${isEditingTable ? ' dynamic-table-scroll--editing' : ''}`}>
         <Table
           overflowMode="Scroll"
           style={{ minWidth: `${totalTableWidth}px`, width: '100%' }}
           headerRow={
             <TableHeaderRow style={{ gridTemplateColumns: columnsStyle }}>
+              <TableHeaderCell minWidth={`${selectionColumnWidth}px`} style={selectionCellStyle}>
+                <CheckBox
+                  checked={allVisibleRowsSelected}
+                  disabled={filteredRowKeys.length === 0 || isEditingTable}
+                  onChange={(e: any) => toggleAllVisibleRows(e.target.checked)}
+                />
+              </TableHeaderCell>
               {fieldsWithWidths.map(({ field: f, minColWidth, headerLabel }) => {
                 const technicalName = f.field_name || f.FieldName
                 return (
@@ -178,9 +283,11 @@ export default function DynamicDataTable({
                   </TableHeaderCell>
                 )
               })}
-              <TableHeaderCell minWidth="100px" style={{ minWidth: '100px' }}>
-                <Label>Actions</Label>
-              </TableHeaderCell>
+              {hasNewRows && (
+                <TableHeaderCell minWidth="100px" style={{ minWidth: '100px' }}>
+                  <Label>Actions</Label>
+                </TableHeaderCell>
+              )}
             </TableHeaderRow>
           }
         >
@@ -188,52 +295,62 @@ export default function DynamicDataTable({
           {isEditingTable ? (
             editedData.length === 0 ? (
               <TableRow>
-                <TableCell {...({ colSpan: fields.length + 1 } as any)}>
+                <TableCell {...({ colSpan: tableColumnCount } as any)}>
                   <Text>No data available</Text>
                 </TableCell>
               </TableRow>
             ) : (
               editedData.map((row, i) => (
                 <TableRow key={i} style={{ gridTemplateColumns: columnsStyle }}>
+                  <TableCell style={selectionCellStyle}>
+                    <CheckBox checked={row._isNew || selectedRowKeys.has(getRowKey(row, i))} disabled />
+                  </TableCell>
                   {fieldsWithWidths.map(({ field: f, minColWidth }) => {
                     const name = f.field_name || f.FieldName
+                    const feType = f.fe_type || f.FeType
+                    const rowSelected = row._isNew || selectedRowKeys.has(getRowKey(row, i))
                     return (
-                      <TableCell key={name} style={{ minWidth: `${minColWidth}px` }}>
-                        <CellEditControl
-                          row={row}
-                          rowIndex={i}
-                          field={f}
-                          inlineErrors={inlineErrors}
-                          configUuid={selectedTable.ConfigUuid}
-                          onCellChange={onCellChange}
-                        />
+                      <TableCell
+                        key={name}
+                        style={{
+                          minWidth: `${minColWidth}px`,
+                          overflow: feType === 'date' ? 'visible' : undefined,
+                        }}
+                      >
+                        {rowSelected ? (
+                          <CellEditControl
+                            row={row}
+                            rowIndex={i}
+                            field={f}
+                            inlineErrors={inlineErrors}
+                            configUuid={selectedTable.ConfigUuid}
+                            onCellChange={onCellChange}
+                          />
+                        ) : (
+                          <Text style={{ color: '#32363a' }}>{formatCellValue(f, row[name])}</Text>
+                        )}
                       </TableCell>
                     )
                   })}
-                  <TableCell>
-                    {row._isNew ? (
-                      <Button
-                        design="Transparent"
-                        icon={'delete' as any}
-                        accessibleName="Remove new record"
-                        onClick={() => onRemoveNewRow(i)}
-                      />
-                    ) : (
-                      <Button
-                        design="Transparent"
-                        icon={'delete' as any}
-                        accessibleName="Delete record"
-                        onClick={() => onDeleteRow(row)}
-                      />
-                    )}
-                  </TableCell>
+                  {hasNewRows && (
+                    <TableCell>
+                      {row._isNew ? (
+                        <Button
+                          design="Transparent"
+                          icon={'delete' as any}
+                          accessibleName="Remove new record"
+                          onClick={() => onRemoveNewRow(i)}
+                        />
+                      ) : null}
+                    </TableCell>
+                  )}
                 </TableRow>
               ))
             )
           ) : filteredData.length === 0 ? (
             /* ── Read-only empty state ────────────────────────────────── */
             <TableRow>
-              <TableCell {...({ colSpan: fields.length + 1 } as any)}>
+              <TableCell {...({ colSpan: tableColumnCount } as any)}>
                 <Text>No data available</Text>
               </TableCell>
             </TableRow>
@@ -245,10 +362,23 @@ export default function DynamicDataTable({
                 interactive={!activeTableLock}
                 onClick={() => {
                   if (activeTableLock) return
-                  onEditRow(row)
+                  toggleRowSelection(getRowKey(row, i), !selectedRowKeys.has(getRowKey(row, i)))
                 }}
                 style={{ gridTemplateColumns: columnsStyle }}
               >
+                <TableCell
+                  style={selectionCellStyle}
+                  onClick={(e: any) => e.stopPropagation()}
+                >
+                  <CheckBox
+                    checked={selectedRowKeys.has(getRowKey(row, i))}
+                    disabled={!!activeTableLock}
+                    onChange={(e: any) => {
+                      e.stopPropagation()
+                      toggleRowSelection(getRowKey(row, i), e.target.checked)
+                    }}
+                  />
+                </TableCell>
                 {fieldsWithWidths.map(({ field: f, minColWidth }) => {
                   const name = f.field_name || f.FieldName
                   const val = row[name]
@@ -275,33 +405,12 @@ export default function DynamicDataTable({
                     </TableCell>
                   )
                 })}
-                <TableCell onClick={(e: any) => e.stopPropagation()}>
-                  <Button
-                    design="Transparent"
-                    icon={'edit' as any}
-                    accessibleName="Edit record"
-                    disabled={!!activeTableLock}
-                    onClick={(e: any) => {
-                      e.stopPropagation()
-                      onEditRow(row)
-                    }}
-                  />
-                  <Button
-                    design="Transparent"
-                    icon={'delete' as any}
-                    accessibleName="Delete record"
-                    disabled={!!activeTableLock}
-                    onClick={(e: any) => {
-                      e.stopPropagation()
-                      onDeleteRow(row)
-                    }}
-                  />
-                </TableCell>
               </TableRow>
             ))
           )}
         </Table>
       </div>
+      <div className="dynamic-table-bottom-spacer" aria-hidden="true" />
     </div>
   )
 }

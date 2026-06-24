@@ -1,10 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   BusyIndicator,
   Button,
+  DatePicker,
   Icon,
+  Input,
   Label,
   MessageStrip,
+  Option,
+  Select,
   Text,
   Title,
   Toolbar,
@@ -23,8 +27,10 @@ const ACTION_META: Record<string, { icon: string; color: string; background: str
 }
 
 interface AuditLogPanelProps {
-  tableName: string;
+  tableName: string
 }
+
+type ActionFilter = 'ALL' | 'C' | 'U' | 'D'
 
 function formatDateTime(value?: string): string {
   if (!value) return '-'
@@ -40,6 +46,15 @@ function formatDateTime(value?: string): string {
     minute: '2-digit',
     second: '2-digit'
   })
+}
+
+function dateInputValue(value?: string): string {
+  if (!value) return ''
+  const raw = String(value)
+  const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T')
+  const date = new Date(normalized)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toISOString().slice(0, 10)
 }
 
 function splitAuditParts(value: string): Array<{ key: string; value: string }> {
@@ -61,6 +76,12 @@ function partsToMap(parts: Array<{ key: string; value: string }>): Map<string, s
   return new Map(parts.filter(part => part.key).map(part => [part.key, part.value]))
 }
 
+function normalizeDash(value?: string): string {
+  const text = String(value || '').trim()
+  if (!text || text === '-' || text === String.fromCharCode(8212)) return ''
+  return text
+}
+
 function changedParts(oldValue: string, newValue: string, fieldName = ''): Array<{ key: string; oldValue: string; newValue: string }> {
   const oldParts = splitAuditParts(oldValue)
   const newParts = splitAuditParts(newValue)
@@ -71,7 +92,7 @@ function changedParts(oldValue: string, newValue: string, fieldName = ''): Array
   if (keys.length === 0) {
     const oldScalar = oldParts.find(part => !part.key)?.value || oldValue || ''
     const newScalar = newParts.find(part => !part.key)?.value || newValue || ''
-    const key = fieldName && fieldName !== '-' && fieldName !== '—' ? fieldName : 'Value'
+    const key = normalizeDash(fieldName) || 'Value'
     return oldScalar !== newScalar
       ? [{ key, oldValue: oldScalar, newValue: newScalar }]
       : []
@@ -86,8 +107,47 @@ function changedParts(oldValue: string, newValue: string, fieldName = ''): Array
     .filter(part => part.oldValue !== part.newValue)
 }
 
+function getRawRecordKey(entry: AuditLogEntry): string {
+  const anyEntry = entry as any
+  return (
+    anyEntry.RecordKey ||
+    anyEntry.record_key ||
+    anyEntry.RecordId ||
+    anyEntry.KeyValue ||
+    anyEntry.ObjectKey ||
+    anyEntry.AuditId ||
+    '-'
+  )
+}
+
+function getRecordKey(entry: AuditLogEntry): string {
+  const rawKey = getRawRecordKey(entry)
+  if (!rawKey || rawKey === '-') return '-'
+
+  try {
+    const parsed = JSON.parse(rawKey)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return rawKey
+
+    const visibleParts = Object.entries(parsed)
+      .filter(([key]) => !['CLIENT', 'MANDT'].includes(key.toUpperCase()))
+      .map(([key, value]) => `${key}: ${String(value)}`)
+
+    return visibleParts.length > 0 ? visibleParts.join(', ') : '-'
+  } catch {
+    return rawKey
+  }
+}
+
+function includesText(value: unknown, query: string): boolean {
+  return String(value ?? '').toLowerCase().includes(query)
+}
+
+function actionLabel(actionType: string): string {
+  return ACTION_LABELS[actionType] || actionType || 'Unknown'
+}
+
 function ActionBadge({ actionType }: { actionType: string }) {
-  const actionLabel = ACTION_LABELS[actionType] || actionType
+  const actionLabelText = actionLabel(actionType)
   const meta = ACTION_META[actionType] || { icon: 'question-mark', color: '#556b82', background: '#eef2f5' }
 
   return (
@@ -104,7 +164,7 @@ function ActionBadge({ actionType }: { actionType: string }) {
       }}
     >
       <Icon name={meta.icon} style={{ width: '0.9rem', height: '0.9rem', color: meta.color }} />
-      <span>{actionLabel}</span>
+      <span>{actionLabelText}</span>
     </div>
   )
 }
@@ -230,6 +290,7 @@ function DiffBlock({ fieldName, oldValue, newValue }: { fieldName: string; oldVa
 
 function AuditEntryItem({ entry }: { entry: AuditLogEntry }) {
   const { fieldName, oldValue, newValue } = getAuditDisplayCells(entry)
+  const normalizedField = normalizeDash(fieldName)
   const isUpdate = entry.ActionType === 'U'
 
   return (
@@ -263,11 +324,17 @@ function AuditEntryItem({ entry }: { entry: AuditLogEntry }) {
               {formatDateTime(entry.ChangedAt)}
             </Text>
           </div>
-          {fieldName && fieldName !== '-' && fieldName !== '—' && (
+          <div>
+            <Label>Record Key</Label>
+            <Text className="audit-record-key">
+              {getRecordKey(entry)}
+            </Text>
+          </div>
+          {normalizedField && (
             <div>
               <Label>Field</Label>
               <Text style={{ display: 'block', marginTop: '0.15rem', wordBreak: 'break-word' }}>
-                {fieldName}
+                {normalizedField}
               </Text>
             </div>
           )}
@@ -276,7 +343,7 @@ function AuditEntryItem({ entry }: { entry: AuditLogEntry }) {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: isUpdate ? 'minmax(0, 1fr) minmax(0, 1fr)' : 'minmax(0, 1fr)',
+            gridTemplateColumns: isUpdate ? 'minmax(0, 1fr)' : 'minmax(0, 1fr)',
             gap: '0.75rem'
           }}
         >
@@ -285,10 +352,10 @@ function AuditEntryItem({ entry }: { entry: AuditLogEntry }) {
           ) : (
             <>
               {entry.ActionType !== 'C' && (
-            <ValueBlock title="Old Value" value={oldValue} emptyText="No previous value" />
+                <ValueBlock title="Old Value" value={oldValue} emptyText="No previous value" />
               )}
               {entry.ActionType !== 'D' && (
-            <ValueBlock title="New Value" value={newValue} emptyText="No new value" />
+                <ValueBlock title="New Value" value={newValue} emptyText="No new value" />
               )}
             </>
           )}
@@ -302,6 +369,10 @@ export default function AuditLogPanel({ tableName }: AuditLogPanelProps) {
   const [entries, setEntries] = useState<AuditLogEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [actionFilter, setActionFilter] = useState<ActionFilter>('ALL')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
 
   useEffect(() => {
     if (tableName) loadAuditLog()
@@ -321,49 +392,121 @@ export default function AuditLogPanel({ tableName }: AuditLogPanelProps) {
     }
   }
 
+  const filteredEntries = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+
+    return entries.filter(entry => {
+      if (actionFilter !== 'ALL' && entry.ActionType !== actionFilter) return false
+
+      const entryDate = dateInputValue(entry.ChangedAt)
+      if (dateFrom && entryDate && entryDate < dateFrom) return false
+      if (dateTo && entryDate && entryDate > dateTo) return false
+
+      if (!query) return true
+
+      const display = getAuditDisplayCells(entry)
+      const recordKey = getRecordKey(entry)
+      const rawRecordKey = getRawRecordKey(entry)
+      return (
+        includesText(entry.ChangedBy, query) ||
+        includesText(entry.FieldName, query) ||
+        includesText(display.fieldName, query) ||
+        includesText(display.oldValue, query) ||
+        includesText(display.newValue, query) ||
+        includesText(recordKey, query) ||
+        includesText(rawRecordKey, query) ||
+        includesText(actionLabel(entry.ActionType), query)
+      )
+    })
+  }, [entries, searchQuery, actionFilter, dateFrom, dateTo])
+
   return (
-    <div style={{ padding: '0.5rem 0' }}>
-      <Toolbar design="Solid">
+    <section className="audit-panel">
+      <Toolbar design="Transparent" className="audit-toolbar">
+        <div className="audit-title-block">
+          <Title level="H4">Audit Trail</Title>
+          <Text className="audit-muted">Latest changes are listed first. Updates show only the changed field values.</Text>
+        </div>
+        <ToolbarSpacer />
+        <Text className="audit-count">{filteredEntries.length} audit record(s)</Text>
         <Button icon={'refresh' as any} onClick={loadAuditLog} disabled={loading}>
           Refresh
         </Button>
-        <ToolbarSpacer />
-        <Text style={{ fontSize: '13px', color: '#6a7075' }}>
-          {entries.length} audit record(s)
-        </Text>
       </Toolbar>
 
+      <div className="audit-filter-bar" aria-label="Audit filters">
+        <div className="audit-filter-field audit-filter-search">
+          <Label>Search</Label>
+          <Input
+            placeholder="User, field, value, record key..."
+            value={searchQuery}
+            icon={<Icon name="search" />}
+            onInput={(event: any) => setSearchQuery(event.target.value)}
+            className="audit-search-input"
+          />
+        </div>
+        <div className="audit-filter-field audit-filter-action">
+          <Label>Action</Label>
+          <Select
+            value={actionFilter}
+            onChange={(event: any) => setActionFilter(event.detail.selectedOption.value as ActionFilter)}
+          >
+            <Option value="ALL">All</Option>
+            <Option value="C">Created</Option>
+            <Option value="U">Updated</Option>
+            <Option value="D">Deleted</Option>
+          </Select>
+        </div>
+        <div className="audit-filter-field audit-filter-date">
+          <Label>From</Label>
+          <DatePicker
+            className="audit-date-picker"
+            formatPattern="yyyy-MM-dd"
+            value={dateFrom}
+            onChange={(event: any) => setDateFrom(event.target.value)}
+            aria-label="Audit date from"
+          />
+        </div>
+        <div className="audit-filter-field audit-filter-date">
+          <Label>To</Label>
+          <DatePicker
+            className="audit-date-picker"
+            formatPattern="yyyy-MM-dd"
+            value={dateTo}
+            onChange={(event: any) => setDateTo(event.target.value)}
+            aria-label="Audit date to"
+          />
+        </div>
+      </div>
+
       {loading && (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
+        <div className="audit-loading">
           <BusyIndicator active size="M" />
+          <Text>Loading audit records...</Text>
         </div>
       )}
 
       {error && (
-        <MessageStrip design="Negative" hideCloseButton style={{ marginTop: '0.75rem' }}>
+        <MessageStrip design="Negative" hideCloseButton className="audit-message">
           {error}
         </MessageStrip>
       )}
 
-      {!loading && !error && entries.length === 0 && (
+      {!loading && !error && filteredEntries.length === 0 && (
         <MessageStrip design="Information" hideCloseButton style={{ marginTop: '0.75rem' }}>
           No audit records found for this table.
         </MessageStrip>
       )}
 
-      {!loading && !error && entries.length > 0 && (
+      {!loading && !error && filteredEntries.length > 0 && (
         <section style={{ padding: '0.75rem 0.75rem 0' }}>
-          <Title level="H5" style={{ marginBottom: '0.25rem' }}>Audit Trail</Title>
-          <Text style={{ color: '#6a7075' }}>
-            Latest changes are listed first. Updates show only the changed field values.
-          </Text>
           <div style={{ marginTop: '0.75rem' }}>
-            {entries.map(entry => (
+            {filteredEntries.map(entry => (
               <AuditEntryItem key={entry.AuditId} entry={entry} />
             ))}
           </div>
         </section>
       )}
-    </div>
+    </section>
   )
 }

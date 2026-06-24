@@ -4,7 +4,7 @@ import { FieldMeta, TableRowData } from '../../types'
 
 interface DeleteConfirmDialogProps {
   open: boolean
-  deletingRow: TableRowData | null
+  deletingRows: TableRowData[]
   allFields: FieldMeta[]
   deleteLoading: boolean
   onConfirm: () => void
@@ -17,12 +17,14 @@ interface DeleteConfirmDialogProps {
  */
 export default function DeleteConfirmDialog({
   open,
-  deletingRow,
+  deletingRows,
   allFields,
   deleteLoading,
   onConfirm,
   onCancel,
 }: DeleteConfirmDialogProps) {
+  const deleteCount = deletingRows.length
+
   return (
     <Dialog
       {...({
@@ -53,9 +55,12 @@ export default function DeleteConfirmDialog({
     >
       {deleteLoading && <BusyIndicator active size="M" />}
       <Text style={{ whiteSpace: 'pre-line' }}>
-        Are you sure you want to delete this record?
+        {deleteCount > 1
+          ? `Are you sure you want to delete these ${deleteCount} records?`
+          : 'Are you sure you want to delete this record?'}
         {'\n\n'}
-        {deletingRow && formatDeleteSummary(allFields, deletingRow)}
+        {deleteCount === 1 && formatDeleteSummary(allFields, deletingRows[0])}
+        {deleteCount > 1 && 'The selected records will be deleted one by one.'}
       </Text>
     </Dialog>
   )

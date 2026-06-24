@@ -20,6 +20,7 @@ import {
 import { initFormValues } from '../../utils/recordHelpers'
 import WelcomeDashboard from '../../components/WelcomeDashboard'
 import DynamicDataTable from '../../components/DynamicDataTable'
+import ExcelPipelineTab from '../../components/ExcelPipelineTab'
 import FieldSchemaTab from '../../components/FieldSchemaTab'
 import AuditLogPanel from '../../components/AuditLogPanel'
 import RepositoryInfoTab from '../../components/RepositoryInfoTab'
@@ -53,8 +54,8 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
     editingRow,
     deleteDialogOpen,
     setDeleteDialogOpen,
-    deletingRow,
-    setDeletingRow,
+    deletingRows,
+    setDeletingRows,
     deleteLoading,
     optimisticLockOpen,
     setOptimisticLockOpen,
@@ -142,10 +143,13 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
             heading={
               <FlexBox alignItems="Center" gap="8px">
                 <Button
-                  icon="nav-back"
                   design="Transparent"
-                  title="Back to Table Selection"
-                  onClick={() => onSelectTable(null as any)}
+                  icon={'navigation-left-arrow' as any}
+                  accessibleName="Back to table overview"
+                  onClick={() => {
+                    releaseTableLockIfHeld()
+                    onSelectTable(null)
+                  }}
                 />
                 <Title>{selectedTable.TableName}</Title>
               </FlexBox>
@@ -223,6 +227,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
           onTabSelect={(e: any) => {
             const text = e.detail?.tab?.text
             if (text === 'Field Schema') setActiveTab('fieldSchema')
+            else if (text === 'Excel') setActiveTab('excel')
             else if (text === 'Audit Log') setActiveTab('auditLog')
             else if (text === 'Dependencies') setActiveTab('dependencies')
             else setActiveTab('tableData')
@@ -258,8 +263,13 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
                 }
               }}
               onRefresh={() => loadTable(selectedTable)}
-              onEditRow={openEditDialog}
-              onDeleteRow={openDeleteDialog}
+              onDeleteRows={openDeleteDialog}
+            />
+          </Tab>
+          <Tab text="Excel" selected={activeTab === 'excel'}>
+            <ExcelPipelineTab
+              tableName={selectedTable.TableName}
+              onImported={() => loadTable(selectedTable)}
             />
           </Tab>
           <Tab text="Field Schema" selected={activeTab === 'fieldSchema'}>
@@ -299,13 +309,13 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
 
       <DeleteConfirmDialog
         open={deleteDialogOpen}
-        deletingRow={deletingRow}
+        deletingRows={deletingRows}
         allFields={allFields}
         deleteLoading={deleteLoading}
         onConfirm={handleConfirmDelete}
         onCancel={() => {
           setDeleteDialogOpen(false)
-          setDeletingRow(null)
+          setDeletingRows([])
           releaseTableLockIfHeld()
         }}
       />
