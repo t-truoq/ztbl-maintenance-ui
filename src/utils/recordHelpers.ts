@@ -1,6 +1,7 @@
 import { formatDateForSap } from './displayHelpers'
 import {
-  formatPayload
+  formatPayload,
+  isFkSelectFieldMeta
 } from './fieldMeta'
 import { formatEtagValueForAbap } from './abapFormatter'
 import { FieldMeta, TableRowData } from '../types'
@@ -10,6 +11,7 @@ export {
   getFormFieldsFromMeta as getFormFields,
   initFormValuesFromMeta as initFormValues,
   isDomainFieldMeta as isDomainField,
+  isFkSelectFieldMeta as isFkSelectField,
   getDomainKeyFromMeta as getDomainKey
 } from './fieldMeta'
 
@@ -47,18 +49,7 @@ export function isSystemGeneratedField(field: FieldMeta): boolean {
 }
 
 export function isForeignKeyField(field: FieldMeta): boolean {
-  const raw = field._raw || {}
-  const feType = String(field.fe_type || field.FeType || '').toLowerCase()
-  return (
-    field.is_fk_key === true ||
-    field.IsFkKey === 'X' ||
-    raw.is_fk_key === true ||
-    raw.is_fk_key === 'X' ||
-    raw.IS_FK_KEY === true ||
-    raw.IS_FK_KEY === 'X' ||
-    raw.IsFkKey === 'X' ||
-    feType === 'fk_select'
-  )
+  return isFkSelectFieldMeta(field)
 }
 
 /**

@@ -71,7 +71,7 @@ export default function DynamicDataTable({
     const headerLabel = formatHeaderLabel(f)
     const feType = f.fe_type || f.FeType
     const isDate = feType === 'date'
-    const isDomain = feType === 'domain'
+    const isDomain = feType === 'domain' || feType === 'fk_select'
     const minColWidth = Math.max(
       isDate ? 260 : isDomain ? 200 : 150,
       headerLabel.length * 10 + 50
@@ -359,7 +359,7 @@ export default function DynamicDataTable({
                         key={name}
                         style={{
                           minWidth: `${minColWidth}px`,
-                          overflow: feType === 'date' ? 'visible' : undefined,
+                          overflow: feType === 'date' || feType === 'fk_select' ? 'visible' : undefined,
                         }}
                       >
                         {rowSelected ? (
@@ -369,6 +369,7 @@ export default function DynamicDataTable({
                             field={f}
                             inlineErrors={inlineErrors}
                             configUuid={selectedTable.ConfigUuid}
+                            tableName={selectedTable.TableName}
                             onCellChange={onCellChange}
                           />
                         ) : (

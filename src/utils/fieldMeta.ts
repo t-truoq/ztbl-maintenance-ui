@@ -389,7 +389,16 @@ export function initFormValuesFromMeta(formFields: FieldMeta[], row: TableRowDat
 }
 
 export function isDomainFieldMeta(field: FieldMeta): boolean {
-  return field.fe_type === 'domain' || field.fe_type === 'fk_select'
+  return field.fe_type === 'domain' || field.FeType === 'domain'
+}
+
+export function isFkSelectFieldMeta(field: FieldMeta): boolean {
+  return (
+    field.fe_type === 'fk_select' ||
+    field.FeType === 'fk_select' ||
+    field.is_fk_key === true ||
+    field.IsFkKey === 'X'
+  )
 }
 
 export function getDomainKeyFromMeta(field: FieldMeta): string {

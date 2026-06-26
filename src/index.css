@@ -137,6 +137,31 @@ ui5-filter-bar {
   max-width: 100%;
 }
 
+.fk-value-help {
+  width: 100%;
+  min-width: 0;
+}
+
+.fk-value-help-row {
+  width: 100%;
+  min-width: 0;
+  gap: 0.35rem;
+  padding-inline-end: 0.125rem;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+.fk-value-help-combobox {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.fk-value-help-button {
+  flex: 0 0 2rem;
+  width: 2rem;
+  min-width: 2rem;
+}
+
 .dynamic-table-scroll {
   width: 100%;
   overflow-x: auto;

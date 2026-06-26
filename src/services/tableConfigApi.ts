@@ -5,6 +5,7 @@ import {
   getFriendlyErrorMessage
 } from './apiClient'
 import { getCachedDomainValues, setCachedDomainValues } from './domainCache'
+import { FkValueOption, getCachedFkValues, setCachedFkValues } from './fkValueCache'
 import {
   formatEtagValueForAbap,
   isJsonFormatError,
@@ -217,7 +218,7 @@ export async function loadFieldMetaForTable(configUuid: string, tableName: strin
     if (!custom) return dbField
 
     const mergedFeType =
-      dbField.fe_type === 'uuid'
+      dbField.fe_type === 'uuid' || dbField.fe_type === 'fk_select'
         ? dbField.fe_type
         : custom.fe_type || dbField.fe_type
 
@@ -234,6 +235,65 @@ export async function loadFieldMetaForTable(configUuid: string, tableName: strin
       FeType: mergedFeType
     }
   }).sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))
+}
+
+function parseFkValuesJson(
+  dataJson: string,
+  keyField: string,
+  displayField: string
+): FkValueOption[] {
+  if (!dataJson) return []
+  try {
+    const fixed = fixJson(dataJson)
+    const parsed = JSON.parse(fixed)
+    const arr = Array.isArray(parsed) ? parsed : [parsed]
+    const getValue = (row: Record<string, any>, key: string): any => {
+      if (!row || !key) return undefined
+      if (row[key] !== undefined) return row[key]
+      const exact = Object.keys(row).find(k => k.toUpperCase() === key.toUpperCase())
+      return exact ? row[exact] : undefined
+    }
+    const getUsableKeys = (row: Record<string, any>): string[] =>
+      Object.keys(row || {}).filter(key => !isClientFieldName(key))
+    const getFallbackKey = (row: Record<string, any>): string =>
+      getUsableKeys(row).find(key => /(^|_)ID$/i.test(key) || /UUID/i.test(key)) ??
+      getUsableKeys(row)[0] ??
+      ''
+    const getFallbackDisplay = (row: Record<string, any>, resolvedKey: string): any => {
+      const usableKeys = getUsableKeys(row)
+      const displayKey =
+        usableKeys.find(key => /NAME|TEXT|DESC|DESCRIPTION|TITLE/i.test(key) && key !== resolvedKey) ??
+        usableKeys.find(key => key !== resolvedKey) ??
+        resolvedKey
+      return displayKey ? row[displayKey] : undefined
+    }
+    return arr.map(row => {
+      const resolvedKey = getValue(row, keyField) === undefined ? getFallbackKey(row) : keyField
+      const value = String(getValue(row, resolvedKey) ?? row?.value ?? row?.VALUE ?? '')
+      const labelValue =
+        getValue(row, displayField) ??
+        row?.label ??
+        row?.LABEL ??
+        getFallbackDisplay(row, resolvedKey) ??
+        getValue(row, resolvedKey) ??
+        row?.value ??
+        row?.VALUE ??
+        ''
+      return {
+        value,
+        label: String(labelValue),
+        row
+      }
+    }).filter(option => option.value)
+  } catch (e: any) {
+    console.error('parseFkValuesJson error:', e.message)
+    return []
+  }
+}
+
+function isClientFieldName(fieldName: string): boolean {
+  const name = String(fieldName || '').trim().toUpperCase()
+  return name === 'MANDT' || name === 'CLIENT'
 }
 
 export interface TableContext {
@@ -296,6 +356,60 @@ export async function getDomainValues(configUuid: string, domainName: string, se
   } catch (e: any) {
     console.error('getDomainValues error:', e.response?.data ?? e.message)
     return []
+  }
+}
+
+export async function getFkValues(
+  configUuid: string,
+  tableName: string,
+  fieldName: string
+): Promise<FkValueOption[]> {
+  const uuid = normalizeConfigUuid(configUuid)
+  const cached = getCachedFkValues(uuid, tableName, fieldName)
+  if (cached) return cached
+
+  try {
+    const res = await apiPostWithCsrf(
+      actionUrl(uuid, 'getFkValues'),
+      {
+        TABLE_NAME: tableName,
+        FIELD_NAME: fieldName,
+        REF_TABLE: '',
+        DATA_JSON: '',
+        DISPLAY_FIELD: '',
+        KEY_FIELD: '',
+        ERROR_MSG: ''
+      },
+      { params: { 'sap-client': SAP_CLIENT } }
+    )
+
+    const body = extractActionResponseBody(res.data)
+    const errorMsg = body.error_msg ?? body.ErrorMsg ?? body.ERROR_MSG ?? ''
+    if (errorMsg) {
+      console.error('getFkValues error_msg:', errorMsg)
+      throw new Error(errorMsg)
+    }
+
+    const responseKeyField = String(body.key_field ?? body.KeyField ?? body.KEY_FIELD ?? fieldName)
+    const keyField = isClientFieldName(responseKeyField) ? fieldName : responseKeyField
+    const responseDisplayField = String(body.display_field ?? body.DisplayField ?? body.DISPLAY_FIELD ?? keyField)
+    const displayField = isClientFieldName(responseDisplayField) ? keyField : responseDisplayField
+    const dataJson =
+      body.data_json ??
+      body.DataJson ??
+      body.DATA_JSON ??
+      body.values_json ??
+      body.ValuesJson ??
+      body.VALUES_JSON ??
+      '[]'
+    const options = parseFkValuesJson(dataJson, keyField, displayField)
+    if (options.length > 0) {
+      setCachedFkValues(uuid, tableName, fieldName, options)
+    }
+    return options
+  } catch (e: any) {
+    console.error('getFkValues error:', e.response?.data ?? e.message)
+    throw e
   }
 }
 
