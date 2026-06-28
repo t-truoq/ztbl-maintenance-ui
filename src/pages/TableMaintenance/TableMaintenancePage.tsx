@@ -18,6 +18,7 @@ import {
   TableMaintenancePageProps,
 } from './hooks/useTableMaintenance'
 import { initFormValues } from '../../utils/recordHelpers'
+import { formatHeaderLabel } from '../../utils/tableHelpers'
 import WelcomeDashboard from '../../components/WelcomeDashboard'
 import DynamicDataTable from '../../components/DynamicDataTable'
 import ExcelPipelineTab from '../../components/ExcelPipelineTab'
@@ -187,7 +188,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
                 {/* Field filters */}
                 {filterFields.map(f => {
                   const name = f.field_name || f.FieldName
-                  const label = f.label || f.LabelText || name
+                  const label = formatHeaderLabel(f)
                   return (
                     <FlexBox key={name} direction="Column" gap="4px">
                       <span style={{ fontSize: '0.875rem' }}>{label}</span>

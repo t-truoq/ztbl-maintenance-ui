@@ -5,6 +5,7 @@ import {
   getFriendlyErrorMessage
 } from './apiClient'
 import { getCachedDomainValues, setCachedDomainValues } from './domainCache'
+import { FkValueOption, getCachedFkValues, setCachedFkValues } from './fkValueCache'
 import {
   formatEtagValueForAbap,
   isJsonFormatError,
@@ -216,6 +217,11 @@ export async function loadFieldMetaForTable(configUuid: string, tableName: strin
     )
     if (!custom) return dbField
 
+    const mergedFeType =
+      dbField.fe_type === 'uuid' || dbField.fe_type === 'fk_select'
+        ? dbField.fe_type
+        : custom.fe_type || dbField.fe_type
+
     return {
       ...dbField,
       label: custom.label || dbField.label,
@@ -225,10 +231,69 @@ export async function loadFieldMetaForTable(configUuid: string, tableName: strin
       is_hidden: custom.is_hidden,
       HiddenFlag: custom.HiddenFlag,
       ReadonlyFlag: custom.ReadonlyFlag,
-      fe_type: custom.fe_type || dbField.fe_type,
-      FeType: custom.FeType || dbField.FeType
+      fe_type: mergedFeType,
+      FeType: mergedFeType
     }
   }).sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))
+}
+
+function parseFkValuesJson(
+  dataJson: string,
+  keyField: string,
+  displayField: string
+): FkValueOption[] {
+  if (!dataJson) return []
+  try {
+    const fixed = fixJson(dataJson)
+    const parsed = JSON.parse(fixed)
+    const arr = Array.isArray(parsed) ? parsed : [parsed]
+    const getValue = (row: Record<string, any>, key: string): any => {
+      if (!row || !key) return undefined
+      if (row[key] !== undefined) return row[key]
+      const exact = Object.keys(row).find(k => k.toUpperCase() === key.toUpperCase())
+      return exact ? row[exact] : undefined
+    }
+    const getUsableKeys = (row: Record<string, any>): string[] =>
+      Object.keys(row || {}).filter(key => !isClientFieldName(key))
+    const getFallbackKey = (row: Record<string, any>): string =>
+      getUsableKeys(row).find(key => /(^|_)ID$/i.test(key) || /UUID/i.test(key)) ??
+      getUsableKeys(row)[0] ??
+      ''
+    const getFallbackDisplay = (row: Record<string, any>, resolvedKey: string): any => {
+      const usableKeys = getUsableKeys(row)
+      const displayKey =
+        usableKeys.find(key => /NAME|TEXT|DESC|DESCRIPTION|TITLE/i.test(key) && key !== resolvedKey) ??
+        usableKeys.find(key => key !== resolvedKey) ??
+        resolvedKey
+      return displayKey ? row[displayKey] : undefined
+    }
+    return arr.map(row => {
+      const resolvedKey = getValue(row, keyField) === undefined ? getFallbackKey(row) : keyField
+      const value = String(getValue(row, resolvedKey) ?? row?.value ?? row?.VALUE ?? '')
+      const labelValue =
+        getValue(row, displayField) ??
+        row?.label ??
+        row?.LABEL ??
+        getFallbackDisplay(row, resolvedKey) ??
+        getValue(row, resolvedKey) ??
+        row?.value ??
+        row?.VALUE ??
+        ''
+      return {
+        value,
+        label: String(labelValue),
+        row
+      }
+    }).filter(option => option.value)
+  } catch (e: any) {
+    console.error('parseFkValuesJson error:', e.message)
+    return []
+  }
+}
+
+function isClientFieldName(fieldName: string): boolean {
+  const name = String(fieldName || '').trim().toUpperCase()
+  return name === 'MANDT' || name === 'CLIENT'
 }
 
 export interface TableContext {
@@ -291,6 +356,60 @@ export async function getDomainValues(configUuid: string, domainName: string, se
   } catch (e: any) {
     console.error('getDomainValues error:', e.response?.data ?? e.message)
     return []
+  }
+}
+
+export async function getFkValues(
+  configUuid: string,
+  tableName: string,
+  fieldName: string
+): Promise<FkValueOption[]> {
+  const uuid = normalizeConfigUuid(configUuid)
+  const cached = getCachedFkValues(uuid, tableName, fieldName)
+  if (cached) return cached
+
+  try {
+    const res = await apiPostWithCsrf(
+      actionUrl(uuid, 'getFkValues'),
+      {
+        TABLE_NAME: tableName,
+        FIELD_NAME: fieldName,
+        REF_TABLE: '',
+        DATA_JSON: '',
+        DISPLAY_FIELD: '',
+        KEY_FIELD: '',
+        ERROR_MSG: ''
+      },
+      { params: { 'sap-client': SAP_CLIENT } }
+    )
+
+    const body = extractActionResponseBody(res.data)
+    const errorMsg = body.error_msg ?? body.ErrorMsg ?? body.ERROR_MSG ?? ''
+    if (errorMsg) {
+      console.error('getFkValues error_msg:', errorMsg)
+      throw new Error(errorMsg)
+    }
+
+    const responseKeyField = String(body.key_field ?? body.KeyField ?? body.KEY_FIELD ?? fieldName)
+    const keyField = isClientFieldName(responseKeyField) ? fieldName : responseKeyField
+    const responseDisplayField = String(body.display_field ?? body.DisplayField ?? body.DISPLAY_FIELD ?? keyField)
+    const displayField = isClientFieldName(responseDisplayField) ? keyField : responseDisplayField
+    const dataJson =
+      body.data_json ??
+      body.DataJson ??
+      body.DATA_JSON ??
+      body.values_json ??
+      body.ValuesJson ??
+      body.VALUES_JSON ??
+      '[]'
+    const options = parseFkValuesJson(dataJson, keyField, displayField)
+    if (options.length > 0) {
+      setCachedFkValues(uuid, tableName, fieldName, options)
+    }
+    return options
+  } catch (e: any) {
+    console.error('getFkValues error:', e.response?.data ?? e.message)
+    throw e
   }
 }
 
@@ -404,6 +523,56 @@ function asRecordKeyJson(recordKey: any): string {
   return asClientSafeJson(recordKey)
 }
 
+function asRecordsDataJson(records: any[]): string {
+  return JSON.stringify(records.map(record => stripClientFields(record)))
+}
+
+export interface BulkActionResult {
+  record_index: number
+  success: boolean
+  message: string
+}
+
+function readActionField(response: any, field: string): any {
+  if (!response) return undefined
+  const variants = [
+    field,
+    field.toUpperCase(),
+    field.replace(/_([a-z])/g, (_, c) => String(c).toUpperCase()),
+  ]
+  for (const key of variants) {
+    if (Object.hasOwn(response, key)) return response[key]
+  }
+  return undefined
+}
+
+export function getActionMessage(response: any): string {
+  return (
+    readActionField(response, 'message') ||
+    response?.value?.message ||
+    response?.data?.message ||
+    response?.data?.value?.message ||
+    ''
+  )
+}
+
+export function parseBulkActionResults(response: any): BulkActionResult[] {
+  const raw = readActionField(response, 'results_json')
+  if (!raw || typeof raw !== 'string') return []
+
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.map(item => ({
+      record_index: Number(readActionField(item, 'record_index') ?? 0),
+      success: readActionField(item, 'success') === true || readActionField(item, 'success') === 'X',
+      message: String(readActionField(item, 'message') ?? ''),
+    }))
+  } catch {
+    return []
+  }
+}
+
 export async function createRecord(configUuid: string, tableName: string, recordData: any): Promise<any> {
   const res = await apiPostWithCsrf(
     actionUrl(configUuid, 'createRecord'),
@@ -411,6 +580,26 @@ export async function createRecord(configUuid: string, tableName: string, record
       table_name: tableName,
       record_key: '',
       record_data: asRecordDataJson(recordData),
+      etag_field: '',
+      etag_value: ''
+    },
+    { params: { 'sap-client': SAP_CLIENT } }
+  )
+  return res.data
+}
+
+export async function bulkUpdateRecords(
+  configUuid: string,
+  tableName: string,
+  records: any[]
+): Promise<any> {
+  const res = await apiPostWithCsrf(
+    actionUrl(configUuid, 'updateRecord'),
+    {
+      table_name: tableName,
+      record_key: '',
+      record_data: '',
+      records_data: asRecordsDataJson(records),
       etag_field: '',
       etag_value: ''
     },
@@ -437,6 +626,22 @@ export async function updateRecord(
       etag_value: etagValue
         ? formatEtagValueForAbap(etagValue) || String(etagValue)
         : ''
+    },
+    { params: { 'sap-client': SAP_CLIENT } }
+  )
+  return res.data
+}
+
+export async function bulkDeleteRecords(configUuid: string, tableName: string, recordKeys: any[]): Promise<any> {
+  const res = await apiPostWithCsrf(
+    actionUrl(configUuid, 'deleteRecord'),
+    {
+      table_name: tableName,
+      record_key: '',
+      record_data: '',
+      records_data: asRecordsDataJson(recordKeys),
+      etag_field: '',
+      etag_value: ''
     },
     { params: { 'sap-client': SAP_CLIENT } }
   )

@@ -64,13 +64,14 @@ export default function DynamicDataTable({
   onDeleteRows,
 }: DynamicDataTableProps) {
   const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(new Set())
+  const [copiedCellKey, setCopiedCellKey] = useState('')
 
   const fieldsWithWidths = fields.map(f => {
-    const headerLabel = formatHeaderLabel(f)
     const technicalName = f.field_name || f.FieldName
+    const headerLabel = formatHeaderLabel(f)
     const feType = f.fe_type || f.FeType
     const isDate = feType === 'date'
-    const isDomain = feType === 'domain'
+    const isDomain = feType === 'domain' || feType === 'fk_select'
     const minColWidth = Math.max(
       isDate ? 260 : isDomain ? 200 : 150,
       headerLabel.length * 10 + 50
@@ -140,6 +141,49 @@ export default function DynamicDataTable({
   const deleteSelectedRow = () => {
     if (selectedRows.length === 0) return
     onDeleteRows(selectedRows)
+  }
+
+  const isUuidLikeCellValue = (field: FieldMeta, value: any) => {
+    if (value === undefined || value === null || value === '') return false
+    const rawValue = String(value)
+    const compactUuid = rawValue.replace(/-/g, '')
+    const feType = field.fe_type || field.FeType
+    return feType === 'uuid' || field.FieldType === 'UUID' || /^[0-9A-F]{32}$/i.test(compactUuid)
+  }
+
+  const shouldShowCopyButton = (field: FieldMeta, value: any) => {
+    if (value === undefined || value === null || value === '') return false
+    const rawValue = String(value)
+    const displayValue = formatCellValue(field, value)
+    return isUuidLikeCellValue(field, value) || displayValue !== rawValue || rawValue.length >= 24
+  }
+
+  const shouldKeepCellSingleLine = (field: FieldMeta, value: any) => {
+    return isUuidLikeCellValue(field, value)
+  }
+
+  const copyCellValue = async (value: any, cellKey: string, event: any) => {
+    event.stopPropagation()
+    const text = String(value ?? '')
+    if (!text) return
+
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      const textArea = document.createElement('textarea')
+      textArea.value = text
+      textArea.style.position = 'fixed'
+      textArea.style.opacity = '0'
+      document.body.appendChild(textArea)
+      textArea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textArea)
+    }
+
+    setCopiedCellKey(cellKey)
+    window.setTimeout(() => {
+      setCopiedCellKey(prev => (prev === cellKey ? '' : prev))
+    }, 1200)
   }
 
   const startCreatingNewRow = () => {
@@ -309,12 +353,13 @@ export default function DynamicDataTable({
                     const name = f.field_name || f.FieldName
                     const feType = f.fe_type || f.FeType
                     const rowSelected = row._isNew || selectedRowKeys.has(getRowKey(row, i))
+                    const singleLine = shouldKeepCellSingleLine(f, row[name])
                     return (
                       <TableCell
                         key={name}
                         style={{
                           minWidth: `${minColWidth}px`,
-                          overflow: feType === 'date' ? 'visible' : undefined,
+                          overflow: feType === 'date' || feType === 'fk_select' ? 'visible' : undefined,
                         }}
                       >
                         {rowSelected ? (
@@ -324,10 +369,34 @@ export default function DynamicDataTable({
                             field={f}
                             inlineErrors={inlineErrors}
                             configUuid={selectedTable.ConfigUuid}
+                            tableName={selectedTable.TableName}
                             onCellChange={onCellChange}
                           />
                         ) : (
-                          <Text style={{ color: '#32363a' }}>{formatCellValue(f, row[name])}</Text>
+                          <FlexBox alignItems="Center" gap="4px" style={{ width: '100%', minWidth: 0 }}>
+                            <Text
+                              title={String(row[name] ?? '')}
+                              style={{
+                                color: '#32363a',
+                                overflow: 'hidden',
+                                textOverflow: singleLine ? 'ellipsis' : undefined,
+                                whiteSpace: singleLine ? 'nowrap' : 'normal',
+                                overflowWrap: singleLine ? undefined : 'anywhere',
+                                minWidth: 0,
+                              }}
+                            >
+                              {formatCellValue(f, row[name])}
+                            </Text>
+                            {shouldShowCopyButton(f, row[name]) && (
+                              <Button
+                                design="Transparent"
+                                icon={'copy' as any}
+                                accessibleName="Copy full value"
+                                title={copiedCellKey === `${i}-${name}` ? 'Copied' : 'Copy full value'}
+                                onClick={(e: any) => copyCellValue(row[name], `${i}-${name}`, e)}
+                              />
+                            )}
+                          </FlexBox>
                         )}
                       </TableCell>
                     )
@@ -382,6 +451,7 @@ export default function DynamicDataTable({
                 {fieldsWithWidths.map(({ field: f, minColWidth }) => {
                   const name = f.field_name || f.FieldName
                   const val = row[name]
+                  const singleLine = shouldKeepCellSingleLine(f, val)
 
                   if (name.toUpperCase() === 'STATUS') {
                     const valStr = String(val ?? '').toUpperCase()
@@ -401,7 +471,30 @@ export default function DynamicDataTable({
 
                   return (
                     <TableCell key={name} style={{ minWidth: `${minColWidth}px` }}>
-                      <Text style={{ color: '#32363a' }}>{formatCellValue(f, val)}</Text>
+                      <FlexBox alignItems="Center" gap="4px" style={{ width: '100%', minWidth: 0 }}>
+                        <Text
+                          title={String(val ?? '')}
+                          style={{
+                            color: '#32363a',
+                            overflow: 'hidden',
+                            textOverflow: singleLine ? 'ellipsis' : undefined,
+                            whiteSpace: singleLine ? 'nowrap' : 'normal',
+                            overflowWrap: singleLine ? undefined : 'anywhere',
+                            minWidth: 0,
+                          }}
+                        >
+                          {formatCellValue(f, val)}
+                        </Text>
+                        {shouldShowCopyButton(f, val) && (
+                          <Button
+                            design="Transparent"
+                            icon={'copy' as any}
+                            accessibleName="Copy full value"
+                            title={copiedCellKey === `${i}-${name}` ? 'Copied' : 'Copy full value'}
+                            onClick={(e: any) => copyCellValue(val, `${i}-${name}`, e)}
+                          />
+                        )}
+                      </FlexBox>
                     </TableCell>
                   )
                 })}
