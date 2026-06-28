@@ -4,10 +4,14 @@ import {
   getTableData,
   createRecord,
   updateRecord,
+  bulkUpdateRecords,
   deleteRecord,
+  bulkDeleteRecords,
   parseTableDataJson,
   getFriendlyErrorMessage,
   formatActionErrorMessage,
+  getActionMessage,
+  parseBulkActionResults,
   normalizeConfigUuid,
   isOptimisticLockError,
   isFKReferenceError,
@@ -119,6 +123,31 @@ export function useTableMaintenance({
     setSuccessMsg('')
     setToastMessage(message)
     setToastOpen(true)
+  }
+
+  function chunkRecords<T>(records: T[], size = 50): T[][] {
+    const chunks: T[][] = []
+    for (let i = 0; i < records.length; i += size) {
+      chunks.push(records.slice(i, i + size))
+    }
+    return chunks
+  }
+
+  function getBulkFailures(response: any): { record_index: number; message: string }[] {
+    return parseBulkActionResults(response)
+      .filter(item => !item.success)
+      .map(item => ({
+        record_index: item.record_index,
+        message: item.message || 'Operation failed',
+      }))
+  }
+
+  function formatBulkFailureMessage(action: string, failures: { record_index: number; message: string }[]): string {
+    const preview = failures
+      .slice(0, 3)
+      .map(item => `#${item.record_index}: ${item.message}`)
+      .join(' | ')
+    return `${failures.length} record(s) failed during bulk ${action}${preview ? `: ${preview}` : ''}`
   }
 
   function clearPageData() {
@@ -485,8 +514,8 @@ export function useTableMaintenance({
         if (code && !approvalCodes.includes(code)) approvalCodes.push(code)
       }
 
-      // Updates run sequentially because the SAP backend locks the dynamic table during each action.
-      for (const row of modifiedRows) {
+      if (modifiedRows.length === 1) {
+        const row = modifiedRows[0]
         const recordKey = buildKeyRecord(allFields, row)
         const keyStr = buildRecordKeyString(allFields, row)
         const storedEtag = etagMap[keyStr] ?? null
@@ -500,10 +529,29 @@ export function useTableMaintenance({
           etagInfo.value || ''
         )
         if (res.success === false) throw new Error(res.message || 'Failed to update record')
-        const msg = res.message || res.value?.message || res.data?.message || res.data?.value?.message
+        const msg = getActionMessage(res)
         if (msg && !successMessages.includes(msg)) successMessages.push(msg)
         const code = extractApprovalCode(res)
         if (code && !approvalCodes.includes(code)) approvalCodes.push(code)
+      } else if (modifiedRows.length > 1) {
+        for (const chunk of chunkRecords(modifiedRows)) {
+          const res = await bulkUpdateRecords(
+            selectedTable.ConfigUuid,
+            selectedTable.TableName,
+            chunk
+          )
+          if (res.success === false) throw new Error(getActionMessage(res) || 'Failed to update records')
+
+          const failures = getBulkFailures(res)
+          if (failures.length > 0) {
+            throw new Error(formatBulkFailureMessage('update', failures))
+          }
+
+          const msg = getActionMessage(res)
+          if (msg && !successMessages.includes(msg)) successMessages.push(msg)
+          const code = extractApprovalCode(res)
+          if (code && !approvalCodes.includes(code)) approvalCodes.push(code)
+        }
       }
 
       setIsEditingTable(false)
@@ -729,31 +777,62 @@ export function useTableMaintenance({
     setDeleteLoading(true)
     try {
       let lastResult: any = null
-      for (const row of deletingRows) {
-        const recordKey = buildKeyRecord(allFields, row)
-        const result = await deleteRecord(
+      if (deletingRows.length === 1) {
+        const recordKey = buildKeyRecord(allFields, deletingRows[0])
+        lastResult = await deleteRecord(
           selectedTable.ConfigUuid,
           selectedTable.TableName,
           recordKey
         )
-        lastResult = result
-        if (result.success === false) {
+        if (lastResult.success === false) {
           setDeleteDialogOpen(false)
           releaseTableLockIfHeld()
-          if (isFKReferenceError(result.message)) {
-            setFkErrorMessage(parseFKErrorMessage(result.message))
+          const message = getActionMessage(lastResult)
+          if (isFKReferenceError(message)) {
+            setFkErrorMessage(parseFKErrorMessage(message))
             setFkErrorOpen(true)
           } else {
-            showError(result.message || 'Delete failed')
+            showError(message || 'Delete failed')
           }
           return
+        }
+      } else {
+        const recordKeys = deletingRows.map(row => buildKeyRecord(allFields, row))
+        for (const chunk of chunkRecords(recordKeys)) {
+          lastResult = await bulkDeleteRecords(
+            selectedTable.ConfigUuid,
+            selectedTable.TableName,
+            chunk
+          )
+          if (lastResult.success === false) {
+            setDeleteDialogOpen(false)
+            releaseTableLockIfHeld()
+            showError(getActionMessage(lastResult) || 'Delete failed')
+            return
+          }
+
+          const failures = getBulkFailures(lastResult)
+          if (failures.length > 0) {
+            setDeleteDialogOpen(false)
+            releaseTableLockIfHeld()
+            const fkFailure = failures.find(item => isFKReferenceError(item.message))
+            if (fkFailure) {
+              setFkErrorMessage(parseFKErrorMessage(fkFailure.message))
+              setFkErrorOpen(true)
+            } else {
+              showError(formatBulkFailureMessage('delete', failures))
+            }
+            await loadTable(selectedTable)
+            await onRefreshTableList()
+            return
+          }
         }
       }
       setDeleteDialogOpen(false)
       const deletedCount = deletingRows.length
       setDeletingRows([])
       const approvalCode = extractApprovalCode(lastResult)
-      const backendMessage = lastResult?.message || lastResult?.value?.message || lastResult?.data?.message || lastResult?.data?.value?.message
+      const backendMessage = getActionMessage(lastResult)
       if (selectedTable.ApprovalRequired === 'X') {
         showToast(backendMessage || `Yêu cầu phê duyệt đã được gửi thành công. Mã chứng từ: ${approvalCode || ''}`)
       } else {

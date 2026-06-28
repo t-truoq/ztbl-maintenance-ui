@@ -523,6 +523,56 @@ function asRecordKeyJson(recordKey: any): string {
   return asClientSafeJson(recordKey)
 }
 
+function asRecordsDataJson(records: any[]): string {
+  return JSON.stringify(records.map(record => stripClientFields(record)))
+}
+
+export interface BulkActionResult {
+  record_index: number
+  success: boolean
+  message: string
+}
+
+function readActionField(response: any, field: string): any {
+  if (!response) return undefined
+  const variants = [
+    field,
+    field.toUpperCase(),
+    field.replace(/_([a-z])/g, (_, c) => String(c).toUpperCase()),
+  ]
+  for (const key of variants) {
+    if (Object.hasOwn(response, key)) return response[key]
+  }
+  return undefined
+}
+
+export function getActionMessage(response: any): string {
+  return (
+    readActionField(response, 'message') ||
+    response?.value?.message ||
+    response?.data?.message ||
+    response?.data?.value?.message ||
+    ''
+  )
+}
+
+export function parseBulkActionResults(response: any): BulkActionResult[] {
+  const raw = readActionField(response, 'results_json')
+  if (!raw || typeof raw !== 'string') return []
+
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.map(item => ({
+      record_index: Number(readActionField(item, 'record_index') ?? 0),
+      success: readActionField(item, 'success') === true || readActionField(item, 'success') === 'X',
+      message: String(readActionField(item, 'message') ?? ''),
+    }))
+  } catch {
+    return []
+  }
+}
+
 export async function createRecord(configUuid: string, tableName: string, recordData: any): Promise<any> {
   const res = await apiPostWithCsrf(
     actionUrl(configUuid, 'createRecord'),
@@ -530,6 +580,26 @@ export async function createRecord(configUuid: string, tableName: string, record
       table_name: tableName,
       record_key: '',
       record_data: asRecordDataJson(recordData),
+      etag_field: '',
+      etag_value: ''
+    },
+    { params: { 'sap-client': SAP_CLIENT } }
+  )
+  return res.data
+}
+
+export async function bulkUpdateRecords(
+  configUuid: string,
+  tableName: string,
+  records: any[]
+): Promise<any> {
+  const res = await apiPostWithCsrf(
+    actionUrl(configUuid, 'updateRecord'),
+    {
+      table_name: tableName,
+      record_key: '',
+      record_data: '',
+      records_data: asRecordsDataJson(records),
       etag_field: '',
       etag_value: ''
     },
@@ -556,6 +626,22 @@ export async function updateRecord(
       etag_value: etagValue
         ? formatEtagValueForAbap(etagValue) || String(etagValue)
         : ''
+    },
+    { params: { 'sap-client': SAP_CLIENT } }
+  )
+  return res.data
+}
+
+export async function bulkDeleteRecords(configUuid: string, tableName: string, recordKeys: any[]): Promise<any> {
+  const res = await apiPostWithCsrf(
+    actionUrl(configUuid, 'deleteRecord'),
+    {
+      table_name: tableName,
+      record_key: '',
+      record_data: '',
+      records_data: asRecordsDataJson(recordKeys),
+      etag_field: '',
+      etag_value: ''
     },
     { params: { 'sap-client': SAP_CLIENT } }
   )
