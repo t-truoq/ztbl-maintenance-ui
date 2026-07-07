@@ -179,6 +179,140 @@ ui5-filter-bar {
   flex: 0 0 auto;
 }
 
+.ai-field-tooltip-button {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-grid;
+  align-items: center;
+  justify-content: center;
+  place-items: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  min-width: 1.125rem;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--sapInformationBackground, #f5faff);
+  color: var(--sapInformativeTextColor, #0a6ed1);
+  border: 1px solid var(--sapInformativeColor, #0a6ed1);
+  font-family: Arial, sans-serif;
+  font-size: 0.6875rem;
+  line-height: 1.125rem;
+  font-weight: 700;
+  cursor: pointer;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.ai-field-tooltip-button:hover,
+.ai-field-tooltip-button:focus-visible {
+  background: var(--sapButton_Hover_Background, #ebf5fe);
+  outline: 2px solid var(--sapContent_FocusColor, #0a6ed1);
+  outline-offset: 1px;
+}
+
+.ai-field-popover {
+  position: fixed;
+  z-index: 10000;
+  width: min(22rem, calc(100vw - 2rem));
+  box-sizing: border-box;
+  padding: 0.75rem;
+  border: 1px solid var(--sapGroup_TitleBorderColor, #d9d9d9);
+  border-radius: 0.5rem;
+  background: var(--sapGroup_ContentBackground, #fff);
+  color: var(--sapTextColor, #32363a);
+  box-shadow: var(--sapContent_Shadow2, 0 0.25rem 1rem rgba(0, 0, 0, 0.22));
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
+.ai-field-popover-title {
+  margin: 0 1.75rem 0.5rem 0;
+  color: var(--sapTitleColor, #1d2d3e);
+  font-weight: 700;
+}
+
+.ai-field-popover-close {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--sapButton_TextColor, #0a6ed1);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.ai-field-popover-close:hover,
+.ai-field-popover-close:focus-visible {
+  background: var(--sapButton_Hover_Background, #ebf5fe);
+  outline: 2px solid var(--sapContent_FocusColor, #0a6ed1);
+  outline-offset: 1px;
+}
+
+.ai-field-popover-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding-top: 0.5rem;
+  margin-top: 0.5rem;
+  border-top: 1px solid var(--sapList_BorderColor, #e5e5e5);
+}
+
+.ai-field-popover-section:first-of-type {
+  padding-top: 0;
+  margin-top: 0;
+  border-top: 0;
+}
+
+.ai-field-popover-section strong {
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.75rem;
+}
+
+.field-schema-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem 1rem;
+  box-sizing: border-box;
+}
+
+.field-schema-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--sapList_BorderColor, #d9d9d9);
+}
+
+.field-schema-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.field-schema-title {
+  color: var(--sapTitleColor, #1d2d3e);
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.field-schema-muted {
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.875rem;
+}
+
+.field-schema-message {
+  margin-top: -0.25rem;
+}
+
 /* Ensure Toast notification wraps text and handles long UUIDs without overflow/clipping */
 ui5-toast {
   max-width: 90vw !important;

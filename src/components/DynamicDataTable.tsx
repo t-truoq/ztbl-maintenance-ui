@@ -22,7 +22,7 @@ import { formatHeaderLabel } from '../utils/tableHelpers'
 import { formatCellValue } from '../utils/displayHelpers'
 import { buildRecordKeyString } from '../utils/recordHelpers'
 
-import { FieldMeta, TableConfig, TableRowData } from '../types'
+import { AiDescriptionMap, FieldMeta, TableConfig, TableRowData } from '../types'
 
 interface DynamicDataTableProps {
   selectedTable: TableConfig
@@ -42,6 +42,9 @@ interface DynamicDataTableProps {
   onStartCreating: () => void
   onRefresh: () => void
   onDeleteRows: (rows: TableRowData[]) => void
+  aiDescriptions?: AiDescriptionMap
+  aiLoading?: boolean
+  onRequestAiDescriptions?: () => Promise<void> | void
 }
 
 export default function DynamicDataTable({
@@ -62,9 +65,19 @@ export default function DynamicDataTable({
   onStartCreating,
   onRefresh,
   onDeleteRows,
+  aiDescriptions = {},
+  aiLoading = false,
+  onRequestAiDescriptions,
 }: DynamicDataTableProps) {
   const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(new Set())
   const [copiedCellKey, setCopiedCellKey] = useState('')
+  const [activeAiTooltip, setActiveAiTooltip] = useState<{
+    fieldName: string
+    label: string
+    x: number
+    y: number
+  } | null>(null)
+  const [aiTooltipLoadingField, setAiTooltipLoadingField] = useState('')
 
   const fieldsWithWidths = fields.map(f => {
     const technicalName = f.field_name || f.FieldName
@@ -72,9 +85,10 @@ export default function DynamicDataTable({
     const feType = f.fe_type || f.FeType
     const isDate = feType === 'date'
     const isDomain = feType === 'domain' || feType === 'fk_select'
+    const hasKeyIcon = f.is_key || f.IsKeyField === 'X'
     const minColWidth = Math.max(
       isDate ? 260 : isDomain ? 200 : 150,
-      headerLabel.length * 10 + 50
+      headerLabel.length * 10 + 80 + (hasKeyIcon ? 18 : 0)
     )
     return { field: f, minColWidth, headerLabel, technicalName }
   })
@@ -105,7 +119,25 @@ export default function DynamicDataTable({
 
   useEffect(() => {
     setSelectedRowKeys(new Set())
+    setActiveAiTooltip(null)
   }, [selectedTable.ConfigUuid])
+
+  useEffect(() => {
+    if (!activeAiTooltip) return
+
+    const closeTooltip = () => setActiveAiTooltip(null)
+    window.addEventListener('resize', closeTooltip)
+    window.addEventListener('scroll', closeTooltip, true)
+    window.addEventListener('wheel', closeTooltip, true)
+    window.addEventListener('touchmove', closeTooltip, true)
+
+    return () => {
+      window.removeEventListener('resize', closeTooltip)
+      window.removeEventListener('scroll', closeTooltip, true)
+      window.removeEventListener('wheel', closeTooltip, true)
+      window.removeEventListener('touchmove', closeTooltip, true)
+    }
+  }, [activeAiTooltip])
 
   const selectedRowCount = selectedRowKeys.size
   const selectedRows = filteredData.filter((row, index) => selectedRowKeys.has(getRowKey(row, index)))
@@ -184,6 +216,37 @@ export default function DynamicDataTable({
     window.setTimeout(() => {
       setCopiedCellKey(prev => (prev === cellKey ? '' : prev))
     }, 1200)
+  }
+
+  const getAiDescriptionForField = (fieldName: string) => {
+    return aiDescriptions[fieldName.toUpperCase()]
+  }
+
+  const openAiTooltip = async (fieldName: string, label: string, event: any) => {
+    event.stopPropagation()
+
+    const rect = event.currentTarget.getBoundingClientRect()
+    const viewportPadding = 16
+    const rootFontSize = Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16
+    const popoverWidth = Math.min(22 * rootFontSize, window.innerWidth - viewportPadding * 2)
+    const x = Math.max(
+      viewportPadding,
+      Math.min(rect.left, window.innerWidth - popoverWidth - viewportPadding)
+    )
+    const y = Math.min(rect.bottom + 8, window.innerHeight - 160)
+
+    setActiveAiTooltip(prev =>
+      prev?.fieldName === fieldName ? null : { fieldName, label, x, y }
+    )
+
+    if (getAiDescriptionForField(fieldName) || !onRequestAiDescriptions) return
+
+    setAiTooltipLoadingField(fieldName)
+    try {
+      await onRequestAiDescriptions()
+    } finally {
+      setAiTooltipLoadingField(prev => (prev === fieldName ? '' : prev))
+    }
   }
 
   const startCreatingNewRow = () => {
@@ -284,7 +347,10 @@ export default function DynamicDataTable({
       )}
 
       {/* ── Scrollable Table Wrapper ───────────────────────────────────── */}
-      <div className={`dynamic-table-scroll${isEditingTable ? ' dynamic-table-scroll--editing' : ''}`}>
+      <div
+        className={`dynamic-table-scroll${isEditingTable ? ' dynamic-table-scroll--editing' : ''}`}
+        onScroll={() => setActiveAiTooltip(null)}
+      >
         <Table
           overflowMode="Scroll"
           style={{ minWidth: `${totalTableWidth}px`, width: '100%' }}
@@ -306,13 +372,14 @@ export default function DynamicDataTable({
                     minWidth={`${minColWidth}px`}
                     style={{ minWidth: `${minColWidth}px` }}
                   >
-                    <FlexBox alignItems="Center" gap="4px" style={{ width: '100%' }}>
+                    <FlexBox alignItems="Center" gap="5px" style={{ width: '100%', minWidth: 0 }}>
                       <Label
                         title={`${headerLabel} (${technicalName})`}
                         style={{
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
+                          minWidth: 0,
                         }}
                       >
                         {headerLabel}
@@ -322,6 +389,16 @@ export default function DynamicDataTable({
                           name="key"
                           style={{ minWidth: '12px', width: '12px', height: '12px', color: '#e09d00' }}
                         />
+                      )}
+                      {onRequestAiDescriptions && (
+                        <button
+                          type="button"
+                          className="ai-field-tooltip-button"
+                          aria-label={`Show AI description for ${headerLabel}`}
+                          onClick={(event) => openAiTooltip(technicalName, headerLabel, event)}
+                        >
+                          ?
+                        </button>
                       )}
                     </FlexBox>
                   </TableHeaderCell>
@@ -503,6 +580,50 @@ export default function DynamicDataTable({
           )}
         </Table>
       </div>
+      {activeAiTooltip && (
+        <div
+          className="ai-field-popover"
+          role="dialog"
+          aria-label={`AI description for ${activeAiTooltip.label}`}
+          style={{ left: activeAiTooltip.x, top: activeAiTooltip.y }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="ai-field-popover-close"
+            aria-label="Close AI description"
+            onClick={() => setActiveAiTooltip(null)}
+          >
+            x
+          </button>
+          <div className="ai-field-popover-title">{activeAiTooltip.label}</div>
+          {aiLoading || aiTooltipLoadingField === activeAiTooltip.fieldName ? (
+            <Text>Loading AI description...</Text>
+          ) : (() => {
+            const ai = getAiDescriptionForField(activeAiTooltip.fieldName)
+            if (!ai) {
+              return <Text>No AI description available for this field.</Text>
+            }
+
+            return (
+              <>
+                {ai.description && (
+                  <div className="ai-field-popover-section">
+                    <strong>Description</strong>
+                    <span>{ai.description}</span>
+                  </div>
+                )}
+                {ai.constraints && (
+                  <div className="ai-field-popover-section">
+                    <strong>Input guidance</strong>
+                    <span>{ai.constraints}</span>
+                  </div>
+                )}
+              </>
+            )
+          })()}
+        </div>
+      )}
       <div className="dynamic-table-bottom-spacer" aria-hidden="true" />
     </div>
   )
