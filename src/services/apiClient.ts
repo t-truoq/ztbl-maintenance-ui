@@ -242,7 +242,7 @@ export function getFriendlyErrorMessage(error: any): string {
     return 'Security token expired. Please try again.'
   }
   if (status === 403) {
-    return 'Session expired. Please login again.'
+    return 'You do not have permission to perform this action. Please contact an administrator or request the required SAP authorization.'
   }
   if (status === 423) {
     return 'The table configuration is locked. The resource might be in use or open in another session (e.g., SAP GUI). Please close other sessions and try again.'
