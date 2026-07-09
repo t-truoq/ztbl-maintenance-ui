@@ -40,6 +40,14 @@ export interface FieldMeta {
   _raw?: any;
 }
 
+export interface AiFieldDescription {
+  fieldName: string;
+  description: string;
+  constraints: string;
+}
+
+export type AiDescriptionMap = Record<string, AiFieldDescription>;
+
 export interface SessionUser {
   username: string;
 }

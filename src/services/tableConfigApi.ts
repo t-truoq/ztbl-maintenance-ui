@@ -17,7 +17,8 @@ import {
   normalizeFieldMetaRow,
   buildFieldMetaFromFieldList
 } from '../utils/fieldMeta'
-import { TableConfig, FieldMeta, AuditLogEntry, TableRowData } from '../types'
+import { TableConfig, FieldMeta, AuditLogEntry, TableRowData, AiFieldDescription } from '../types'
+import { normalizeAiDescriptions } from '../utils/aiDescriptions'
 
 export function isOptimisticLockError(message: string): boolean {
   return /optimistic lock/i.test(String(message || ''))
@@ -132,13 +133,57 @@ export async function getTables(): Promise<TableConfig[]> {
 
 function extractActionResponseBody(data: any): any {
   if (!data) return {}
-  if (data.meta_json != null || data.MetaJson != null || data.data_json != null) {
+  if (
+    data.meta_json != null ||
+    data.MetaJson != null ||
+    data.META_JSON != null ||
+    data.data_json != null ||
+    data.DATA_JSON != null ||
+    data.result_json != null ||
+    data.RESULT_JSON != null
+  ) {
     return data
   }
   if (Array.isArray(data.value) && data.value.length > 0) {
     return data.value[0]
   }
   return data
+}
+
+function parseAiDescriptionJson(resultJson: string): AiFieldDescription[] {
+  if (!resultJson) return []
+  try {
+    const parsed = JSON.parse(fixJson(resultJson))
+    const rows = Array.isArray(parsed) ? parsed : [parsed]
+    return normalizeAiDescriptions(rows)
+  } catch (e: any) {
+    console.error('parseAiDescriptionJson error:', e.message)
+    return []
+  }
+}
+
+export async function getAiDescription(
+  configUuid: string,
+  tableName: string
+): Promise<AiFieldDescription[]> {
+  const res = await apiPostWithCsrf(
+    actionUrl(configUuid, 'getAiDescription'),
+    {
+      TABLE_NAME: tableName,
+      RESULT_JSON: '',
+      ERROR_MSG: ''
+    },
+    { params: { 'sap-client': SAP_CLIENT } }
+  )
+
+  const body = extractActionResponseBody(res.data)
+  const errorMsg = readActionField(body, 'error_msg') || ''
+  if (errorMsg) {
+    throw new Error(String(errorMsg))
+  }
+
+  const resultJson = readActionField(body, 'result_json') || '[]'
+  return parseAiDescriptionJson(String(resultJson))
 }
 
 export async function getFieldMeta(configUuid: string, tableName: string): Promise<FieldMeta[]> {

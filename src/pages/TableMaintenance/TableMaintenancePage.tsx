@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   DynamicPage,
   DynamicPageTitle,
@@ -30,6 +30,9 @@ import DeleteConfirmDialog from '../../components/dialogs/DeleteConfirmDialog'
 import OptimisticLockDialog from '../../components/dialogs/OptimisticLockDialog'
 import FKErrorDialog from '../../components/dialogs/FKErrorDialog'
 import ApprovalSuccessDialog from '../../components/dialogs/ApprovalSuccessDialog'
+import { getAiDescription } from '../../services/tableConfigApi'
+import { buildAiDescriptionMap, exportDataDictionaryPdf } from '../../utils/aiDescriptions'
+import { AiDescriptionMap } from '../../types'
 
 export default function TableMaintenancePage(props: TableMaintenancePageProps) {
   const {
@@ -92,6 +95,9 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
   const { selectedTable, tables, username, onRefreshTableList, onSelectTable } = props
   const [showAllFilters, setShowAllFilters] = useState(false)
   const [activeTab, setActiveTab] = useState('tableData')
+  const [aiDescriptions, setAiDescriptions] = useState<AiDescriptionMap>({})
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState('')
   const filterFields = fields.filter(f => {
     if (showAllFilters) return true
     return f.is_key || f.IsKeyField === 'X'
@@ -99,7 +105,48 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
 
   useEffect(() => {
     setActiveTab('tableData')
+    setAiDescriptions({})
+    setAiError('')
   }, [selectedTable?.ConfigUuid])
+
+  const handleLoadAiDescriptions = useCallback(async (forceRefresh = false) => {
+    if (!selectedTable) return
+    const cacheKey = `ztbl-ai-descriptions:${selectedTable.ConfigUuid}:${selectedTable.TableName}`
+
+    if (!forceRefresh) {
+      const cached = sessionStorage.getItem(cacheKey)
+      if (cached) {
+        try {
+          setAiDescriptions(JSON.parse(cached))
+          setAiError('')
+          return
+        } catch {
+          sessionStorage.removeItem(cacheKey)
+        }
+      }
+    }
+
+    setAiLoading(true)
+    setAiError('')
+    try {
+      const rows = await getAiDescription(selectedTable.ConfigUuid, selectedTable.TableName)
+      const descriptions = buildAiDescriptionMap(rows)
+      setAiDescriptions(descriptions)
+      sessionStorage.setItem(cacheKey, JSON.stringify(descriptions))
+      if (rows.length === 0) {
+        setAiError('AI did not return any field descriptions for this table.')
+      }
+    } catch (e: any) {
+      setAiError(e?.message || 'Cannot load AI field descriptions.')
+    } finally {
+      setAiLoading(false)
+    }
+  }, [selectedTable?.ConfigUuid, selectedTable?.TableName])
+
+  const handleExportDataDictionary = () => {
+    if (!selectedTable) return
+    exportDataDictionaryPdf(selectedTable, allFields, aiDescriptions)
+  }
 
   // ── Welcome dashboard (no table selected) ─────────────────────────────────
   if (!selectedTable) {
@@ -265,6 +312,9 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
               }}
               onRefresh={() => loadTable(selectedTable)}
               onDeleteRows={openDeleteDialog}
+              aiDescriptions={aiDescriptions}
+              aiLoading={aiLoading}
+              onRequestAiDescriptions={() => handleLoadAiDescriptions(false)}
             />
           </Tab>
           <Tab text="Excel" selected={activeTab === 'excel'}>
@@ -274,7 +324,14 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
             />
           </Tab>
           <Tab text="Field Schema" selected={activeTab === 'fieldSchema'}>
-            <FieldSchemaTab allFields={allFields} />
+            <FieldSchemaTab
+              allFields={allFields}
+              aiDescriptions={aiDescriptions}
+              aiLoading={aiLoading}
+              aiError={aiError}
+              onLoadAiDescriptions={() => handleLoadAiDescriptions(true)}
+              onExportPdf={handleExportDataDictionary}
+            />
           </Tab>
           <Tab text="Audit Log" selected={activeTab === 'auditLog'}>
             <AuditLogPanel tableName={selectedTable.TableName} />
