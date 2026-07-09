@@ -175,35 +175,106 @@ export async function uploadExcel(
     file_base64: fileBase64
   })
 
-  if (Array.isArray(result)) return result
-  if (Array.isArray(result?.value)) return result.value
-  return result ? [result] : []
+  const rows = Array.isArray(result) ? result : Array.isArray(result?.value) ? result.value : result ? [result] : []
+  return normalizeExcelDiffRows(rows, tableName)
 }
 
 export async function confirmImport(
   tableName: string,
   diffRows: ExcelDiffRow[]
 ): Promise<ExcelConfirmResult> {
-  const payload = filterDiffForCommit(diffRows).map(({ id: _id, ...row }) => row)
+  const payload = filterDiffForCommit(diffRows, tableName).map(({ id: _id, ...row }) => ({
+    ...row,
+    table_name: tableName
+  }))
 
-  return postExcelAction<ExcelConfirmResult>(actionUrl('confirmImport'), {
+  const result = await postExcelAction<ExcelConfirmResult>(actionUrl('confirmImport'), {
     id: STUB_ID,
     table_name: tableName,
     diff_json: JSON.stringify(payload)
   })
+
+  return normalizeExcelConfirmResult(result)
 }
 
-export function filterDiffForCommit(rows: ExcelDiffRow[]): ExcelDiffRow[] {
+export function filterDiffForCommit(rows: ExcelDiffRow[], tableName?: string): ExcelDiffRow[] {
   return rows.filter(row =>
+    rowBelongsToTable(row, tableName) &&
     row.row_no !== 0 &&
-    row.status !== 'INFO' &&
-    row.status !== 'UNCHANGED' &&
-    row.status !== 'ERROR'
+    normalizeStatus(row.status) !== 'INFO' &&
+    normalizeStatus(row.status) !== 'UNCHANGED' &&
+    normalizeStatus(row.status) !== 'ERROR'
   )
 }
 
 export function getInfoRows(rows: ExcelDiffRow[]): ExcelDiffRow[] {
-  return rows.filter(row => row.row_no === 0 || row.status === 'INFO')
+  return rows.filter(row => row.row_no === 0 || normalizeStatus(row.status) === 'INFO')
+}
+
+export function normalizeExcelDiffRows(rows: ExcelDiffRow[], tableName?: string): ExcelDiffRow[] {
+  return rows
+    .filter(row => rowBelongsToTable(row, tableName))
+    .map(row => ({
+      ...row,
+      table_name: row.table_name || tableName || '',
+      status: normalizeStatus(row.status),
+      message: translateExcelMessage(row.message)
+    }))
+}
+
+export function normalizeExcelConfirmResult(result: ExcelConfirmResult): ExcelConfirmResult {
+  return {
+    ...result,
+    message: translateExcelMessage(result?.message || '')
+  }
+}
+
+function rowBelongsToTable(row: ExcelDiffRow, tableName?: string): boolean {
+  if (!tableName) return true
+  const rowTable = normalizeTableName(row.table_name)
+  return !rowTable || rowTable === normalizeTableName(tableName)
+}
+
+function normalizeTableName(value: string): string {
+  return String(value || '').trim().toUpperCase()
+}
+
+function normalizeStatus(status: string): string {
+  return String(status || '').trim().toUpperCase()
+}
+
+export function translateExcelMessage(message: string): string {
+  const text = String(message || '').trim()
+  if (!text) return ''
+
+  const approvalMatch = text.match(
+    /^Row\s+(\d+):\s*Request submitted for approval\s*\(ID:\s*([^)]+)\);\s*Đã gửi duyệt:\s*C=(\d+),\s*U=(\d+),\s*E=(\d+)\.?\s*Chờ Approve trên UI\.?$/i
+  )
+  if (approvalMatch) {
+    const [, rowNo, approvalId, created, updated, errors] = approvalMatch
+    return `Row ${rowNo}: Approval request submitted (ID: ${approvalId}). Submitted for approval: created ${created}, updated ${updated}, errors ${errors}. Waiting for approval in the UI.`
+  }
+
+  const permissionMatch = text.match(/^User\s+(.+?)\s+không\s+có\s+quyền\s+(.+?)\s+trên\s+(.+)$/i)
+  if (permissionMatch) {
+    const [, user, action, table] = permissionMatch
+    return `User ${user} does not have permission to ${action.toUpperCase()} on ${table}.`
+  }
+
+  const normalized = text
+    .toLowerCase()
+    .replace(/đ/g, 'd')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+
+  if (/^khong thay doi/.test(normalized)) return 'No changes'
+  if (/^khong co thay doi/.test(normalized)) return 'No changes'
+  if (/^du lieu khong thay doi/.test(normalized)) return 'No changes'
+  if (/^gia tri thay doi/.test(normalized)) return 'Value changed'
+  if (/^dong moi/.test(normalized) || /^ban ghi moi/.test(normalized)) return 'New record'
+  if (/^loi/.test(normalized)) return text.replace(/^lỗi[:\s-]*/i, 'Error: ')
+
+  return text
 }
 
 export function fileToBase64(file: File): Promise<string> {
@@ -238,6 +309,10 @@ export function downloadBase64AsXlsx(base64: string, fileName: string): void {
 }
 
 export function getExcelErrorMessage(error: any): string {
+  if (error?.response?.status === 403 && !isCsrfError(error)) {
+    return 'You do not have permission to perform this Excel action. Please contact an administrator or request the required SAP authorization.'
+  }
+
   const data = error?.response?.data
   const sapMessage = data?.error?.message
   if (typeof sapMessage === 'string' && sapMessage.trim()) return sapMessage

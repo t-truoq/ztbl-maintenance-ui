@@ -107,10 +107,10 @@ export default function AppLayout({
           overflow: 'hidden'
         }}
       >
-        <div style={{
-          width: collapsed ? '48px' : '300px',
-          minWidth: collapsed ? '48px' : '300px',
-          maxWidth: collapsed ? '48px' : '300px',
+        <div className={`app-sidebar${collapsed ? ' app-sidebar--collapsed' : ''}`} style={{
+          width: collapsed ? '64px' : '300px',
+          minWidth: collapsed ? '64px' : '300px',
+          maxWidth: collapsed ? '64px' : '300px',
           flexShrink: 0,
           borderRight: '1px solid var(--sapContent_BorderColor, #d9d9d9)',
           background: 'var(--sapContent_NavigationBackgroundColor, #ffffff)',
@@ -167,31 +167,48 @@ export default function AppLayout({
           )}
 
           {collapsed && (
-            <div style={{
-              display: 'flex',
-              justifyContent: 'center',
-              padding: '8px',
-              borderBottom: '1px solid var(--sapContent_BorderColor, #f0f0f0)'
-            }}>
+            <div className="app-sidebar-collapsed-header">
               <Button
                 icon={'menu' as any}
                 design="Transparent"
+                accessibleName="Expand sidebar"
                 onClick={() => setCollapsed(prev => !prev)}
               />
             </div>
           )}
 
-          <SideNavigation collapsed={collapsed} style={{ flex: 1, width: '100%' }}>
-            {filteredTables.map(t => (
-              <SideNavigationItem
-                key={t.ConfigUuid}
-                text={t.TableName}
-                icon={'table-view' as any}
-                selected={selectedTable?.ConfigUuid === t.ConfigUuid}
-                onClick={() => onSelectTable(t)}
-              />
-            ))}
-          </SideNavigation>
+          {collapsed ? (
+            <nav className="app-sidebar-icon-list" aria-label="Table navigation">
+              {filteredTables.map(t => {
+                const selected = selectedTable?.ConfigUuid === t.ConfigUuid
+                return (
+                  <button
+                    key={t.ConfigUuid}
+                    type="button"
+                    className={`app-sidebar-icon-item${selected ? ' app-sidebar-icon-item--selected' : ''}`}
+                    title={t.Description ? `${t.TableName} - ${t.Description}` : t.TableName}
+                    aria-label={t.TableName}
+                    aria-current={selected ? 'page' : undefined}
+                    onClick={() => onSelectTable(t)}
+                  >
+                    <Icon name="table-view" className="app-sidebar-icon" />
+                  </button>
+                )
+              })}
+            </nav>
+          ) : (
+            <SideNavigation collapsed={collapsed} style={{ flex: 1, width: '100%' }}>
+              {filteredTables.map(t => (
+                <SideNavigationItem
+                  key={t.ConfigUuid}
+                  text={t.TableName}
+                  icon={'table-view' as any}
+                  selected={selectedTable?.ConfigUuid === t.ConfigUuid}
+                  onClick={() => onSelectTable(t)}
+                />
+              ))}
+            </SideNavigation>
+          )}
         </div>
 
         <div

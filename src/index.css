@@ -188,6 +188,82 @@ ui5-toast {
   overflow-wrap: break-word !important;
 }
 
+/* App sidebar */
+.app-sidebar {
+  scrollbar-width: thin;
+}
+
+.app-sidebar-collapsed-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 3.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--sapContent_BorderColor, #f0f0f0);
+  box-sizing: border-box;
+}
+
+.app-sidebar-icon-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  width: 100%;
+  padding: 0.625rem 0.4375rem;
+  box-sizing: border-box;
+}
+
+.app-sidebar-icon-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sapContent_IconColor, #223548);
+  cursor: pointer;
+  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.app-sidebar-icon-item::before {
+  content: '';
+  position: absolute;
+  left: -0.4375rem;
+  top: 0.375rem;
+  bottom: 0.375rem;
+  width: 0.1875rem;
+  border-radius: 0 999px 999px 0;
+  background: transparent;
+}
+
+.app-sidebar-icon-item:hover {
+  border-color: var(--sapButton_BorderColor, #bcc3ca);
+  background: var(--sapButton_Hover_Background, #f5faff);
+  color: var(--sapSelectedColor, #0a6ed1);
+}
+
+.app-sidebar-icon-item--selected {
+  border-color: var(--sapSelectedColor, #0a6ed1);
+  background: var(--sapList_SelectionBackgroundColor, #e5f0fa);
+  color: var(--sapSelectedColor, #0a6ed1);
+  box-shadow: inset 0 0 0 1px rgba(10, 110, 209, 0.08);
+}
+
+.app-sidebar-icon-item--selected::before {
+  background: var(--sapSelectedColor, #0a6ed1);
+}
+
+.app-sidebar-icon {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: 0 0 auto;
+}
+
 /* Excel import/export workspace */
 .excel-workspace {
   width: 100%;
@@ -363,16 +439,19 @@ ui5-toast {
   flex-direction: column;
   align-items: flex-start;
   gap: 0.25rem;
+  width: min(100%, 700px);
+  margin-top: 0.5rem;
 }
 
 .excel-parse-details-body {
   width: 100%;
-  max-height: 7.5rem;
-  overflow: auto;
-  padding: 0.5rem 0.625rem;
-  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  max-height: none;
+  overflow: visible;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid #e09d00;
+  border-left: 4px solid #e09d00;
   border-radius: 6px;
-  background: var(--sapInformationBackground, #f5faff);
+  background: #fff8d6;
   color: var(--sapTextColor, #32363a);
   box-sizing: border-box;
   font-size: 0.8125rem;
@@ -381,13 +460,116 @@ ui5-toast {
   overflow-wrap: anywhere;
 }
 
+.excel-error-banner,
+.excel-feedback-banner {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 0 1rem;
+}
+
+.excel-error-banner ui5-message-strip,
+.excel-feedback-banner ui5-message-strip {
+  box-shadow: 0 6px 18px rgba(187, 0, 0, 0.14);
+}
+
+.excel-result-panel {
+  display: grid;
+  gap: 0.875rem;
+}
+
+.excel-result-header {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  border-radius: 8px;
+  background: var(--sapList_Background, #fff);
+}
+
+.excel-result-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.625rem;
+}
+
+.excel-result-detail {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  border-radius: 8px;
+  background: var(--sapNeutralBackground, #f5f6f7);
+}
+
+.excel-result-detail-label,
+.excel-result-count-label {
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1rem;
+}
+
+.excel-result-detail-value {
+  color: var(--sapTextColor, #32363a);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+.excel-result-code {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0.25rem 0.375rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.excel-result-count-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 0.5rem;
+}
+
+.excel-result-count {
+  display: grid;
+  gap: 0.125rem;
+  min-height: 3.25rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  border-left: 4px solid;
+  border-radius: 8px;
+  background: var(--sapList_Background, #fff);
+  box-sizing: border-box;
+}
+
+.excel-result-count-value {
+  color: var(--sapTextColor, #32363a);
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.4rem;
+}
+
+.excel-result-raw {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  border-radius: 8px;
+  background: var(--sapNeutralBackground, #f5f6f7);
+  color: var(--sapTextColor, #32363a);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .excel-diff-row--new {
   background: #f1fdf6;
   border-left: 4px solid #107e3e;
 }
 
 .excel-diff-row--changed {
-  background: #fff8e6;
+  background: #fff4c2;
   border-left: 4px solid #e09d00;
 }
 
@@ -414,8 +596,13 @@ ui5-toast {
 }
 
 .excel-diff-note--changed {
-  background: #fff3cc;
+  background: #ffe58a;
   color: #6b4c00;
+}
+
+.excel-status--changed ui5-object-status,
+.excel-status--changed {
+  color: #8a5a00;
 }
 
 .excel-diff-note--error {

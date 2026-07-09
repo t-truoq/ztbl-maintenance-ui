@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   BusyIndicator,
   Button,
@@ -33,6 +33,12 @@ interface ExcelPipelineTabProps {
 }
 
 type BusyStep = '' | 'downloadTemplate' | 'downloadData' | 'upload' | 'confirm'
+type FeedbackDesign = 'Information' | 'Positive' | 'Critical' | 'Negative'
+
+interface ExcelFeedback {
+  text: string
+  design: FeedbackDesign
+}
 
 const columns = [
   { key: 'row_no', label: 'Row', width: '90px' },
@@ -59,7 +65,7 @@ export default function ExcelPipelineTab({
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [busyStep, setBusyStep] = useState<BusyStep>('')
   const [diffRows, setDiffRows] = useState<ExcelDiffRow[]>([])
-  const [message, setMessage] = useState('')
+  const [feedback, setFeedback] = useState<ExcelFeedback | null>(null)
   const [error, setError] = useState('')
   const [selectedFileName, setSelectedFileName] = useState('')
   const [confirmResult, setConfirmResult] = useState<ExcelConfirmResult | null>(null)
@@ -67,32 +73,42 @@ export default function ExcelPipelineTab({
   const [resultDialogOpen, setResultDialogOpen] = useState(false)
   const [errorDialogOpen, setErrorDialogOpen] = useState(false)
   const [dragActive, setDragActive] = useState(false)
-  const [showParseDetails, setShowParseDetails] = useState(false)
 
   const visibleRows = useMemo(
     () => diffRows.filter(row => !(row.row_no === 0 || row.status === 'INFO')),
     [diffRows]
   )
   const infoRows = useMemo(() => getInfoRows(diffRows), [diffRows])
-  const commitRows = useMemo(() => filterDiffForCommit(diffRows), [diffRows])
+  const commitRows = useMemo(() => filterDiffForCommit(diffRows, tableName), [diffRows, tableName])
   const errorRows = useMemo(
     () => diffRows.filter(row => row.status === 'ERROR'),
     [diffRows]
   )
   const statusCounts = useMemo(() => buildStatusCounts(visibleRows), [visibleRows])
-  const parseDetails = useMemo(
-    () => infoRows.map(row => row.message).filter(Boolean).join(' | '),
+  const parseSummary = useMemo(
+    () => buildParseSummary(infoRows),
     [infoRows]
   )
 
   const totalTableWidth = columns.reduce((sum, col) => sum + parseInt(col.width, 10), 0)
   const columnsStyle = columns.map(col => col.width).join(' ')
 
+  useEffect(() => {
+    setBusyStep('')
+    setDiffRows([])
+    setFeedback(null)
+    setError('')
+    setSelectedFileName('')
+    setConfirmResult(null)
+    setDiffDialogOpen(false)
+    setResultDialogOpen(false)
+    setErrorDialogOpen(false)
+  }, [tableName])
+
   function resetFeedback() {
     setError('')
-    setMessage('')
+    setFeedback(null)
     setConfirmResult(null)
-    setShowParseDetails(false)
   }
 
   async function handleDownload(templateOnly: boolean) {
@@ -103,7 +119,10 @@ export default function ExcelPipelineTab({
       const result = await downloadExcel(tableName, templateOnly)
       const fileName = templateOnly ? `${tableName}_TEMPLATE.xlsx` : `${tableName}.xlsx`
       downloadBase64AsXlsx(result.file_base64, fileName)
-      setMessage(result.message || `Downloaded ${fileName}`)
+      setFeedback({
+        text: result.message || `Downloaded ${fileName}`,
+        design: 'Positive'
+      })
       console.debug('[ExcelPipeline] download completed', {
         tableName,
         templateOnly,
@@ -138,16 +157,25 @@ export default function ExcelPipelineTab({
 
       const rows = await uploadExcel(tableName, base64)
       setDiffRows(rows)
-      const commitCount = filterDiffForCommit(rows).length
+      const commitCount = filterDiffForCommit(rows, tableName).length
       const visibleCount = rows.filter(row => !(row.row_no === 0 || row.status === 'INFO')).length
       const errorCount = rows.filter(row => row.status === 'ERROR').length
       const unchangedCount = rows.filter(row => row.status === 'UNCHANGED').length
       if (visibleCount > 0 && unchangedCount === visibleCount && commitCount === 0 && errorCount === 0) {
-        setMessage('No changes detected. The uploaded file matches the current table data.')
+        setFeedback({
+          text: 'No changes detected. The uploaded file matches the current table data.',
+          design: 'Positive'
+        })
       } else if (errorCount > 0) {
-        setMessage(`Upload parsed ${visibleCount} row(s). Resolve ${errorCount} error row(s) before importing.`)
+        setFeedback({
+          text: `Upload parsed ${visibleCount} row(s). Resolve ${errorCount} error row(s) before importing.`,
+          design: 'Critical'
+        })
       } else {
-        setMessage(`Upload parsed ${visibleCount} row(s). ${commitCount} row(s) can be imported.`)
+        setFeedback({
+          text: `Upload parsed ${visibleCount} row(s). ${commitCount} row(s) can be imported.`,
+          design: 'Information'
+        })
       }
       setDiffDialogOpen(true)
       console.debug('[ExcelPipeline] upload completed', {
@@ -187,7 +215,10 @@ export default function ExcelPipelineTab({
     try {
       const result = await confirmImport(tableName, diffRows)
       setConfirmResult(result)
-      setMessage(result.message || 'Import confirmed.')
+      setFeedback({
+        text: buildConfirmFeedbackText(result),
+        design: (result.error_count ?? 0) > 0 ? 'Negative' : 'Positive'
+      })
       setDiffDialogOpen(false)
       setResultDialogOpen(true)
       console.debug('[ExcelPipeline] confirm completed', result)
@@ -196,6 +227,7 @@ export default function ExcelPipelineTab({
       const msg = getExcelErrorMessage(e)
       console.error('[ExcelPipeline] confirm failed', e)
       setError(msg)
+      setDiffDialogOpen(false)
       setErrorDialogOpen(true)
     } finally {
       setBusyStep('')
@@ -220,6 +252,9 @@ export default function ExcelPipelineTab({
           <Text className="excel-muted">
             Export table data, upload the edited workbook, review the diff, then confirm the import.
           </Text>
+          {parseSummary && (
+            <ParseDetails details={parseSummary} />
+          )}
         </div>
         <div className="excel-primary-actions">
           <Button
@@ -312,13 +347,6 @@ export default function ExcelPipelineTab({
             commit={commitRows.length}
             statusCounts={statusCounts}
           />
-          {parseDetails && (
-            <ParseDetails
-              details={parseDetails}
-              open={showParseDetails}
-              onToggle={() => setShowParseDetails(prev => !prev)}
-            />
-          )}
         </div>
       </section>
 
@@ -330,17 +358,17 @@ export default function ExcelPipelineTab({
       )}
 
       {error && (
-        <div style={{ padding: '0 1rem' }}>
-          <MessageStrip design="Negative" onClose={() => setError('')}>
+        <div className="excel-error-banner">
+          <MessageStrip design="Critical" onClose={() => setError('')}>
             {error}
           </MessageStrip>
         </div>
       )}
 
-      {message && !error && (
-        <div style={{ padding: '0 1rem' }}>
-          <MessageStrip design="Information" onClose={() => setMessage('')}>
-            {message}
+      {feedback && !error && (
+        <div className="excel-feedback-banner">
+          <MessageStrip design={feedback.design} onClose={() => setFeedback(null)}>
+            {feedback.text}
           </MessageStrip>
         </div>
       )}
@@ -415,24 +443,14 @@ export default function ExcelPipelineTab({
             </MessageStrip>
           )}
 
-          {parseDetails && (
-            <ParseDetails
-              details={parseDetails}
-              open={showParseDetails}
-              onToggle={() => setShowParseDetails(prev => !prev)}
-            />
-          )}
-
-          <div style={{ maxHeight: '58vh', overflow: 'auto' }}>
-            <DiffTable
-              rows={visibleRows}
-              columnsStyle={columnsStyle}
-              totalTableWidth={totalTableWidth}
-              statusState={statusState}
-              compact
-              highlightStatus
-            />
-          </div>
+          <DiffTable
+            rows={visibleRows}
+            columnsStyle={columnsStyle}
+            totalTableWidth={totalTableWidth}
+            statusState={statusState}
+            compact
+            highlightStatus
+          />
         </FlexBox>
       </ModernModal>
 
@@ -440,25 +458,14 @@ export default function ExcelPipelineTab({
         open={resultDialogOpen}
         title="Excel Import Result"
         onClose={() => setResultDialogOpen(false)}
-        width="min(92vw, 720px)"
+        width="min(92vw, 760px)"
         footer={
           <Button design="Emphasized" onClick={() => setResultDialogOpen(false)}>
             OK
           </Button>
         }
       >
-        <FlexBox direction="Column" gap="12px">
-          <ObjectStatus state={(confirmResult?.error_count ?? 0) > 0 ? 'Negative' : 'Positive'}>
-            {confirmResult?.message || 'Import completed.'}
-          </ObjectStatus>
-          <FlexBox gap="8px" wrap="Wrap">
-            <InfoPill>Inserted: {confirmResult?.inserted_count ?? 0}</InfoPill>
-            <InfoPill>Updated: {confirmResult?.updated_count ?? 0}</InfoPill>
-            <InfoPill>Unchanged: {confirmResult?.unchanged_count ?? 0}</InfoPill>
-            <InfoPill>Skipped: {confirmResult?.skipped_count ?? 0}</InfoPill>
-            <InfoPill>Errors: {confirmResult?.error_count ?? 0}</InfoPill>
-          </FlexBox>
-        </FlexBox>
+        <ExcelImportResultSummary result={confirmResult} />
       </ModernModal>
 
       <ModernModal
@@ -489,6 +496,18 @@ function busyLabel(step: BusyStep): string {
   if (step === 'upload') return 'Uploading and parsing Excel file...'
   if (step === 'confirm') return 'Confirming import...'
   return ''
+}
+
+function buildConfirmFeedbackText(result: ExcelConfirmResult): string {
+  const hasErrors = (result.error_count ?? 0) > 0
+  const approvalId = parseImportResultMessage(result.message || '').approvalId
+  if (hasErrors) {
+    return `Import completed with ${result.error_count ?? 0} error(s). Review the result details.`
+  }
+  if (approvalId) {
+    return 'Import submitted for approval. Review the approval request details.'
+  }
+  return `Import completed. Inserted: ${result.inserted_count ?? 0}, updated: ${result.updated_count ?? 0}, skipped: ${result.skipped_count ?? 0}.`
 }
 
 function FlowStep({
@@ -540,30 +559,128 @@ function InfoPill({ children }: { children: ReactNode }) {
 }
 
 function ParseDetails({
-  details,
-  open,
-  onToggle
+  details
 }: {
   details: string
-  open: boolean
-  onToggle: () => void
 }) {
   return (
     <div className="excel-parse-details">
-      <Button
-        design="Transparent"
-        icon={(open ? 'slim-arrow-up' : 'slim-arrow-down') as any}
-        onClick={onToggle}
-      >
-        {open ? 'Hide parse details' : 'Show parse details'}
-      </Button>
-      {open && (
-        <div className="excel-parse-details-body">
-          {details}
+      <div className="excel-parse-details-body">
+        {details}
+      </div>
+    </div>
+  )
+}
+
+function buildParseSummary(infoRows: ExcelDiffRow[]): string {
+  const messages = infoRows
+    .map(row => row.message)
+    .filter(Boolean)
+    .filter(message => !/readonly\/hidden\/system-managed/i.test(message))
+
+  return messages.join(' | ')
+}
+
+function ExcelImportResultSummary({ result }: { result: ExcelConfirmResult | null }) {
+  const parsed = parseImportResultMessage(result?.message || '')
+  const hasErrors = (result?.error_count ?? 0) > 0
+  const statusState = hasErrors ? 'Negative' : parsed.approvalId ? 'Information' : 'Positive'
+  const statusText = hasErrors
+    ? 'Completed with errors'
+    : parsed.approvalId
+      ? 'Approval required'
+      : 'Import completed'
+  const countItems = [
+    { label: 'Inserted', value: result?.inserted_count ?? 0, accent: '#107e3e' },
+    { label: 'Updated', value: result?.updated_count ?? 0, accent: '#e09d00' },
+    { label: 'Unchanged', value: result?.unchanged_count ?? 0, accent: '#6a6d70' },
+    { label: 'Skipped', value: result?.skipped_count ?? 0, accent: '#5b738b' },
+    { label: 'Errors', value: result?.error_count ?? 0, accent: '#bb0000' }
+  ]
+
+  return (
+    <div className="excel-result-panel">
+      <div className="excel-result-header">
+        <ObjectStatus state={statusState}>
+          {statusText}
+        </ObjectStatus>
+        <Title level="H5">{parsed.title}</Title>
+        {parsed.description && <Text className="excel-muted">{parsed.description}</Text>}
+      </div>
+
+      {(parsed.approvalId || parsed.rowNo || parsed.waitingText) && (
+        <div className="excel-result-detail-grid">
+          {parsed.approvalId && (
+            <div className="excel-result-detail">
+              <span className="excel-result-detail-label">Approval Request ID</span>
+              <code className="excel-result-code">{parsed.approvalId}</code>
+            </div>
+          )}
+          {parsed.rowNo && (
+            <div className="excel-result-detail">
+              <span className="excel-result-detail-label">Source Row</span>
+              <span className="excel-result-detail-value">Row {parsed.rowNo}</span>
+            </div>
+          )}
+          {parsed.waitingText && (
+            <div className="excel-result-detail">
+              <span className="excel-result-detail-label">Next Step</span>
+              <span className="excel-result-detail-value">{parsed.waitingText}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="excel-result-count-grid">
+        {countItems.map(item => (
+          <div key={item.label} className="excel-result-count" style={{ borderLeftColor: item.accent }}>
+            <span className="excel-result-count-label">{item.label}</span>
+            <span className="excel-result-count-value">{item.value}</span>
+          </div>
+        ))}
+      </div>
+
+      {parsed.fallback && (
+        <div className="excel-result-raw">
+          {parsed.fallback}
         </div>
       )}
     </div>
   )
+}
+
+function parseImportResultMessage(message: string): {
+  title: string
+  description: string
+  approvalId: string
+  rowNo: string
+  waitingText: string
+  fallback: string
+} {
+  const text = String(message || '').trim()
+  const rowNo = text.match(/^Row\s+(\d+):/i)?.[1] || ''
+  const approvalId = text.match(/Approval request submitted\s*\(ID:\s*([^)]+)\)/i)?.[1] || ''
+  const waitingText = /Waiting for approval in the UI/i.test(text) ? 'Waiting for approval in the UI.' : ''
+
+  if (approvalId) {
+    return {
+      title: 'Approval request submitted',
+      description: 'Your Excel import was submitted successfully and is now waiting for approval.',
+      approvalId,
+      rowNo,
+      waitingText,
+      fallback: ''
+    }
+  }
+
+  return {
+    title: text || 'Import completed',
+    description: '',
+    approvalId: '',
+    rowNo,
+    waitingText,
+    fallback: ''
+  }
 }
 
 function ModernModal({
@@ -647,7 +764,8 @@ function ModernModal({
         <div
           style={{
             padding: '16px 18px',
-            overflow: 'auto',
+            overflowY: 'auto',
+            overflowX: 'hidden',
             flex: 1,
             minHeight: 0,
             boxSizing: 'border-box'
@@ -688,10 +806,10 @@ function StatusSummary({
   const items = [
     { label: 'Total', value: total, accent: '#5b738b' },
     { label: 'New', value: statusCounts.NEW, accent: '#107e3e' },
-    { label: 'Changed', value: statusCounts.CHANGED, accent: '#0a6ed1' },
+    { label: 'Changed', value: statusCounts.CHANGED, accent: '#e09d00' },
     { label: 'Unchanged', value: statusCounts.UNCHANGED, accent: '#6a6d70' },
     { label: 'Errors', value: statusCounts.ERROR, accent: '#bb0000' },
-    { label: 'Commit', value: commit, accent: '#256f3a' }
+    { label: 'Commit', value: commit, accent: '#0a6ed1' }
   ]
 
   return (
@@ -803,9 +921,11 @@ function DiffTable({
                 <Text>{row.new_value || '-'}</Text>
               </TableCell>
               <TableCell>
-                <ObjectStatus state={statusState(row.status)}>
-                  {row.status || '-'}
-                </ObjectStatus>
+                <span className={String(row.status || '').toUpperCase() === 'CHANGED' ? 'excel-status--changed' : undefined}>
+                  <ObjectStatus state={statusState(row.status)}>
+                    {row.status || '-'}
+                  </ObjectStatus>
+                </span>
               </TableCell>
               <TableCell>
                 <DiffMessage status={row.status} message={row.message} />
