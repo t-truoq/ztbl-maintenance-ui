@@ -16,7 +16,7 @@ import {
 } from '@ui5/webcomponents-react'
 import { getAuditLog } from '../services/tableConfigApi'
 import { getFriendlyErrorMessage } from '../services/apiClient'
-import { getAuditDisplayCells } from '../utils/auditFormatters'
+import { getAuditDisplayCells, getAuditValueParts } from '../utils/auditFormatters'
 import { AuditLogEntry } from '../types'
 
 const ACTION_LABELS: Record<string, string> = { C: 'Created', U: 'Updated', D: 'Deleted' }
@@ -58,18 +58,7 @@ function dateInputValue(value?: string): string {
 }
 
 function splitAuditParts(value: string): Array<{ key: string; value: string }> {
-  if (!value) return []
-  return value
-    .split(/\s+\|\s+/)
-    .map(part => {
-      const separator = part.indexOf(':')
-      if (separator === -1) return { key: '', value: part.trim() }
-      return {
-        key: part.slice(0, separator).trim(),
-        value: part.slice(separator + 1).trim()
-      }
-    })
-    .filter(part => part.key || part.value)
+  return getAuditValueParts(value)
 }
 
 function partsToMap(parts: Array<{ key: string; value: string }>): Map<string, string> {
