@@ -625,6 +625,7 @@ export async function createRecord(configUuid: string, tableName: string, record
       table_name: tableName,
       record_key: '',
       record_data: asRecordDataJson(recordData),
+      records_data: '',
       etag_field: '',
       etag_value: ''
     },
@@ -667,6 +668,7 @@ export async function updateRecord(
       table_name: tableName,
       record_key: asRecordKeyJson(recordKey),
       record_data: asRecordDataJson(recordData),
+      records_data: '',
       etag_field: etagField,
       etag_value: etagValue
         ? formatEtagValueForAbap(etagValue) || String(etagValue)
@@ -700,6 +702,7 @@ export async function deleteRecord(configUuid: string, tableName: string, record
       table_name: tableName,
       record_key: asRecordKeyJson(recordKey),
       record_data: '',
+      records_data: '',
       etag_field: '',
       etag_value: ''
     },

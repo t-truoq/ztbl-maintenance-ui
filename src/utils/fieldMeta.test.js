@@ -228,5 +228,21 @@ describe('buildKeyRecord', () => {
     const key = buildKeyRecord(fields, values)
     expect(key).toEqual({ COURSE_ID: '9' })
   })
+
+  it('normalizes base64 RAW16 UUID key values to uppercase hex', () => {
+    const fields = [
+      { field_name: 'ENTITY_ID', fe_type: 'uuid', is_key: true }
+    ]
+    const values = {
+      ENTITY_ID: 'i5Xzak8nH+Gck+NrMJFAsg==',
+      NAME: 'a'
+    }
+
+    const key = buildKeyRecord(fields, values)
+
+    expect(key).toEqual({
+      ENTITY_ID: '8B95F36A4F271FE19C93E36B309140B2'
+    })
+  })
 })
 

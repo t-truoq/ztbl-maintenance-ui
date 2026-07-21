@@ -79,7 +79,7 @@ export default function DomainValueHelp({
   function handleComboInput(e: any) {
     const text = e.target.value ?? ''
     setFilterText(text)
-    if (!text) onChange('')
+    onChange(text)
   }
 
   const label = field.LabelText || field.FieldName

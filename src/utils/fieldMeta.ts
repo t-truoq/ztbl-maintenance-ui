@@ -2,7 +2,7 @@
  * SM30-style field metadata + payload formatting (FE contract with BE).
  */
 
-import { fromAbapDate, toAbapDate } from './abapFormatter'
+import { fromAbapDate, toAbapDate, toAbapUuid } from './abapFormatter'
 import { FieldMeta, FeType, TableRowData } from '../types'
 
 export function abapToIso(abapDate: string): string {
@@ -314,9 +314,7 @@ export function formatPayload(formData: Record<string, any>, meta: FieldMeta[], 
         if (isCreate && isGeneratedUuidCreateKey(field)) {
           payload[key] = ''
         } else {
-          payload[key] = String(raw ?? '')
-            .replace(/-/g, '')
-            .toUpperCase()
+          payload[key] = toAbapUuid(raw)
         }
         break
 

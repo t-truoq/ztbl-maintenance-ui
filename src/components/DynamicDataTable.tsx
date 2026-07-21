@@ -15,7 +15,6 @@ import {
   ToolbarSpacer,
   FlexBox,
   Icon,
-  ObjectStatus,
 } from '@ui5/webcomponents-react'
 import CellEditControl from './CellEditControl'
 import { formatHeaderLabel } from '../utils/tableHelpers'
@@ -529,22 +528,6 @@ export default function DynamicDataTable({
                   const name = f.field_name || f.FieldName
                   const val = row[name]
                   const singleLine = shouldKeepCellSingleLine(f, val)
-
-                  if (name.toUpperCase() === 'STATUS') {
-                    const valStr = String(val ?? '').toUpperCase()
-                    const isActive =
-                      valStr === 'A' || valStr === 'ACTIVE' || valStr === 'X'
-                    const isInactive = valStr === 'I' || valStr === 'INACTIVE'
-                    return (
-                      <TableCell key={name} style={{ minWidth: `${minColWidth}px` }}>
-                        <ObjectStatus
-                          state={isActive ? 'Positive' : isInactive ? 'Negative' : 'None'}
-                        >
-                          {isActive ? 'Active' : isInactive ? 'Inactive' : valStr || '—'}
-                        </ObjectStatus>
-                      </TableCell>
-                    )
-                  }
 
                   return (
                     <TableCell key={name} style={{ minWidth: `${minColWidth}px` }}>
