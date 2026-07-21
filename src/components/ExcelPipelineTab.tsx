@@ -24,6 +24,7 @@ import {
   filterDiffForCommit,
   getExcelErrorMessage,
   getInfoRows,
+  isExcelFilenameAllowed,
   uploadExcel
 } from '../services/excelPipelineApi'
 
@@ -144,8 +145,8 @@ export default function ExcelPipelineTab({
     setBusyStep('upload')
 
     try {
-      if (!file.name.toLowerCase().endsWith('.xlsx')) {
-        throw new Error('Please select an .xlsx file.')
+      if (!isExcelFilenameAllowed(file.name, tableName)) {
+        throw new Error(`Please select ${tableName}.xlsx or ${tableName} (n).xlsx.`)
       }
 
       const base64 = await fileToBase64(file)

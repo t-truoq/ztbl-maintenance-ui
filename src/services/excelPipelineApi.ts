@@ -229,6 +229,20 @@ export function normalizeExcelConfirmResult(result: ExcelConfirmResult): ExcelCo
   }
 }
 
+export function normalizeExcelFileName(fileName: string): string {
+  return String(fileName || '')
+    .trim()
+    .replace(/\.xlsx$/i, '')
+    .replace(/\s*\(\d+\)$/i, '')
+    .trim()
+    .toUpperCase()
+}
+
+export function isExcelFilenameAllowed(fileName: string, tableName: string): boolean {
+  return /\.xlsx$/i.test(String(fileName || '').trim()) &&
+    normalizeExcelFileName(fileName) === normalizeTableName(tableName)
+}
+
 function rowBelongsToTable(row: ExcelDiffRow, tableName?: string): boolean {
   if (!tableName) return true
   const rowTable = normalizeTableName(row.table_name)

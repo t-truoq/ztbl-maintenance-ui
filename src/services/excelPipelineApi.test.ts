@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   filterDiffForCommit,
+  isExcelFilenameAllowed,
   normalizeExcelConfirmResult,
   normalizeExcelDiffRows,
+  normalizeExcelFileName,
   translateExcelMessage,
   type ExcelDiffRow
 } from './excelPipelineApi'
@@ -29,6 +31,20 @@ function diffRow(overrides: Partial<ExcelDiffRow>): ExcelDiffRow {
 }
 
 describe('excelPipelineApi diff helpers', () => {
+  it('allows browser download suffixes for active table Excel files', () => {
+    expect(isExcelFilenameAllowed('Z251_SCHEDULE.xlsx', 'Z251_SCHEDULE')).toBe(true)
+    expect(isExcelFilenameAllowed('Z251_SCHEDULE (1).xlsx', 'Z251_SCHEDULE')).toBe(true)
+    expect(isExcelFilenameAllowed('Z251_SCHEDULE (12).xlsx', 'Z251_SCHEDULE')).toBe(true)
+    expect(isExcelFilenameAllowed(' z251_schedule (2).XLSX ', 'Z251_SCHEDULE')).toBe(true)
+  })
+
+  it('rejects Excel filenames that do not match the active table', () => {
+    expect(isExcelFilenameAllowed('Z253_CAT.xlsx', 'Z251_SCHEDULE')).toBe(false)
+    expect(isExcelFilenameAllowed('Z251_SCHEDULE (copy).xlsx', 'Z251_SCHEDULE')).toBe(false)
+    expect(isExcelFilenameAllowed('Z251_SCHEDULE.xls', 'Z251_SCHEDULE')).toBe(false)
+    expect(normalizeExcelFileName('Z251_SCHEDULE (12).xlsx')).toBe('Z251_SCHEDULE')
+  })
+
   it('keeps only rows for the active table', () => {
     const rows = normalizeExcelDiffRows(
       [
