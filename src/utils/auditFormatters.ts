@@ -1,12 +1,12 @@
 import { fixJson } from '../services/tableConfigApi'
-import { AuditLogEntry } from '../types'
+import { AuditLogEntry, AuditItemEntry } from '../types'
 
 export type AuditValuePart = {
   key: string
   value: string
 }
 
-const CLIENT_FIELDS = new Set(['CLIENT', 'MANDT'])
+const CLIENT_FIELDS = new Set(['CLIENT', 'MANDT', '__SNAPSHOT__', '__BATCH__'])
 
 function isClientField(key: string): boolean {
   return CLIENT_FIELDS.has(key.trim().toUpperCase())
@@ -139,7 +139,7 @@ export function formatAuditValue(value: any): string {
 }
 
 /** Per ActionType: which columns to populate. */
-export function getAuditDisplayCells(entry: AuditLogEntry): { fieldName: string; oldValue: string; newValue: string } {
+export function getAuditDisplayCells(entry: AuditLogEntry | AuditItemEntry): { fieldName: string; oldValue: string; newValue: string } {
   const action = entry.ActionType
   const formattedOld = formatAuditValue(entry.OldValue)
   const formattedNew = formatAuditValue(entry.NewValue)
@@ -151,6 +151,8 @@ export function getAuditDisplayCells(entry: AuditLogEntry): { fieldName: string;
     case 'D':
       return { fieldName, oldValue: formattedOld, newValue: '' }
     case 'U':
+      return { fieldName, oldValue: formattedOld, newValue: formattedNew }
+    case 'R':
       return { fieldName, oldValue: formattedOld, newValue: formattedNew }
     default:
       return {

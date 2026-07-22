@@ -17,7 +17,7 @@ import {
   normalizeFieldMetaRow,
   buildFieldMetaFromFieldList
 } from '../utils/fieldMeta'
-import { TableConfig, FieldMeta, AuditLogEntry, TableRowData, AiFieldDescription } from '../types'
+import { TableConfig, FieldMeta, AuditLogEntry, AuditItemEntry, TableRowData, AiFieldDescription } from '../types'
 import { normalizeAiDescriptions } from '../utils/aiDescriptions'
 
 export function isOptimisticLockError(message: string): boolean {
@@ -720,6 +720,51 @@ export async function getAuditLog(tableName: string): Promise<AuditLogEntry[]> {
     }
   })
   return res.data.value || []
+}
+
+export async function getAuditItems(auditId: string): Promise<AuditItemEntry[]> {
+  try {
+    const res = await api.get('/AuditItem', {
+      params: {
+        'sap-client': SAP_CLIENT,
+        '$filter': `AuditId eq '${auditId}'`,
+        '$orderby': 'ItemNo'
+      }
+    })
+    return res.data.value || []
+  } catch {
+    try {
+      const res = await api.get(`/AuditLog(AuditId='${encodeURIComponent(auditId)}')`, {
+        params: {
+          'sap-client': SAP_CLIENT,
+          '$expand': '_Items'
+        }
+      })
+      const items = res.data._Items?.value || res.data._Items || []
+      return Array.isArray(items) ? items : []
+    } catch {
+      return []
+    }
+  }
+}
+
+export async function rollbackAudit(auditId: string): Promise<{ success: boolean; message: string }> {
+  const url = `/AuditLog(AuditId='${encodeURIComponent(auditId)}')/com.sap.gateway.srvd.zsd_tbl_config.v0001.rollback`
+  const res = await apiPostWithCsrf(url, {}, { params: { 'sap-client': SAP_CLIENT } })
+  const data = res.data
+  const message =
+    data?.message ||
+    data?.value?.message ||
+    data?.data?.message ||
+    (Array.isArray(data?.SAP__Messages)
+      ? data.SAP__Messages.map((x: any) => x.message).join('; ')
+      : '') ||
+    'Rollback completed'
+
+  return {
+    success: data?.success !== false,
+    message
+  }
 }
 
 // Re-export friendly error formatters for easier access from pages

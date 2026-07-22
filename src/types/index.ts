@@ -61,15 +61,29 @@ export interface TableConfig {
   IsActiveEntity?: boolean;
 }
 
+export interface AuditItemEntry {
+  AuditId?: string;
+  ItemNo?: number;
+  TableName?: string;
+  RecordKey?: string;
+  FieldName?: string;
+  OldValue?: string;
+  NewValue?: string;
+  ActionType?: 'C' | 'U' | 'D' | 'R' | string;
+}
+
 export interface AuditLogEntry {
   AuditId: string;
   TableName: string;
+  RecordKey: string;
   FieldName: string;
-  ActionType: 'C' | 'U' | 'D';
+  ActionType: 'C' | 'U' | 'D' | 'R' | string;
   OldValue?: string;
   NewValue?: string;
   ChangedBy?: string;
   ChangedAt?: string;
+  RollbackAuditId?: string;
+  _Items?: { value?: AuditItemEntry[] } | AuditItemEntry[];
 }
 
 export type TableRowData = Record<string, any>;
