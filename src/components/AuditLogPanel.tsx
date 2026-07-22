@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bar,
   BusyIndicator,
@@ -12,13 +12,20 @@ import {
   Option,
   Select,
   Text,
-  Title,
-  Toolbar,
-  ToolbarSpacer
+  Title
 } from '@ui5/webcomponents-react'
 import { getAuditLog, getAuditItems, rollbackAudit } from '../services/tableConfigApi'
 import { getFriendlyErrorMessage } from '../services/apiClient'
 import { getAuditDisplayCells, getAuditValueParts } from '../utils/auditFormatters'
+import {
+  extractBulkCount,
+  findBulkChildren,
+  getBulkActionType,
+  getRawRecordKey,
+  getRecordKey,
+  isBulkAuditEntry,
+  paginateAuditEntries
+} from '../utils/auditLogHelpers'
 import { AuditLogEntry, AuditItemEntry } from '../types'
 
 const ACTION_LABELS: Record<string, string> = {
@@ -41,9 +48,11 @@ const ACTION_META: Record<string, { icon: string; color: string; background: str
 
 interface AuditLogPanelProps {
   tableName: string
+  canRollback?: boolean
 }
 
 type ActionFilter = 'ALL' | 'C' | 'U' | 'D' | 'R' | 'B'
+const PAGE_SIZE_OPTIONS = [10, 25, 50]
 
 function formatDateTime(value?: string): string {
   if (!value) return '-'
@@ -109,95 +118,6 @@ function changedParts(oldValue: string, newValue: string, fieldName = ''): Array
     .filter(part => part.oldValue !== part.newValue)
 }
 
-function getRawRecordKey(entry: AuditLogEntry | AuditItemEntry): string {
-  const anyEntry = entry as any
-  return (
-    anyEntry.RecordKey ||
-    anyEntry.record_key ||
-    anyEntry.RecordId ||
-    anyEntry.KeyValue ||
-    anyEntry.ObjectKey ||
-    anyEntry.AuditId ||
-    '-'
-  )
-}
-
-function getRecordKey(entry: AuditLogEntry | AuditItemEntry): string {
-  const rawKey = getRawRecordKey(entry)
-  if (!rawKey || rawKey === '-') return '-'
-  if (rawKey === 'BULK') return 'BULK'
-
-  try {
-    const parsed = JSON.parse(rawKey)
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return rawKey
-
-    const visibleParts = Object.entries(parsed)
-      .filter(([key]) => !['CLIENT', 'MANDT', '__SNAPSHOT__', '__BATCH__'].includes(key.toUpperCase()))
-      .map(([key, value]) => `${key}: ${String(value)}`)
-
-    return visibleParts.length > 0 ? visibleParts.join(', ') : '-'
-  } catch {
-    return rawKey
-  }
-}
-
-function extractBulkCount(entry: AuditLogEntry): string {
-  const raw = String(entry.NewValue || entry.OldValue || '')
-  const match = raw.match(/(\d+)\s*item/i) || raw.match(/Bulk audit:\s*(\d+)/i)
-  if (match) {
-    const count = parseInt(match[1], 10)
-    return `${count} item(s)`
-  }
-  return 'Bulk CRUD Operation'
-}
-
-function findBulkChildren(bulkEntry: AuditLogEntry, allEntries: AuditLogEntry[]): AuditItemEntry[] {
-  const rawItems = (bulkEntry as any)._Items?.value || (bulkEntry as any)._Items
-  if (Array.isArray(rawItems) && rawItems.length > 0) {
-    return rawItems
-  }
-
-  const bulkTime = new Date(bulkEntry.ChangedAt || '').getTime()
-  const prefix20 = (bulkEntry.AuditId || '').slice(0, 20)
-
-  const matched = allEntries.filter(e => {
-    if (e.AuditId === bulkEntry.AuditId) return false
-    if (e.RecordKey === 'BULK') return false
-    if (e.TableName !== bulkEntry.TableName) return false
-
-    const samePrefix = prefix20 && e.AuditId.startsWith(prefix20)
-    const timeDiff = Math.abs(new Date(e.ChangedAt || '').getTime() - bulkTime)
-    const sameUser = e.ChangedBy === bulkEntry.ChangedBy
-
-    if (samePrefix && sameUser) return true
-    if (sameUser && !Number.isNaN(timeDiff) && timeDiff <= 5000) return true
-
-    return false
-  })
-
-  return matched.map((e, idx) => ({
-    AuditId: e.AuditId,
-    ItemNo: idx + 1,
-    TableName: e.TableName,
-    RecordKey: e.RecordKey,
-    FieldName: e.FieldName,
-    OldValue: e.OldValue,
-    NewValue: e.NewValue,
-    ActionType: e.ActionType
-  }))
-}
-
-function getBulkActionType(entry: AuditLogEntry, childItems: AuditItemEntry[]): string {
-  if (childItems && childItems.length > 0) {
-    const actions = new Set(childItems.map(item => item.ActionType || entry.ActionType).filter(Boolean))
-    if (actions.size === 1) {
-      return Array.from(actions)[0]
-    }
-    return 'B'
-  }
-  return entry.ActionType || 'B'
-}
-
 function includesText(value: unknown, query: string): boolean {
   return String(value ?? '').toLowerCase().includes(query)
 }
@@ -212,18 +132,14 @@ function ActionBadge({ actionType }: { actionType: string }) {
 
   return (
     <div
+      className="audit-action-badge"
       style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '0.4rem',
-        padding: '0.25rem 0.55rem',
-        borderRadius: '999px',
         color: meta.color,
         background: meta.background,
-        fontWeight: 700
+        borderColor: meta.color
       }}
     >
-      <Icon name={meta.icon} style={{ width: '0.9rem', height: '0.9rem', color: meta.color }} />
+      <Icon name={meta.icon} className="audit-action-icon" style={{ color: meta.color }} />
       <span>{actionLabelText}</span>
     </div>
   )
@@ -233,46 +149,24 @@ function ValueBlock({ title, value, emptyText }: { title: string; value: string;
   const parts = splitAuditParts(value)
 
   return (
-    <div
-      style={{
-        minWidth: 0,
-        border: '1px solid var(--sapGroup_BorderColor, #d9e0e7)',
-        borderRadius: '6px',
-        background: 'var(--sapList_Background, #fff)'
-      }}
-    >
-      <div
-        style={{
-          padding: '0.5rem 0.75rem',
-          borderBottom: '1px solid var(--sapGroup_BorderColor, #d9e0e7)',
-          background: 'var(--sapList_HeaderBackground, #f7f7f7)'
-        }}
-      >
+    <div className="audit-value-block">
+      <div className="audit-value-header">
         <Label>{title}</Label>
       </div>
-      <div style={{ padding: '0.6rem 0.75rem' }}>
+      <div className="audit-value-body">
         {parts.length === 0 ? (
-          <Text style={{ color: '#6a7075' }}>{emptyText}</Text>
+          <Text className="audit-muted">{emptyText}</Text>
         ) : (
-          <div style={{ display: 'grid', gap: '0.35rem' }}>
+          <div className="audit-value-grid">
             {parts.map((part, index) => (
               <div
                 key={`${part.key}-${index}`}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: part.key ? 'minmax(110px, 34%) 1fr' : '1fr',
-                  gap: '0.5rem',
-                  alignItems: 'start'
-                }}
+                className={part.key ? 'audit-value-row' : 'audit-value-row audit-value-row-single'}
               >
                 {part.key && (
-                  <Text style={{ color: '#6a7075', fontSize: '0.82rem', wordBreak: 'break-word' }}>
-                    {part.key}
-                  </Text>
+                  <Text className="audit-value-key">{part.key}</Text>
                 )}
-                <Text style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
-                  {part.value || '-'}
-                </Text>
+                <Text className="audit-value-text">{part.value || '-'}</Text>
               </div>
             ))}
           </div>
@@ -286,58 +180,25 @@ function DiffBlock({ fieldName, oldValue, newValue }: { fieldName: string; oldVa
   const changes = changedParts(oldValue, newValue, fieldName)
 
   return (
-    <div
-      style={{
-        minWidth: 0,
-        border: '1px solid var(--sapGroup_BorderColor, #d9e0e7)',
-        borderRadius: '6px',
-        background: 'var(--sapList_Background, #fff)'
-      }}
-    >
-      <div
-        style={{
-          padding: '0.5rem 0.75rem',
-          borderBottom: '1px solid var(--sapGroup_BorderColor, #d9e0e7)',
-          background: 'var(--sapList_HeaderBackground, #f7f7f7)'
-        }}
-      >
+    <div className="audit-change-table">
+      <div className="audit-change-header">
         <Label>Changed Fields</Label>
       </div>
-      <div style={{ padding: '0.6rem 0.75rem' }}>
+      <div className="audit-change-body">
         {changes.length === 0 ? (
-          <Text style={{ color: '#6a7075' }}>No changed fields detected.</Text>
+          <Text className="audit-muted">No changed fields detected.</Text>
         ) : (
-          <div style={{ display: 'grid', gap: '0.6rem' }}>
+          <div className="audit-change-grid">
             {changes.map(change => (
-              <div
-                key={change.key}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'minmax(180px, 28%) minmax(120px, 1fr) minmax(160px, 1.25fr)',
-                  gap: '0.75rem',
-                  alignItems: 'start',
-                  paddingBottom: '0.6rem',
-                  borderBottom: '1px solid var(--sapList_BorderColor, #edf0f2)'
-                }}
-              >
-                <Text style={{ fontWeight: 700, overflowWrap: 'anywhere' }}>{change.key}</Text>
-                <div>
+              <div key={change.key} className="audit-change-row">
+                <Text className="audit-change-field">{change.key}</Text>
+                <div className="audit-change-cell audit-old-value">
                   <Label>Old</Label>
-                  <Text style={{ display: 'block', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
-                    {change.oldValue || '-'}
-                  </Text>
+                  <Text>{change.oldValue || '-'}</Text>
                 </div>
-                <div
-                  style={{
-                    borderLeft: '3px solid #0a6ed1',
-                    paddingLeft: '0.6rem',
-                    background: '#f5faff'
-                  }}
-                >
+                <div className="audit-change-cell audit-new-value">
                   <Label>New</Label>
-                  <Text style={{ display: 'block', fontWeight: 700, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
-                    {change.newValue || '-'}
-                  </Text>
+                  <Text>{change.newValue || '-'}</Text>
                 </div>
               </div>
             ))}
@@ -361,9 +222,32 @@ function BulkAuditItemsDialog({
   onItemsLoaded?: (auditId: string, items: AuditItemEntry[]) => void
   onClose: () => void
 }) {
+  const dialogRef = useRef<HTMLElement | null>(null)
+  const dialogBodyRef = useRef<HTMLDivElement | null>(null)
   const [items, setItems] = useState<AuditItemEntry[]>(initialChildItems || [])
   const [loading, setLoading] = useState(!initialChildItems || initialChildItems.length === 0)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    function handleOutsidePointerDown(event: PointerEvent) {
+      const dialogBody = dialogBodyRef.current
+      if (!dialogBody) return
+
+      const rect = dialogBody.getBoundingClientRect()
+      const headerAndFooterPadding = 96
+      const insideDialogX = event.clientX >= rect.left && event.clientX <= rect.right
+      const insideDialogY =
+        event.clientY >= rect.top - headerAndFooterPadding &&
+        event.clientY <= rect.bottom + headerAndFooterPadding
+
+      if (insideDialogX && insideDialogY) return
+
+      onClose()
+    }
+
+    document.addEventListener('pointerdown', handleOutsidePointerDown, true)
+    return () => document.removeEventListener('pointerdown', handleOutsidePointerDown, true)
+  }, [onClose])
 
   useEffect(() => {
     if (!auditEntry) return
@@ -415,6 +299,7 @@ function BulkAuditItemsDialog({
 
   return (
     <Dialog
+      ref={dialogRef as any}
       {...({
         open: true,
         headerText: `Bulk Audit Items — ${bulkSummaryText}`,
@@ -432,7 +317,7 @@ function BulkAuditItemsDialog({
       } as any)}
       style={{ width: '90vw', maxWidth: '900px' }}
     >
-      <div style={{ padding: '0.5rem 0' }}>
+      <div ref={dialogBodyRef} style={{ padding: '0.5rem 0' }}>
         <div
           style={{
             display: 'flex',
@@ -548,18 +433,20 @@ function AuditEntryItem({
   allEntries,
   cachedChildItems,
   onViewBulkItems,
-  onRollback
+  onRollback,
+  canRollback
 }: {
   entry: AuditLogEntry
   allEntries: AuditLogEntry[]
   cachedChildItems?: AuditItemEntry[]
   onViewBulkItems: (entry: AuditLogEntry) => void
   onRollback: (entry: AuditLogEntry) => void
+  canRollback: boolean
 }) {
   const { fieldName, oldValue, newValue } = getAuditDisplayCells(entry)
   const normalizedField = normalizeDash(fieldName)
   const isUpdate = entry.ActionType === 'U'
-  const isBulk = entry.RecordKey === 'BULK' || getRawRecordKey(entry) === 'BULK'
+  const isBulk = isBulkAuditEntry(entry)
   const isRollbackType = entry.ActionType === 'R'
 
   const childItems = useMemo(() => {
@@ -573,103 +460,52 @@ function AuditEntryItem({
     : entry.ActionType
 
   return (
-    <article
-      style={{
-        borderTop: '1px solid var(--sapList_BorderColor, #e5e5e5)',
-        padding: '1rem 0'
-      }}
-    >
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(180px, 220px) minmax(0, 1fr)',
-          gap: '1rem',
-          alignItems: 'start'
-        }}
-      >
-        <div style={{ display: 'grid', gap: '0.45rem' }}>
-          <div>
-            <ActionBadge actionType={displayActionType} />
-          </div>
-          <div>
-            <Label>Changed By</Label>
-            <Text style={{ display: 'block', marginTop: '0.15rem' }}>
-              {entry.ChangedBy || '-'}
-            </Text>
-          </div>
-          <div>
-            <Label>Changed At</Label>
-            <Text style={{ display: 'block', marginTop: '0.15rem' }}>
-              {formatDateTime(entry.ChangedAt)}
-            </Text>
-          </div>
-          <div>
-            <Label>Record Key</Label>
-            <Text className="audit-record-key" style={{ fontWeight: isBulk ? 700 : undefined }}>
+    <article className="audit-entry">
+      <div className="audit-entry-marker" aria-hidden="true" />
+      <div className="audit-entry-surface">
+        <div className="audit-entry-header">
+          <ActionBadge actionType={displayActionType} />
+          <div className="audit-entry-meta">
+            <span>{entry.ChangedBy || '-'}</span>
+            <span>{formatDateTime(entry.ChangedAt)}</span>
+            <span className={isBulk ? 'audit-record-key audit-record-key-strong' : 'audit-record-key'}>
               {getRecordKey(entry)}
-            </Text>
+            </span>
+            {normalizedField && !isBulk && <span>{normalizedField}</span>}
           </div>
-          {normalizedField && !isBulk && (
-            <div>
-              <Label>Field</Label>
-              <Text style={{ display: 'block', marginTop: '0.15rem', wordBreak: 'break-word' }}>
-                {normalizedField}
-              </Text>
+          {canRollback && (
+            <div className="audit-entry-actions">
+              <Button
+                design={isRollbackType ? 'Transparent' : 'Attention'}
+                icon={'undo' as any}
+                disabled={isRollbackType}
+                onClick={() => onRollback(entry)}
+              >
+                {isRollbackType ? 'Rolled Back' : 'Rollback'}
+              </Button>
             </div>
           )}
-
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
-            {isBulk && (
-              <Button
-                design="Emphasized"
-                icon={'inspect' as any}
-                onClick={() => onViewBulkItems(entry)}
-              >
-                View items
-              </Button>
-            )}
-            <Button
-              design={isRollbackType ? 'Transparent' : 'Attention'}
-              icon={'undo' as any}
-              disabled={isRollbackType}
-              onClick={() => onRollback(entry)}
-            >
-              {isRollbackType ? 'Rolled Back' : 'Rollback'}
-            </Button>
-          </div>
         </div>
 
-        <div style={{ minWidth: 0 }}>
+        <div className="audit-entry-content">
           {isBulk ? (
-            <div
-              style={{
-                border: '1px solid var(--sapGroup_BorderColor, #d9e0e7)',
-                borderRadius: '6px',
-                padding: '0.75rem 1rem',
-                background: 'var(--sapList_HeaderBackground, #f7f7f7)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between'
-              }}
-            >
+            <div className="audit-bulk-summary">
               <div>
-                <Label style={{ fontSize: '0.85rem', color: '#6a7075' }}>Bulk Operation Summary</Label>
-                <Title level="H5" style={{ margin: '0.2rem 0 0 0', color: '#0a6ed1' }}>
-                  {extractBulkCount(entry)}
-                </Title>
+                <Label>Bulk Operation Summary</Label>
+                <Text className="audit-bulk-count">{extractBulkCount(entry)}</Text>
               </div>
               <Button
                 design="Transparent"
                 icon={'navigation-right-arrow' as any}
                 onClick={() => onViewBulkItems(entry)}
               >
-                View items list
+                View list
               </Button>
             </div>
           ) : isUpdate ? (
             <DiffBlock fieldName={fieldName} oldValue={oldValue} newValue={newValue} />
           ) : (
-            <div style={{ display: 'grid', gap: '0.75rem' }}>
+            <div className="audit-value-stack">
               {entry.ActionType !== 'C' && (
                 <ValueBlock title="Old Value" value={oldValue} emptyText="No previous value" />
               )}
@@ -684,7 +520,7 @@ function AuditEntryItem({
   )
 }
 
-export default function AuditLogPanel({ tableName }: AuditLogPanelProps) {
+export default function AuditLogPanel({ tableName, canRollback = false }: AuditLogPanelProps) {
   const [entries, setEntries] = useState<AuditLogEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -692,6 +528,8 @@ export default function AuditLogPanel({ tableName }: AuditLogPanelProps) {
   const [actionFilter, setActionFilter] = useState<ActionFilter>('ALL')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [pageIndex, setPageIndex] = useState(0)
+  const [pageSize, setPageSize] = useState(10)
 
   const [selectedBulkEntry, setSelectedBulkEntry] = useState<AuditLogEntry | null>(null)
   const [rollbackConfirmEntry, setRollbackConfirmEntry] = useState<AuditLogEntry | null>(null)
@@ -703,6 +541,10 @@ export default function AuditLogPanel({ tableName }: AuditLogPanelProps) {
   useEffect(() => {
     if (tableName) loadAuditLog()
   }, [tableName])
+
+  useEffect(() => {
+    setPageIndex(0)
+  }, [tableName, searchQuery, actionFilter, dateFrom, dateTo, pageSize])
 
   async function loadAuditLog() {
     try {
@@ -717,39 +559,6 @@ export default function AuditLogPanel({ tableName }: AuditLogPanelProps) {
       setLoading(false)
     }
   }
-
-  // Pre-fetch audit items for bulk entries so parent badge matches child items seamlessly
-  useEffect(() => {
-    const bulkEntries = entries.filter(e => e.RecordKey === 'BULK' || getRawRecordKey(e) === 'BULK')
-    if (bulkEntries.length === 0) return
-
-    let isCancelled = false
-
-    Promise.all(
-      bulkEntries.map(async entry => {
-        const matched = findBulkChildren(entry, entries)
-        if (matched.length > 0) return { auditId: entry.AuditId, items: matched }
-
-        try {
-          const items = await getAuditItems(entry.AuditId)
-          return { auditId: entry.AuditId, items }
-        } catch {
-          return { auditId: entry.AuditId, items: [] }
-        }
-      })
-    ).then(results => {
-      if (isCancelled) return
-      const map: Record<string, AuditItemEntry[]> = {}
-      results.forEach(res => {
-        map[res.auditId] = res.items
-      })
-      setBulkChildMap(prev => ({ ...prev, ...map }))
-    })
-
-    return () => {
-      isCancelled = true
-    }
-  }, [entries])
 
   function handleChildItemsLoaded(auditId: string, items: AuditItemEntry[]) {
     setBulkChildMap(prev => ({ ...prev, [auditId]: items }))
@@ -785,6 +594,56 @@ export default function AuditLogPanel({ tableName }: AuditLogPanelProps) {
     })
   }, [entries, searchQuery, actionFilter, dateFrom, dateTo])
 
+  const {
+    pageItems: pagedEntries,
+    totalPages,
+    safePageIndex,
+    start: pageStart,
+    end: pageEnd
+  } = useMemo(
+    () => paginateAuditEntries(filteredEntries, pageIndex, pageSize),
+    [filteredEntries, pageIndex, pageSize]
+  )
+
+  useEffect(() => {
+    if (safePageIndex !== pageIndex) {
+      setPageIndex(safePageIndex)
+    }
+  }, [safePageIndex, pageIndex])
+
+  // Pre-fetch audit items for visible bulk entries so parent badges match child items.
+  useEffect(() => {
+    const bulkEntries = pagedEntries.filter(isBulkAuditEntry)
+    if (bulkEntries.length === 0) return
+
+    let isCancelled = false
+
+    Promise.all(
+      bulkEntries.map(async entry => {
+        const matched = findBulkChildren(entry, entries)
+        if (matched.length > 0) return { auditId: entry.AuditId, items: matched }
+
+        try {
+          const items = await getAuditItems(entry.AuditId)
+          return { auditId: entry.AuditId, items }
+        } catch {
+          return { auditId: entry.AuditId, items: [] }
+        }
+      })
+    ).then(results => {
+      if (isCancelled) return
+      const map: Record<string, AuditItemEntry[]> = {}
+      results.forEach(res => {
+        map[res.auditId] = res.items
+      })
+      setBulkChildMap(prev => ({ ...prev, ...map }))
+    })
+
+    return () => {
+      isCancelled = true
+    }
+  }, [entries, pagedEntries])
+
   async function handleConfirmRollback() {
     if (!rollbackConfirmEntry) return
     setRollbackLoading(true)
@@ -806,18 +665,19 @@ export default function AuditLogPanel({ tableName }: AuditLogPanelProps) {
   }
 
   return (
-    <section className="audit-panel">
-      <Toolbar design="Transparent" className="audit-toolbar">
-        <div className="audit-title-block">
-          <Title level="H4">Audit Trail</Title>
-          <Text className="audit-muted">Latest changes are listed first. Updates show only the changed field values.</Text>
+    <section className="tab-panel-form audit-panel">
+      <div className="tab-panel-header audit-toolbar">
+        <div className="tab-panel-title-block audit-title-block">
+          <Title level="H4" className="tab-panel-title">Audit Trail</Title>
+          <Text className="tab-panel-subtitle audit-muted">Latest changes are listed first. Updates show only the changed field values.</Text>
         </div>
-        <ToolbarSpacer />
-        <Text className="audit-count">{filteredEntries.length} audit record(s)</Text>
-        <Button icon={'refresh' as any} onClick={loadAuditLog} disabled={loading}>
-          Refresh
-        </Button>
-      </Toolbar>
+        <div className="tab-panel-actions audit-actions">
+          <Text className="audit-count">{filteredEntries.length} audit record(s)</Text>
+          <Button icon={'refresh' as any} onClick={loadAuditLog} disabled={loading}>
+            Refresh
+          </Button>
+        </div>
+      </div>
 
       <div className="audit-filter-bar" aria-label="Audit filters">
         <div className="audit-filter-field audit-filter-search">
@@ -897,9 +757,9 @@ export default function AuditLogPanel({ tableName }: AuditLogPanelProps) {
       )}
 
       {!loading && !error && filteredEntries.length > 0 && (
-        <section style={{ padding: '0.75rem 0.75rem 0' }}>
-          <div style={{ marginTop: '0.75rem' }}>
-            {filteredEntries.map(entry => (
+        <section className="audit-list-wrap">
+          <div className="audit-list">
+            {pagedEntries.map(entry => (
               <AuditEntryItem
                 key={entry.AuditId}
                 entry={entry}
@@ -907,8 +767,44 @@ export default function AuditLogPanel({ tableName }: AuditLogPanelProps) {
                 cachedChildItems={bulkChildMap[entry.AuditId]}
                 onViewBulkItems={setSelectedBulkEntry}
                 onRollback={setRollbackConfirmEntry}
+                canRollback={canRollback}
               />
             ))}
+          </div>
+          <div className="audit-pagination-bar">
+            <Text className="audit-count">
+              Showing {pageStart}-{pageEnd} of {filteredEntries.length}
+            </Text>
+            <div className="audit-pagination-actions">
+              <Label>Rows</Label>
+              <Select
+                value={String(pageSize)}
+                onChange={(event: any) => setPageSize(Number(event.detail.selectedOption.value))}
+              >
+                {PAGE_SIZE_OPTIONS.map(size => (
+                  <Option key={size} value={String(size)}>{size}</Option>
+                ))}
+              </Select>
+              <Button
+                design="Transparent"
+                icon={'navigation-left-arrow' as any}
+                disabled={safePageIndex === 0}
+                onClick={() => setPageIndex(prev => Math.max(0, prev - 1))}
+              >
+                Previous
+              </Button>
+              <Text className="audit-page-label">
+                Page {safePageIndex + 1} / {totalPages}
+              </Text>
+              <Button
+                design="Transparent"
+                icon={'navigation-right-arrow' as any}
+                disabled={safePageIndex >= totalPages - 1}
+                onClick={() => setPageIndex(prev => Math.min(totalPages - 1, prev + 1))}
+              >
+                Next
+              </Button>
+            </div>
           </div>
         </section>
       )}
@@ -923,7 +819,7 @@ export default function AuditLogPanel({ tableName }: AuditLogPanelProps) {
         />
       )}
 
-      {rollbackConfirmEntry && (
+      {canRollback && rollbackConfirmEntry && (
         <Dialog
           {...({
             open: true,

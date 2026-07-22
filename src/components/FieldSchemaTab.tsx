@@ -41,15 +41,15 @@ export default function FieldSchemaTab({
   )
 
   return (
-    <div className="field-schema-panel">
-      <div className="field-schema-header">
-        <div className="field-schema-title-block">
-          <div className="field-schema-title">Schema Assistant</div>
-          <div className="field-schema-muted">
+    <div className="tab-panel-form field-schema-panel">
+      <div className="tab-panel-header field-schema-header">
+        <div className="tab-panel-title-block field-schema-title-block">
+          <div className="tab-panel-title field-schema-title">Schema Assistant</div>
+          <div className="tab-panel-subtitle field-schema-muted">
             AI-generated field descriptions and input guidance are available as table tooltips and in the PDF data dictionary.
           </div>
         </div>
-        <FlexBox alignItems="Center" gap="0.5rem">
+        <FlexBox className="tab-panel-actions" alignItems="Center" gap="0.5rem">
           {aiLoading && <BusyIndicator active size="S" />}
           <Button
             design="Transparent"

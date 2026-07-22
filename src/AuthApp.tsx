@@ -12,9 +12,11 @@ import { SessionUser } from './types'
 
 function getShellUsername(): string {
   const shellUser = (window as any).sap?.ushell?.Container?.getUser?.()
+  const userId = shellUser?.getId?.()
+  if (userId) return userId
   const fullName = shellUser?.getFullName?.()
   if (fullName && fullName !== 'Default User') return fullName
-  return shellUser?.getId?.() || ''
+  return ''
 }
 
 /**

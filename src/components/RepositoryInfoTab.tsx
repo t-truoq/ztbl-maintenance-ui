@@ -11,8 +11,6 @@ import {
   TableRow,
   Text,
   Title,
-  Toolbar,
-  ToolbarSpacer
 } from '@ui5/webcomponents-react'
 import { getRepositoryInfo } from '../services/tableConfigApi'
 import type { RepositoryInfo } from '../services/tableConfigApi'
@@ -305,21 +303,25 @@ export default function RepositoryInfoTab({ configUuid, tableName }: RepositoryI
   }
 
   return (
-    <div style={{ padding: '0.5rem 0' }}>
-      <Toolbar design="Solid">
-        <Button icon={'refresh' as any} onClick={loadRepositoryInfo} disabled={loading}>
-          {info ? 'Refresh Dependencies' : 'Load Dependencies'}
-        </Button>
-        {loading && (
-          <Button design="Transparent" icon={'decline' as any} onClick={cancelLoad}>
-            Cancel
+    <div className="tab-panel-form dependencies-panel">
+      <div className="tab-panel-header dependencies-header">
+        <div className="tab-panel-title-block">
+          <Title level="H4" className="tab-panel-title">Dependencies</Title>
+          <Text className="tab-panel-subtitle">
+            {tableName}
+          </Text>
+        </div>
+        <div className="tab-panel-actions">
+          <Button icon={'refresh' as any} onClick={loadRepositoryInfo} disabled={loading}>
+            {info ? 'Refresh Dependencies' : 'Load Dependencies'}
           </Button>
-        )}
-        <ToolbarSpacer />
-        <Text style={{ fontSize: '13px', color: '#6a7075' }}>
-          {tableName}
-        </Text>
-      </Toolbar>
+          {loading && (
+            <Button design="Transparent" icon={'decline' as any} onClick={cancelLoad}>
+              Cancel
+            </Button>
+          )}
+        </div>
+      </div>
 
       {loading && (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>

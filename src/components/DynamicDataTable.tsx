@@ -11,8 +11,6 @@ import {
   CheckBox,
   Label,
   Title,
-  Toolbar,
-  ToolbarSpacer,
   FlexBox,
   Icon,
 } from '@ui5/webcomponents-react'
@@ -41,6 +39,11 @@ interface DynamicDataTableProps {
   onStartCreating: () => void
   onRefresh: () => void
   onDeleteRows: (rows: TableRowData[]) => void
+  permissions?: {
+    canCreate: boolean
+    canUpdate: boolean
+    canDelete: boolean
+  }
   aiDescriptions?: AiDescriptionMap
   aiLoading?: boolean
   onRequestAiDescriptions?: () => Promise<void> | void
@@ -64,6 +67,7 @@ export default function DynamicDataTable({
   onStartCreating,
   onRefresh,
   onDeleteRows,
+  permissions = { canCreate: true, canUpdate: true, canDelete: true },
   aiDescriptions = {},
   aiLoading = false,
   onRequestAiDescriptions,
@@ -143,6 +147,9 @@ export default function DynamicDataTable({
   const hasNewRows = isEditingTable && editedData.some(row => row._isNew)
   const allVisibleRowsSelected =
     filteredRowKeys.length > 0 && filteredRowKeys.every(key => selectedRowKeys.has(key))
+  const createDenied = !permissions.canCreate
+  const updateDenied = !permissions.canUpdate
+  const deleteDenied = !permissions.canDelete
 
   const toggleRowSelection = (rowKey: string, checked: boolean) => {
     setSelectedRowKeys(prev => {
@@ -165,11 +172,13 @@ export default function DynamicDataTable({
   }
 
   const startEditingSelectedRows = () => {
+    if (updateDenied) return
     if (selectedRowKeys.size === 0) return
     onStartEditing()
   }
 
   const deleteSelectedRow = () => {
+    if (deleteDenied) return
     if (selectedRows.length === 0) return
     onDeleteRows(selectedRows)
   }
@@ -249,6 +258,7 @@ export default function DynamicDataTable({
   }
 
   const startCreatingNewRow = () => {
+    if (createDenied) return
     setSelectedRowKeys(new Set())
     onStartCreating()
   }
@@ -276,15 +286,21 @@ export default function DynamicDataTable({
   } as const
 
   return (
-    <div style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* ── Toolbar ───────────────────────────────────────────────────── */}
-      <Toolbar design="Transparent" style={{ width: '100%', boxSizing: 'border-box' }}>
-        <Title level="H4">
-          Records ({isEditingTable ? editedData.length : filteredData.length})
-        </Title>
-        <ToolbarSpacer />
-        {isEditingTable ? (
-          <>
+    <div className="tab-panel-form table-data-panel">
+      <div className="tab-panel-header">
+        <div className="tab-panel-title-block">
+          <Title level="H4" className="tab-panel-title">
+            Records ({isEditingTable ? editedData.length : filteredData.length})
+          </Title>
+          {(createDenied || updateDenied || deleteDenied) && (
+            <Text className="tab-panel-subtitle">
+              Some actions are disabled because you do not have the required permission.
+            </Text>
+          )}
+        </div>
+        <div className="tab-panel-actions">
+          {isEditingTable ? (
+            <>
             <Button
               design="Emphasized"
               icon={'save' as any}
@@ -299,30 +315,33 @@ export default function DynamicDataTable({
             <Button design="Transparent" icon={'add' as any} onClick={onAddRow}>
               Add Row
             </Button>
-          </>
-        ) : (
-          <>
+            </>
+          ) : (
+            <>
             <Button
               design="Emphasized"
               icon={'edit' as any}
-              disabled={!!activeTableLock || selectedRowCount === 0}
+              disabled={updateDenied || !!activeTableLock || selectedRowCount === 0}
               onClick={startEditingSelectedRows}
+              accessibleName={updateDenied ? 'You do not have permission to update this record.' : undefined}
             >
               {selectedRowCount > 0 ? `Edit (${selectedRowCount})` : 'Edit'}
             </Button>
             <Button
               design="Transparent"
               icon={'delete' as any}
-              disabled={!!activeTableLock || selectedRowCount === 0}
+              disabled={deleteDenied || !!activeTableLock || selectedRowCount === 0}
               onClick={deleteSelectedRow}
+              accessibleName={deleteDenied ? 'You do not have permission to delete this record.' : undefined}
             >
               {selectedRowCount > 1 ? `Delete (${selectedRowCount})` : 'Delete'}
             </Button>
             <Button
               design="Transparent"
               icon={'add' as any}
-              disabled={!!activeTableLock}
+              disabled={createDenied || !!activeTableLock}
               onClick={startCreatingNewRow}
+              accessibleName={createDenied ? 'You do not have permission to create records.' : undefined}
             >
               Create
             </Button>
@@ -334,9 +353,10 @@ export default function DynamicDataTable({
             >
               Refresh
             </Button>
-          </>
-        )}
-      </Toolbar>
+            </>
+          )}
+        </div>
+      </div>
 
       {/* ── Loading indicator ─────────────────────────────────────────── */}
       {dataLoading && (

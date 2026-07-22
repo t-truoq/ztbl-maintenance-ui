@@ -1,4 +1,3 @@
-import { fixJson } from '../services/tableConfigApi'
 import { AuditLogEntry, AuditItemEntry } from '../types'
 
 export type AuditValuePart = {
@@ -30,6 +29,28 @@ function valueToText(value: any): string {
   return String(value)
 }
 
+function fixAuditJson(jsonStr: string): string {
+  if (!jsonStr) return jsonStr
+  let fixed = jsonStr
+  fixed = fixed.replace(
+    /:\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+)/g,
+    ':"$1"'
+  )
+  fixed = fixed.replace(
+    /:\s*(\d{14}\.\d+)/g,
+    ':"$1"'
+  )
+  fixed = fixed.replace(
+    /:\s*(\d{14})(\s*[,}\]])/g,
+    ':"$1.0000000"$2'
+  )
+  fixed = fixed.replace(
+    /"(CHANGED_AT|CREATED_AT|CHANGE_AT|LAST_CHANGED_AT)"\s*:\s*0(\s*[,}\]])/gi,
+    '"$1":"0"$2'
+  )
+  return fixed
+}
+
 function parseJsonLike(str: string): any | null {
   if (!str.startsWith('{') && !str.startsWith('[')) return null
 
@@ -37,7 +58,7 @@ function parseJsonLike(str: string): any | null {
     return JSON.parse(str)
   } catch {
     try {
-      return JSON.parse(fixJson(str))
+      return JSON.parse(fixAuditJson(str))
     } catch {
       return null
     }

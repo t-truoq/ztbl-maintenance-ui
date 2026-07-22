@@ -562,9 +562,9 @@ export function useTableMaintenance({
         if (successMessages.length > 0) {
           showToast(successMessages.join('\n'))
         } else if (approvalCodes.length > 0) {
-          showToast(`Yêu cầu phê duyệt đã được gửi thành công. Mã chứng từ: ${approvalCodes.join(', ')}`)
+          showToast(`Approval request submitted successfully. Document ID: ${approvalCodes.join(', ')}`)
         } else {
-          showToast(`Yêu cầu phê duyệt đã được gửi thành công.`)
+          showToast('Approval request submitted successfully.')
         }
       } else {
         showToast(`Saved successfully (${newRows.length} created, ${modifiedRows.length} updated)`)
@@ -716,7 +716,7 @@ export function useTableMaintenance({
     const approvalCode = extractApprovalCode(result)
     const backendMessage = result.message || result.value?.message || result.data?.message || result.data?.value?.message
     if (selectedTable.ApprovalRequired === 'X') {
-      showToast(backendMessage || `Yêu cầu phê duyệt đã được gửi thành công. Mã chứng từ: ${approvalCode || ''}`)
+      showToast(backendMessage || `Approval request submitted successfully. Document ID: ${approvalCode || ''}`)
     } else {
       let msg = backendMessage || 'Record updated'
       if (blocked.length > 0) {
@@ -751,7 +751,7 @@ export function useTableMaintenance({
         const approvalCode = extractApprovalCode(result)
         const backendMessage = result.message || result.value?.message || result.data?.message || result.data?.value?.message
         if (selectedTable.ApprovalRequired === 'X') {
-          showToast(backendMessage || `Yêu cầu phê duyệt đã được gửi thành công. Mã chứng từ: ${approvalCode || ''}`)
+          showToast(backendMessage || `Approval request submitted successfully. Document ID: ${approvalCode || ''}`)
         } else {
           showToast(backendMessage || 'Record created successfully')
         }
@@ -834,7 +834,7 @@ export function useTableMaintenance({
       const approvalCode = extractApprovalCode(lastResult)
       const backendMessage = getActionMessage(lastResult)
       if (selectedTable.ApprovalRequired === 'X') {
-        showToast(backendMessage || `Yêu cầu phê duyệt đã được gửi thành công. Mã chứng từ: ${approvalCode || ''}`)
+        showToast(backendMessage || `Approval request submitted successfully. Document ID: ${approvalCode || ''}`)
       } else {
         showToast(backendMessage || `${deletedCount} record${deletedCount > 1 ? 's' : ''} deleted successfully`)
       }

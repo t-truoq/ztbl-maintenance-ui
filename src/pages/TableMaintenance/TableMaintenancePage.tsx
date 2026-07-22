@@ -31,8 +31,19 @@ import OptimisticLockDialog from '../../components/dialogs/OptimisticLockDialog'
 import FKErrorDialog from '../../components/dialogs/FKErrorDialog'
 import ApprovalSuccessDialog from '../../components/dialogs/ApprovalSuccessDialog'
 import { getAiDescription } from '../../services/tableConfigApi'
+import {
+  FULL_TABLE_PERMISSION,
+  TablePermissionState,
+  getTablePermissions,
+  isCurrentUserInAdminList
+} from '../../services/authAdminApi'
 import { buildAiDescriptionMap, exportDataDictionaryPdf } from '../../utils/aiDescriptions'
 import { AiDescriptionMap } from '../../types'
+
+const PENDING_TABLE_PERMISSION: TablePermissionState = {
+  ...FULL_TABLE_PERMISSION,
+  canView: false
+}
 
 export default function TableMaintenancePage(props: TableMaintenancePageProps) {
   const {
@@ -98,6 +109,9 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
   const [aiDescriptions, setAiDescriptions] = useState<AiDescriptionMap>({})
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState('')
+  const [canRollbackAudit, setCanRollbackAudit] = useState(false)
+  const [tablePermission, setTablePermission] = useState<TablePermissionState>(PENDING_TABLE_PERMISSION)
+  const [permissionLoading, setPermissionLoading] = useState(true)
   const filterFields = fields.filter(f => {
     if (showAllFilters) return true
     return f.is_key || f.IsKeyField === 'X'
@@ -108,6 +122,56 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
     setAiDescriptions({})
     setAiError('')
   }, [selectedTable?.ConfigUuid])
+
+  useEffect(() => {
+    let isCancelled = false
+
+    setCanRollbackAudit(false)
+    setTablePermission(PENDING_TABLE_PERMISSION)
+    setPermissionLoading(true)
+    if (!username || !selectedTable?.TableName) {
+      setPermissionLoading(false)
+      return
+    }
+
+    Promise.all([
+      isCurrentUserInAdminList(username),
+      getTablePermissions(username, selectedTable.TableName)
+    ])
+      .then(([isAdmin, permissions]) => {
+        if (!isCancelled) {
+          setCanRollbackAudit(isAdmin)
+          setTablePermission(permissions)
+        }
+      })
+      .catch(error => {
+        if (!isCancelled) {
+          console.warn('Cannot load authorization settings:', error)
+          setCanRollbackAudit(false)
+          setTablePermission(FULL_TABLE_PERMISSION)
+        }
+      })
+      .finally(() => {
+        if (!isCancelled) setPermissionLoading(false)
+      })
+
+    return () => {
+      isCancelled = true
+    }
+  }, [username, selectedTable?.TableName])
+
+  const canViewTable = tablePermission.canView
+  const canCreateTable = tablePermission.canCreate
+  const canUpdateTable = tablePermission.canUpdate && tablePermission.updateEnabled
+  const canDeleteTable = tablePermission.canDelete && tablePermission.deleteEnabled
+  const canUploadTable = tablePermission.canUpload
+  const accessDeniedPanel = (
+    <div className="tab-panel-form">
+      <MessageStrip design="Negative" hideCloseButton>
+        Access Denied. You do not have permission to view this data. Please contact your administrator if you need access.
+      </MessageStrip>
+    </div>
+  )
 
   const handleLoadAiDescriptions = useCallback(async (forceRefresh = false) => {
     if (!selectedTable) return
@@ -163,12 +227,21 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
   // ── Main table maintenance view ────────────────────────────────────────────
   return (
     <>
+      {/* Permission banner */}
+      {!permissionLoading && !canViewTable && (
+        <div style={{ padding: '1rem', paddingBottom: 0 }}>
+          <MessageStrip design="Negative" hideCloseButton>
+            Access Denied. You do not have permission to view this data. Please contact your administrator if you need access.
+          </MessageStrip>
+        </div>
+      )}
+
       {/* Lock banner */}
       {activeTableLock && (
         <div style={{ padding: '1rem', paddingBottom: 0 }}>
           <MessageStrip design="Critical" hideCloseButton>
-            Bảng '{selectedTable.TableName}' đang được chỉnh sửa bởi User{' '}
-            {activeTableLock.lockedBy}. Chức năng chỉnh sửa tạm thời bị khóa.
+            Table '{selectedTable.TableName}' is currently being edited by User{' '}
+            {activeTableLock.lockedBy}. Editing is temporarily locked.
           </MessageStrip>
         </div>
       )}
@@ -272,6 +345,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
         }
       >
         <TabContainer
+          className="maintenance-tab-container"
           onTabSelect={(e: any) => {
             const text = e.detail?.tab?.text
             if (text === 'Field Schema') setActiveTab('fieldSchema')
@@ -282,67 +356,86 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
           }}
         >
           <Tab text="Table Data" selected={activeTab === 'tableData'}>
-            <DynamicDataTable
-              selectedTable={selectedTable}
-              fields={fields}
-              filteredData={filteredData}
-              dataLoading={dataLoading}
-              isEditingTable={isEditingTable}
-              editedData={editedData}
-              inlineErrors={inlineErrors}
-              activeTableLock={activeTableLock}
-              onCellChange={handleCellChange}
-              onAddRow={handleAddRow}
-              onRemoveNewRow={handleRemoveNewRow}
-              onSaveInlineEdits={handleSaveInlineEdits}
-              onCancelInlineEdits={handleCancelInlineEdits}
-              onStartEditing={() => {
-                if (tryStartEditingTable()) {
-                  setIsEditingTable(true)
-                  setEditedData([...filteredData])
-                }
-              }}
-              onStartCreating={() => {
-                if (tryStartEditingTable()) {
-                  setIsEditingTable(true)
-                  const newRec = initFormValues(allFields, null)
-                  newRec._isNew = true
-                  setEditedData([...filteredData, newRec])
-                }
-              }}
-              onRefresh={() => loadTable(selectedTable)}
-              onDeleteRows={openDeleteDialog}
-              aiDescriptions={aiDescriptions}
-              aiLoading={aiLoading}
-              onRequestAiDescriptions={() => handleLoadAiDescriptions(false)}
-            />
+            {canViewTable ? (
+              <DynamicDataTable
+                selectedTable={selectedTable}
+                fields={fields}
+                filteredData={filteredData}
+                dataLoading={dataLoading}
+                isEditingTable={isEditingTable}
+                editedData={editedData}
+                inlineErrors={inlineErrors}
+                activeTableLock={activeTableLock}
+                permissions={{
+                  canCreate: canCreateTable,
+                  canUpdate: canUpdateTable,
+                  canDelete: canDeleteTable
+                }}
+                onCellChange={handleCellChange}
+                onAddRow={handleAddRow}
+                onRemoveNewRow={handleRemoveNewRow}
+                onSaveInlineEdits={handleSaveInlineEdits}
+                onCancelInlineEdits={handleCancelInlineEdits}
+                onStartEditing={() => {
+                  if (!canUpdateTable) return
+                  if (tryStartEditingTable()) {
+                    setIsEditingTable(true)
+                    setEditedData([...filteredData])
+                  }
+                }}
+                onStartCreating={() => {
+                  if (!canCreateTable) return
+                  if (tryStartEditingTable()) {
+                    setIsEditingTable(true)
+                    const newRec = initFormValues(allFields, null)
+                    newRec._isNew = true
+                    setEditedData([...filteredData, newRec])
+                  }
+                }}
+                onRefresh={() => loadTable(selectedTable)}
+                onDeleteRows={rows => {
+                  if (!canDeleteTable) return
+                  openDeleteDialog(rows)
+                }}
+                aiDescriptions={aiDescriptions}
+                aiLoading={aiLoading}
+                onRequestAiDescriptions={() => handleLoadAiDescriptions(false)}
+              />
+            ) : accessDeniedPanel}
           </Tab>
           <Tab text="Excel" selected={activeTab === 'excel'}>
-            <ExcelPipelineTab
-              tableName={selectedTable.TableName}
-              onImported={() => loadTable(selectedTable)}
-            />
+            {canViewTable ? (
+              <ExcelPipelineTab
+                tableName={selectedTable.TableName}
+                canUpload={canUploadTable}
+                onImported={() => loadTable(selectedTable)}
+              />
+            ) : accessDeniedPanel}
           </Tab>
           <Tab text="Field Schema" selected={activeTab === 'fieldSchema'}>
-            <FieldSchemaTab
-              allFields={allFields}
-              aiDescriptions={aiDescriptions}
-              aiLoading={aiLoading}
-              aiError={aiError}
-              onLoadAiDescriptions={() => handleLoadAiDescriptions(true)}
-              onExportPdf={handleExportDataDictionary}
-            />
+            {canViewTable ? (
+              <FieldSchemaTab
+                allFields={allFields}
+                aiDescriptions={aiDescriptions}
+                aiLoading={aiLoading}
+                aiError={aiError}
+                onLoadAiDescriptions={() => handleLoadAiDescriptions(true)}
+                onExportPdf={handleExportDataDictionary}
+              />
+            ) : accessDeniedPanel}
           </Tab>
           <Tab text="Audit Log" selected={activeTab === 'auditLog'}>
-            <AuditLogPanel tableName={selectedTable.TableName} />
+            {canViewTable ? (
+              <AuditLogPanel tableName={selectedTable.TableName} canRollback={canRollbackAudit} />
+            ) : accessDeniedPanel}
           </Tab>
           <Tab text="Dependencies" selected={activeTab === 'dependencies'}>
-            {activeTab === 'dependencies' && (
+            {canViewTable && activeTab === 'dependencies' ? (
               <RepositoryInfoTab
                 configUuid={selectedTable.ConfigUuid}
                 tableName={selectedTable.TableName}
               />
-            )}
+            ) : accessDeniedPanel}
           </Tab>
         </TabContainer>
       </DynamicPage>
