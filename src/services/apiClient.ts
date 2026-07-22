@@ -86,7 +86,7 @@ api.interceptors.response.use(
   response => response,
   error => {
     const status = error.response?.status
-    if ((credentials || isDeployedOnSAP()) && (status === 401 || (status === 403 && !isCsrfError(error)))) {
+    if ((credentials || isDeployedOnSAP()) && status === 401) {
       window.dispatchEvent(new CustomEvent('sap-session-expired'))
     }
     return Promise.reject(error)

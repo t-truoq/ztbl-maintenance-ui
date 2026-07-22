@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getAuditValueParts, formatAuditValue, getAuditDisplayCells } from './auditFormatters'
+import { getAuditValueParts, getAuditDisplayCells } from './auditFormatters'
 
 describe('auditFormatters', () => {
   it('parses audit JSON object correctly', () => {

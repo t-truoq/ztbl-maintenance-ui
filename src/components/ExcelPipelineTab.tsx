@@ -30,6 +30,7 @@ import {
 
 interface ExcelPipelineTabProps {
   tableName: string
+  canUpload?: boolean
   onImported: () => Promise<void> | void
 }
 
@@ -61,6 +62,7 @@ const DIFF_STATUS_META: Record<string, { state: 'Positive' | 'Critical' | 'Negat
 
 export default function ExcelPipelineTab({
   tableName,
+  canUpload = true,
   onImported
 }: ExcelPipelineTabProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -139,6 +141,10 @@ export default function ExcelPipelineTab({
   }
 
   async function processFile(file: File) {
+    if (!canUpload) {
+      setError('You do not have permission to upload data.')
+      return
+    }
     resetFeedback()
     setDiffRows([])
     setSelectedFileName(file.name)
@@ -210,6 +216,10 @@ export default function ExcelPipelineTab({
   }
 
   async function handleConfirm() {
+    if (!canUpload) {
+      setError('You do not have permission to upload data.')
+      return
+    }
     resetFeedback()
     setBusyStep('confirm')
 
@@ -241,23 +251,23 @@ export default function ExcelPipelineTab({
   }
 
   const busy = !!busyStep
-  const canConfirm = commitRows.length > 0 && errorRows.length === 0 && !busy
+  const canConfirm = canUpload && commitRows.length > 0 && errorRows.length === 0 && !busy
   const noChangesDetected = visibleRows.length > 0 && commitRows.length === 0 && errorRows.length === 0
   const confirmLabel = noChangesDetected ? 'Nothing to Import' : `Confirm Import (${commitRows.length})`
 
   return (
-    <div className="excel-workspace">
-      <section className="excel-hero">
-        <div className="excel-hero-copy">
-          <Title level="H4">Excel Import / Export</Title>
-          <Text className="excel-muted">
+    <div className="tab-panel-form excel-workspace">
+      <section className="tab-panel-header excel-hero">
+        <div className="tab-panel-title-block excel-hero-copy">
+          <Title level="H4" className="tab-panel-title excel-title">Excel Import / Export</Title>
+          <Text className="tab-panel-subtitle excel-muted excel-subtitle">
             Export table data, upload the edited workbook, review the diff, then confirm the import.
           </Text>
           {parseSummary && (
             <ParseDetails details={parseSummary} />
           )}
         </div>
-        <div className="excel-primary-actions">
+        <div className="tab-panel-actions excel-primary-actions">
           <Button
             design="Transparent"
             icon={'download' as any}
@@ -301,22 +311,27 @@ export default function ExcelPipelineTab({
       />
 
       <section className="excel-action-grid">
+        {!canUpload && (
+          <MessageStrip design="Negative" hideCloseButton className="excel-permission-message">
+            You do not have permission to upload data.
+          </MessageStrip>
+        )}
         <div
           className={`excel-dropzone${dragActive ? ' excel-dropzone--active' : ''}`}
           onDragOver={event => {
             event.preventDefault()
-            if (!busy) setDragActive(true)
+            if (!busy && canUpload) setDragActive(true)
           }}
           onDragLeave={() => setDragActive(false)}
           onDrop={handleDrop}
           role="button"
           tabIndex={0}
           onKeyDown={event => {
-            if ((event.key === 'Enter' || event.key === ' ') && !busy) {
+            if ((event.key === 'Enter' || event.key === ' ') && !busy && canUpload) {
               fileInputRef.current?.click()
             }
           }}
-          onClick={() => !busy && fileInputRef.current?.click()}
+          onClick={() => !busy && canUpload && fileInputRef.current?.click()}
         >
           <Icon name="upload-to-cloud" className="excel-dropzone-icon" />
           <div className="excel-dropzone-text">
@@ -325,7 +340,7 @@ export default function ExcelPipelineTab({
               Drop an .xlsx file here or click to browse. Use the exported data file for the cleanest import.
             </Text>
           </div>
-          <Button design="Transparent" icon={'upload' as any} disabled={busy}>
+          <Button design="Transparent" icon={'upload' as any} disabled={busy || !canUpload}>
             Browse
           </Button>
         </div>
