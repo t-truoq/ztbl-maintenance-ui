@@ -264,8 +264,11 @@ ui5-filter-bar {
   border-bottom: 1px solid var(--sapGroup_BorderColor, #d9e0e7);
   background: var(--sapList_Background, #fff);
   box-shadow: none;
-  overflow-x: auto;
-  scrollbar-width: thin;
+  overflow: hidden !important;
+}
+
+.maintenance-tab-container::part(tabstrip)::-webkit-scrollbar {
+  display: none !important;
 }
 
 .maintenance-tab-container::part(content) {
@@ -1483,3 +1486,15 @@ ui5-toast {
     grid-template-columns: 1fr;
   }
 }
+
+/* Fix TabContainer tab strip & container vertical scrollbar */
+.maintenance-tab-container,
+ui5-tabcontainer {
+  overflow: hidden !important;
+  width: 100%;
+}
+
+ui5-tabcontainer::part(content) {
+  overflow: auto;
+}
+

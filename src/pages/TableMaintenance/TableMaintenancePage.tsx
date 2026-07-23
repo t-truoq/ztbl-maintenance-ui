@@ -42,7 +42,7 @@ import { AiDescriptionMap } from '../../types'
 
 const PENDING_TABLE_PERMISSION: TablePermissionState = {
   ...FULL_TABLE_PERMISSION,
-  canView: false
+  canView: true
 }
 
 export default function TableMaintenancePage(props: TableMaintenancePageProps) {
@@ -54,6 +54,8 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
     dataLoading,
     error,
     setError,
+    successMsg,
+    setSuccessMsg,
     searchQuery,
     setSearchQuery,
     filterValues,
@@ -167,6 +169,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
 
   const permissionReady = !permissionLoading && permissionTableName === selectedTable?.TableName
   const canViewTable = permissionReady && tablePermission.canView
+  const isAccessDenied = permissionReady && !tablePermission.canView
   const canCreateTable = tablePermission.canCreate
   const canUpdateTable = tablePermission.canUpdate && tablePermission.updateEnabled
   const canDeleteTable = tablePermission.canDelete && tablePermission.deleteEnabled
@@ -184,7 +187,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
       <Text>Loading table access...</Text>
     </div>
   )
-  const tableAccessPanel = permissionReady ? accessDeniedPanel : permissionPendingPanel
+  const tableAccessPanel = isAccessDenied ? accessDeniedPanel : permissionPendingPanel
 
   const handleLoadAiDescriptions = useCallback(async (forceRefresh = false) => {
     if (!selectedTable) return
@@ -241,7 +244,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
   return (
     <>
       {/* Permission banner */}
-      {permissionReady && !canViewTable && (
+      {isAccessDenied && (
         <div style={{ padding: '1rem', paddingBottom: 0 }}>
           <MessageStrip design="Negative" hideCloseButton>
             Access Denied. You do not have permission to view this data. Please contact your administrator if you need access.
@@ -261,12 +264,17 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
 
       {/* Error / success strips */}
       {(error) && (
-        <div style={{ padding: '1rem' }}>
-          {error && (
-            <MessageStrip design="Negative" onClose={() => setError('')}>
-              {error}
-            </MessageStrip>
-          )}
+        <div style={{ padding: '1rem', paddingBottom: 0 }}>
+          <MessageStrip design="Negative" onClose={() => setError('')}>
+            {error}
+          </MessageStrip>
+        </div>
+      )}
+      {successMsg && (
+        <div style={{ padding: '1rem', paddingBottom: 0 }}>
+          <MessageStrip design="Positive" onClose={() => setSuccessMsg('')}>
+            {successMsg}
+          </MessageStrip>
         </div>
       )}
 
@@ -373,7 +381,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
                 selectedTable={selectedTable}
                 fields={fields}
                 filteredData={filteredData}
-                dataLoading={dataLoading}
+                dataLoading={dataLoading || permissionLoading}
                 isEditingTable={isEditingTable}
                 editedData={editedData}
                 inlineErrors={inlineErrors}
@@ -447,7 +455,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
                 configUuid={selectedTable.ConfigUuid}
                 tableName={selectedTable.TableName}
               />
-            ) : tableAccessPanel}
+            ) : !canViewTable ? tableAccessPanel : null}
           </Tab>
         </TabContainer>
       </DynamicPage>
