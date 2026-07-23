@@ -1,4 +1,5 @@
 import { AuditLogEntry, AuditItemEntry } from '../types'
+import { formatTimestampValue, isTimestampFieldName } from './displayHelpers'
 
 export type AuditValuePart = {
   key: string
@@ -27,6 +28,13 @@ function valueToText(value: any): string {
   }
 
   return String(value)
+}
+
+function formatAuditPartValue(key: string, value: any): string {
+  const text = valueToText(value)
+  if (!text) return ''
+  if (isTimestampFieldName(key) && text.trim() === '0') return ''
+  return formatTimestampValue(text, key) || text
 }
 
 function fixAuditJson(jsonStr: string): string {
@@ -68,7 +76,7 @@ function parseJsonLike(str: string): any | null {
 function objectToParts(obj: Record<string, any>): AuditValuePart[] {
   return Object.entries(obj)
     .filter(([key, value]) => !isClientField(key) && !isEmptyValue(value))
-    .map(([key, value]) => ({ key, value: valueToText(value) }))
+    .map(([key, value]) => ({ key, value: formatAuditPartValue(key, value) }))
     .filter(part => part.value)
 }
 
@@ -81,7 +89,7 @@ function splitLegacyAuditText(str: string): AuditValuePart[] {
 
       return {
         key: part.slice(0, separator).trim(),
-        value: part.slice(separator + 1).trim()
+        value: formatAuditPartValue(part.slice(0, separator).trim(), part.slice(separator + 1).trim())
       }
     })
     .filter(part => !part.key || !isClientField(part.key))
@@ -107,7 +115,7 @@ function extractObjectLikeParts(str: string): AuditValuePart[] {
       const key = match[1]
       const valueStart = (match.index || 0) + match[0].length
       const valueEnd = matches[index + 1]?.index ?? str.length
-      const value = cleanObjectLikeValue(str.slice(valueStart, valueEnd))
+      const value = formatAuditPartValue(key, cleanObjectLikeValue(str.slice(valueStart, valueEnd)))
       return { key, value }
     })
     .filter(part => !isClientField(part.key) && !isEmptyValue(part.value))

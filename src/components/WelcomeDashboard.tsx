@@ -6,6 +6,7 @@ import {
   Label,
   ComboBox,
   ComboBoxItem,
+  Icon,
   Tag,
 } from '@ui5/webcomponents-react'
 import { TableConfig } from '../types'
@@ -27,6 +28,8 @@ export default function WelcomeDashboard({
   onSelectTable,
   onRefreshTableList,
 }: WelcomeDashboardProps) {
+  const approvalRequiredCount = tables.filter(t => t.ApprovalRequired === 'X').length
+
   return (
     <div
       style={{
@@ -113,7 +116,12 @@ export default function WelcomeDashboard({
 
       {/* Dashboard Title & Stats */}
       <FlexBox justifyContent="SpaceBetween" alignItems="Center" style={{ marginTop: '0.5rem' }}>
-        <Title level="H3">Overview: Registered Tables ({tables.length})</Title>
+        <FlexBox direction="Column" gap="4px">
+          <Title level="H3">Overview: Registered Tables ({tables.length})</Title>
+          <Text className="overview-approval-count">
+            {approvalRequiredCount} table(s) require approval before changes are applied.
+          </Text>
+        </FlexBox>
         <Button icon="refresh" design="Transparent" onClick={onRefreshTableList}>
           Refresh Config
         </Button>
@@ -142,90 +150,108 @@ export default function WelcomeDashboard({
             gap: '1.5rem',
           }}
         >
-          {tables.map(t => (
-            <div
-              key={t.ConfigUuid}
-              onClick={() => onSelectTable(t)}
-              role="button"
-              tabIndex={0}
-              style={{
-                cursor: 'pointer',
-                background: '#fff',
-                borderRadius: '8px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                transition: 'transform 0.15s, box-shadow 0.15s',
-                padding: '1rem',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.75rem',
-                minHeight: '208px',
-                boxSizing: 'border-box',
-              }}
-              onMouseOver={(e: any) => {
-                e.currentTarget.style.transform = 'translateY(-2px)'
-                e.currentTarget.style.boxShadow = '0 4px 10px rgba(0,0,0,0.06)'
-              }}
-              onMouseOut={(e: any) => {
-                e.currentTarget.style.transform = 'none'
-                e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'
-              }}
-              onKeyDown={(e: any) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  onSelectTable(t)
-                }
-              }}
-            >
-              <FlexBox direction="Column" gap="8px">
-                <Title level="H5" style={{ margin: 0 }}>
-                  {t.TableName}
-                </Title>
-                <Text style={{ color: '#48617d' }}>
-                  {t.Description || 'Database Table'}
-                </Text>
-              </FlexBox>
-
-              {t.ApprovalRequired === 'X' && (
-                <FlexBox gap="8px" wrap="Wrap">
-                  <Tag colorScheme="6">Approval Required</Tag>
-                </FlexBox>
-              )}
-
+          {tables.map(t => {
+            const requiresApproval = t.ApprovalRequired === 'X'
+            return (
               <div
+                key={t.ConfigUuid}
+                className={requiresApproval ? 'table-card table-card--approval' : 'table-card'}
+                onClick={() => onSelectTable(t)}
+                role="button"
+                tabIndex={0}
                 style={{
-                  borderTop: '1px solid #f0f0f0',
-                  marginTop: 'auto',
-                  paddingTop: '0.5rem',
+                  cursor: 'pointer',
+                  background: '#fff',
+                  transition: 'transform 0.15s, box-shadow 0.15s',
+                  padding: '1rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.75rem',
+                  minHeight: '208px',
+                  boxSizing: 'border-box',
+                }}
+                onMouseOver={(e: any) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)'
+                  e.currentTarget.style.boxShadow = '0 4px 10px rgba(0,0,0,0.06)'
+                }}
+                onMouseOut={(e: any) => {
+                  e.currentTarget.style.transform = 'none'
+                  e.currentTarget.style.boxShadow = ''
+                }}
+                onKeyDown={(e: any) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onSelectTable(t)
+                  }
                 }}
               >
-                <FlexBox direction="Column" gap="4px">
-                  <Label style={{ fontSize: '0.75rem', color: '#6a7075' }}>Config UUID</Label>
-                  <Text
-                    style={{
-                      fontSize: '0.8rem',
-                      fontFamily: 'monospace',
-                      color: '#32363a',
-                    }}
-                  >
-                    {t.ConfigUuid}
+                <FlexBox direction="Column" gap="8px">
+                  <Title level="H5" style={{ margin: 0 }}>
+                    {t.TableName}
+                  </Title>
+                  <Text style={{ color: '#48617d' }}>
+                    {t.Description || 'Database Table'}
                   </Text>
                 </FlexBox>
-              </div>
 
-              <FlexBox justifyContent="End" style={{ marginTop: '0.25rem' }}>
-                <Button
-                  design="Emphasized"
-                  icon="navigation-right-arrow"
-                  onClick={(e: any) => {
-                    e.stopPropagation()
-                    onSelectTable(t)
+                {requiresApproval ? (
+                  <div className="table-approval-status table-approval-status--required">
+                    <div className="table-approval-status-main">
+                      <Icon name="approvals" className="table-approval-status-icon" />
+                      <Tag colorScheme="2">Approval Required</Tag>
+                    </div>
+                    <Text className="table-approval-status-text">
+                      Approval workflow enabled for data changes.
+                    </Text>
+                  </div>
+                ) : (
+                  <div className="table-approval-status table-approval-status--direct">
+                    <div className="table-approval-status-main">
+                      <Icon name="accept" className="table-approval-status-icon" />
+                      <Tag colorScheme="8">Direct Maintenance</Tag>
+                    </div>
+                    <Text className="table-approval-status-text">
+                      No approval workflow configured.
+                    </Text>
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    borderTop: '1px solid #f0f0f0',
+                    marginTop: 'auto',
+                    paddingTop: '0.5rem',
                   }}
                 >
-                  Maintain Data
-                </Button>
-              </FlexBox>
-            </div>
-          ))}
+                  <FlexBox direction="Column" gap="4px">
+                    <Label style={{ fontSize: '0.75rem', color: '#6a7075' }}>Config UUID</Label>
+                    <Text
+                      style={{
+                        fontSize: '0.8rem',
+                        fontFamily: 'monospace',
+                        color: '#32363a',
+                      }}
+                    >
+                      {t.ConfigUuid}
+                    </Text>
+                  </FlexBox>
+                </div>
+
+                <FlexBox justifyContent="End" style={{ marginTop: '0.25rem' }}>
+                  <Button
+                    design="Emphasized"
+                    icon="navigation-right-arrow"
+                    onClick={(e: any) => {
+                      e.stopPropagation()
+                      onSelectTable(t)
+                    }}
+                  >
+                    Maintain Data
+                  </Button>
+                </FlexBox>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

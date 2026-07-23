@@ -23,6 +23,7 @@ import {
   getBulkActionType,
   getRawRecordKey,
   getRecordKey,
+  hasAuditItemSummary,
   isBulkAuditEntry,
   paginateAuditEntries
 } from '../utils/auditLogHelpers'
@@ -124,6 +125,10 @@ function includesText(value: unknown, query: string): boolean {
 
 function actionLabel(actionType: string): string {
   return ACTION_LABELS[actionType] || actionType || 'Unknown'
+}
+
+function formatItemCount(count: number): string {
+  return `${count} item(s)`
 }
 
 function ActionBadge({ actionType }: { actionType: string }) {
@@ -294,15 +299,18 @@ function BulkAuditItemsDialog({
 
   if (!auditEntry) return null
 
-  const bulkSummaryText = extractBulkCount(auditEntry)
-  const displayActionType = getBulkActionType(auditEntry, items)
+  const summaryText = items.length > 0 ? formatItemCount(items.length) : extractBulkCount(auditEntry)
+  const isRollbackSummary = auditEntry.ActionType === 'R'
+  const dialogTitle = isRollbackSummary ? 'Rollback Audit Items' : 'Bulk Audit Items'
+  const summaryLabel = isRollbackSummary ? 'Rollback Summary' : 'Bulk Operation Summary'
+  const displayActionType = isRollbackSummary ? 'R' : getBulkActionType(auditEntry, items)
 
   return (
     <Dialog
       ref={dialogRef as any}
       {...({
         open: true,
-        headerText: `Bulk Audit Items — ${bulkSummaryText}`,
+        headerText: `${dialogTitle} - ${summaryText}`,
         onAfterClose: onClose,
         footer: (
           <Bar
@@ -350,7 +358,7 @@ function BulkAuditItemsDialog({
         {loading && (
           <div style={{ textAlign: 'center', padding: '2rem' }}>
             <BusyIndicator active size="M" />
-            <Text style={{ display: 'block', marginTop: '0.5rem' }}>Loading bulk audit items...</Text>
+            <Text style={{ display: 'block', marginTop: '0.5rem' }}>Loading audit items...</Text>
           </div>
         )}
 
@@ -363,10 +371,10 @@ function BulkAuditItemsDialog({
         {!loading && !error && items.length === 0 && (
           <div style={{ display: 'grid', gap: '0.75rem' }}>
             <MessageStrip design="Information" hideCloseButton>
-              Bulk audit summary: {bulkSummaryText} executed by {auditEntry.ChangedBy || 'User'} at {formatDateTime(auditEntry.ChangedAt)}.
+              {summaryLabel}: {summaryText} executed by {auditEntry.ChangedBy || 'User'} at {formatDateTime(auditEntry.ChangedAt)}.
             </MessageStrip>
-            {auditEntry.NewValue && (
-              <ValueBlock title="Summary Details" value={auditEntry.NewValue} emptyText="No summary details" />
+            {(auditEntry.NewValue || auditEntry.OldValue) && (
+              <ValueBlock title="Summary Details" value={auditEntry.NewValue || auditEntry.OldValue || ''} emptyText="No summary details" />
             )}
           </div>
         )}
@@ -448,16 +456,18 @@ function AuditEntryItem({
   const isUpdate = entry.ActionType === 'U'
   const isBulk = isBulkAuditEntry(entry)
   const isRollbackType = entry.ActionType === 'R'
+  const hasItemSummary = hasAuditItemSummary(entry)
 
   const childItems = useMemo(() => {
-    if (!isBulk) return []
+    if (!hasItemSummary) return []
     if (cachedChildItems && cachedChildItems.length > 0) return cachedChildItems
     return findBulkChildren(entry, allEntries)
-  }, [isBulk, cachedChildItems, entry, allEntries])
+  }, [hasItemSummary, cachedChildItems, entry, allEntries])
 
   const displayActionType = isBulk
     ? getBulkActionType(entry, childItems)
     : entry.ActionType
+  const summaryLabel = isRollbackType ? 'Rollback Summary' : 'Bulk Operation Summary'
 
   return (
     <article className="audit-entry">
@@ -468,10 +478,10 @@ function AuditEntryItem({
           <div className="audit-entry-meta">
             <span>{entry.ChangedBy || '-'}</span>
             <span>{formatDateTime(entry.ChangedAt)}</span>
-            <span className={isBulk ? 'audit-record-key audit-record-key-strong' : 'audit-record-key'}>
+            <span className={hasItemSummary ? 'audit-record-key audit-record-key-strong' : 'audit-record-key'}>
               {getRecordKey(entry)}
             </span>
-            {normalizedField && !isBulk && <span>{normalizedField}</span>}
+            {normalizedField && !hasItemSummary && <span>{normalizedField}</span>}
           </div>
           {canRollback && (
             <div className="audit-entry-actions">
@@ -488,11 +498,13 @@ function AuditEntryItem({
         </div>
 
         <div className="audit-entry-content">
-          {isBulk ? (
+          {hasItemSummary ? (
             <div className="audit-bulk-summary">
               <div>
-                <Label>Bulk Operation Summary</Label>
-                <Text className="audit-bulk-count">{extractBulkCount(entry)}</Text>
+                <Label>{summaryLabel}</Label>
+                <Text className="audit-bulk-count">
+                  {childItems.length > 0 ? formatItemCount(childItems.length) : extractBulkCount(entry)}
+                </Text>
               </div>
               <Button
                 design="Transparent"
@@ -521,6 +533,7 @@ function AuditEntryItem({
 }
 
 export default function AuditLogPanel({ tableName, canRollback = false }: AuditLogPanelProps) {
+  const resultMessageRef = useRef<HTMLDivElement | null>(null)
   const [entries, setEntries] = useState<AuditLogEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -545,6 +558,13 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
   useEffect(() => {
     setPageIndex(0)
   }, [tableName, searchQuery, actionFilter, dateFrom, dateTo, pageSize])
+
+  useEffect(() => {
+    if (!rollbackResultMsg) return
+    window.requestAnimationFrame(() => {
+      resultMessageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    })
+  }, [rollbackResultMsg])
 
   async function loadAuditLog() {
     try {
@@ -611,15 +631,15 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
     }
   }, [safePageIndex, pageIndex])
 
-  // Pre-fetch audit items for visible bulk entries so parent badges match child items.
+  // Pre-fetch audit items for visible summary entries so parent badges match child items.
   useEffect(() => {
-    const bulkEntries = pagedEntries.filter(isBulkAuditEntry)
-    if (bulkEntries.length === 0) return
+    const summaryEntries = pagedEntries.filter(hasAuditItemSummary)
+    if (summaryEntries.length === 0) return
 
     let isCancelled = false
 
     Promise.all(
-      bulkEntries.map(async entry => {
+      summaryEntries.map(async entry => {
         const matched = findBulkChildren(entry, entries)
         if (matched.length > 0) return { auditId: entry.AuditId, items: matched }
 
@@ -727,14 +747,15 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
       </div>
 
       {rollbackResultMsg && (
-        <MessageStrip
-          design={rollbackResultMsg.type === 'success' ? 'Positive' : 'Negative'}
-          onClose={() => setRollbackResultMsg(null)}
-          className="audit-message"
-          style={{ margin: '0.5rem 0.75rem' }}
-        >
-          {rollbackResultMsg.message}
-        </MessageStrip>
+        <div ref={resultMessageRef} className="audit-result-message">
+          <MessageStrip
+            design={rollbackResultMsg.type === 'success' ? 'Positive' : 'Negative'}
+            onClose={() => setRollbackResultMsg(null)}
+            className="audit-message"
+          >
+            {rollbackResultMsg.message}
+          </MessageStrip>
+        </div>
       )}
 
       {loading && (

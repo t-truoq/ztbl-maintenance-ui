@@ -19,6 +19,17 @@ export function isBulkAuditEntry(entry: AuditLogEntry | AuditItemEntry): boolean
   return getRawRecordKey(entry).toUpperCase() === 'BULK'
 }
 
+export function hasAuditItemSummary(entry: AuditLogEntry | AuditItemEntry): boolean {
+  const rawItems = (entry as any)._Items?.value || (entry as any)._Items
+  if (Array.isArray(rawItems) && rawItems.length > 0) return true
+  if (isBulkAuditEntry(entry)) return true
+
+  const actionType = String((entry as any).ActionType || '').toUpperCase()
+  if (actionType !== 'B' && actionType !== 'R') return false
+  const summaryText = `${(entry as any).NewValue || ''} ${(entry as any).OldValue || ''}`
+  return /bulk audit\s*:/i.test(summaryText) || /\d+\s*item\(s\)/i.test(summaryText)
+}
+
 export function getRecordKey(entry: AuditLogEntry | AuditItemEntry): string {
   const rawKey = getRawRecordKey(entry)
   if (!rawKey || rawKey === '-') return '-'
@@ -59,7 +70,7 @@ export function findBulkChildren(bulkEntry: AuditLogEntry, allEntries: AuditLogE
 
   const matched = allEntries.filter(e => {
     if (e.AuditId === bulkEntry.AuditId) return false
-    if (isBulkAuditEntry(e)) return false
+    if (hasAuditItemSummary(e)) return false
     if (e.TableName !== bulkEntry.TableName) return false
 
     const samePrefix = prefix20 && e.AuditId.startsWith(prefix20)

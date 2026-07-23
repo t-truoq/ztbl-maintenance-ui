@@ -5,6 +5,12 @@ export function formatCellValue(field: FieldMeta, value: any): string {
 
   const str = String(value)
   const feType = field.fe_type || field.FeType
+  const fieldName = field.field_name || field.FieldName || ''
+  const timestampField = isTimestampFieldName(fieldName) || field.FieldType === 'TIMESTAMP'
+
+  if (timestampField && str.trim() === '0') {
+    return ''
+  }
 
   if (feType === 'boolean' || field.FieldType === 'CHECK') {
     return str === 'X' ? 'Yes' : ''
@@ -16,8 +22,9 @@ export function formatCellValue(field: FieldMeta, value: any): string {
     return str
   }
 
-  if (field.FieldType === 'TIMESTAMP') {
-    return str.length > 19 ? str.substring(0, 19) : str
+  const formattedTimestamp = formatTimestampValue(str, fieldName)
+  if (formattedTimestamp) {
+    return formattedTimestamp
   }
 
   if (looksLikeTimestamp(str)) {
@@ -25,6 +32,69 @@ export function formatCellValue(field: FieldMeta, value: any): string {
   }
 
   return str
+}
+
+export function formatTimestampValue(value: any, fieldName = ''): string {
+  if (value === undefined || value === null || value === '') return ''
+
+  const raw = String(value).trim()
+  if (!raw || raw === '0') return ''
+
+  const isTimestampField = isTimestampFieldName(fieldName)
+
+  const abapMatch = raw.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\.(\d+))?$/)
+  if (abapMatch && (isTimestampField || raw.length >= 14)) {
+    const [, year, month, day, hour, minute, second, fraction = ''] = abapMatch
+    const date = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second)
+    )
+    if (!Number.isNaN(date.getTime())) {
+      const dateText = date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      })
+      const millis = fraction ? `.${fraction.slice(0, 3).padEnd(3, '0')}` : ''
+      return millis ? dateText.replace(/(:\d{2})(\s?[AP]M)?$/i, `$1${millis}$2`) : dateText
+    }
+  }
+
+  const isoLikeMatch = raw.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d+))?/)
+  if (isoLikeMatch && isTimestampField) {
+    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T')
+    const date = new Date(normalized)
+    if (!Number.isNaN(date.getTime())) {
+      return date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      })
+    }
+  }
+
+  return ''
+}
+
+export function isTimestampFieldName(fieldName = ''): boolean {
+  const normalizedField = fieldName.trim().toUpperCase()
+  return (
+    normalizedField.includes('CHANGED_AT') ||
+    normalizedField.includes('CHANGE_AT') ||
+    normalizedField.includes('CREATED_AT') ||
+    normalizedField.includes('CREATED_ON') ||
+    normalizedField.includes('TIMESTAMP')
+  )
 }
 
 function looksLikeTimestamp(str: string): boolean {

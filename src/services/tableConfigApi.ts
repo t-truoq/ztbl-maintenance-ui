@@ -748,7 +748,7 @@ export async function getAuditItems(auditId: string): Promise<AuditItemEntry[]> 
   }
 }
 
-export async function rollbackAudit(auditId: string): Promise<{ success: boolean; message: string }> {
+ export async function rollbackAudit(auditId: string): Promise<{ success: boolean; message: string }> {
   const url = `/AuditLog(AuditId='${encodeURIComponent(auditId)}')/com.sap.gateway.srvd.zsd_tbl_config.v0001.rollback`
   const res = await apiPostWithCsrf(url, {}, { params: { 'sap-client': SAP_CLIENT } })
   const data = res.data

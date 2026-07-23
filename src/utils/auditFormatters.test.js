@@ -33,4 +33,21 @@ describe('auditFormatters', () => {
     expect(display.oldValue).toBe('NAME: Old Name')
     expect(display.newValue).toBe('NAME: Restored Name')
   })
+
+  it('formats ABAP changed-on timestamps in audit values', () => {
+    const parts = getAuditValueParts(JSON.stringify({
+      LAST_CHANGED_AT: '20260723155930.934',
+      LOCAL_LAST_CHANGED_AT: '0',
+      LAST_CHANGED_BY: 'DEV-253'
+    }))
+
+    const changedAt = parts.find(part => part.key === 'LAST_CHANGED_AT')?.value || ''
+    expect(changedAt).toContain('2026')
+    expect(changedAt).toContain('07')
+    expect(changedAt).toContain('23')
+    expect(changedAt).toContain('59:30')
+    expect(changedAt).toContain('.934')
+    expect(parts.some(part => part.key === 'LOCAL_LAST_CHANGED_AT')).toBe(false)
+    expect(parts.find(part => part.key === 'LAST_CHANGED_BY')?.value).toBe('DEV-253')
+  })
 })
