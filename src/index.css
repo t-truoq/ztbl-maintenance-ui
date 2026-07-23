@@ -132,6 +132,116 @@ ui5-filter-bar {
   padding: 0.5rem 1rem !important;
 }
 
+.maintenance-sticky-title {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.75rem 1.5rem 0.65rem;
+  border-bottom: 1px solid var(--sapGroup_BorderColor, #d9e0e7);
+  background: var(--sapObjectHeader_Background, #fff);
+  box-shadow: 0 2px 8px rgba(34, 53, 72, 0.08);
+  box-sizing: border-box;
+}
+
+.maintenance-sticky-title-main {
+  min-width: 0;
+}
+
+.maintenance-table-name {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--sapTitleColor, #1d2d3e);
+  font-size: 1.125rem;
+  font-weight: 800;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.maintenance-table-description {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--sapTextColor, #32363a);
+  font-size: 0.875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-approval-count {
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.875rem;
+}
+
+.table-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--sapGroup_BorderColor, #d9e0e7);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(34, 53, 72, 0.08);
+}
+
+.table-card--approval {
+  border-color: var(--sapGroup_BorderColor, #d9e0e7);
+  background: #fff !important;
+}
+
+.table-card--approval::before {
+  content: none;
+}
+
+.table-approval-status {
+  display: grid;
+  gap: 0.35rem;
+  min-height: 3.85rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+
+.table-approval-status-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.table-approval-status-icon {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+.table-approval-status-text {
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.8125rem;
+  line-height: 1.25;
+}
+
+.table-approval-status--required {
+  border: 1px solid #e09d00;
+  background: #fff8d6;
+  box-shadow: inset 3px 0 0 #e09d00;
+}
+
+.table-approval-status--required .table-approval-status-icon {
+  color: #b46a00;
+}
+
+.table-approval-status--direct {
+  border: 1px solid var(--sapList_BorderColor, #edf0f2);
+  background: #fff;
+}
+
+.table-approval-status--direct .table-approval-status-icon {
+  color: #107e3e;
+}
+
 .maintenance-tab-container {
   --sapFontSize: 0.875rem;
   --_ui5_tc_item_text_only_height: 3rem;
@@ -219,6 +329,13 @@ ui5-filter-bar {
 
 .table-data-panel {
   min-width: 0;
+}
+
+.table-permission-loading {
+  min-height: 8rem;
+  align-items: center;
+  justify-content: center;
+  color: var(--sapContent_LabelColor, #6a6d70);
 }
 
 .table-date-picker {
@@ -380,6 +497,7 @@ ui5-filter-bar {
 
 .field-schema-muted {
   display: block;
+  font-weight: 400;
 }
 
 .field-schema-message {
@@ -836,6 +954,15 @@ ui5-toast {
 }
 
 @media (max-width: 640px) {
+  .maintenance-sticky-title {
+    grid-template-columns: 1fr;
+    padding: 0.625rem 0.75rem;
+  }
+
+  .maintenance-table-description {
+    padding-left: 2.5rem;
+  }
+
   .excel-workspace {
     padding: 0.75rem;
   }
@@ -965,6 +1092,17 @@ ui5-toast {
 
 .audit-message {
   margin-top: 0.25rem;
+}
+
+.audit-result-message {
+  position: sticky;
+  top: 3.75rem;
+  z-index: 15;
+  padding: 0.25rem 0.75rem;
+}
+
+.audit-result-message ui5-message-strip {
+  box-shadow: 0 8px 20px rgba(187, 0, 0, 0.14);
 }
 
 .audit-list-wrap {

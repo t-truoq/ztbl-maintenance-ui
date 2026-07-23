@@ -4,6 +4,7 @@ import {
   findBulkChildren,
   getBulkActionType,
   getRecordKey,
+  hasAuditItemSummary,
   isBulkAuditEntry,
   paginateAuditEntries
 } from './auditLogHelpers'
@@ -22,7 +23,25 @@ describe('auditLogHelpers bulk flow', () => {
 
   it('detects bulk entries and extracts count from summary text', () => {
     expect(isBulkAuditEntry(bulkEntry)).toBe(true)
+    expect(hasAuditItemSummary(bulkEntry)).toBe(true)
     expect(extractBulkCount(bulkEntry)).toBe('2 item(s)')
+  })
+
+  it('detects rollback summaries with item counts without requiring BULK record key', () => {
+    const rollbackEntry = {
+      AuditId: 'ROLLBACK-AUDIT-1234567890',
+      TableName: 'Z253_CAT',
+      RecordKey: JSON.stringify({ CATEGORY_ID: 'C004' }),
+      FieldName: '',
+      ActionType: 'R',
+      NewValue: 'Bulk audit: 000001 item(s)',
+      ChangedBy: 'DEV-253',
+      ChangedAt: '2026-07-23T16:05:51'
+    }
+
+    expect(isBulkAuditEntry(rollbackEntry)).toBe(false)
+    expect(hasAuditItemSummary(rollbackEntry)).toBe(true)
+    expect(extractBulkCount(rollbackEntry)).toBe('1 item(s)')
   })
 
   it('matches bulk child entries by audit id prefix/user/time and skips unrelated rows', () => {

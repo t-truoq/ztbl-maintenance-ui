@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   DynamicPage,
-  DynamicPageTitle,
   DynamicPageHeader,
   FlexBox,
   Title,
   Text,
   Button,
+  BusyIndicator,
   Input,
   MessageStrip,
   TabContainer,
   Tab,
-  Tag,
   Toast,
 } from '@ui5/webcomponents-react'
 import {
@@ -115,6 +114,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
   const [canRollbackAudit, setCanRollbackAudit] = useState(false)
   const [tablePermission, setTablePermission] = useState<TablePermissionState>(PENDING_TABLE_PERMISSION)
   const [permissionLoading, setPermissionLoading] = useState(true)
+  const [permissionTableName, setPermissionTableName] = useState('')
   const filterFields = fields.filter(f => {
     if (showAllFilters) return true
     return f.is_key || f.IsKeyField === 'X'
@@ -132,19 +132,22 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
     setCanRollbackAudit(false)
     setTablePermission(PENDING_TABLE_PERMISSION)
     setPermissionLoading(true)
+    setPermissionTableName('')
     if (!username || !selectedTable?.TableName) {
       setPermissionLoading(false)
       return
     }
 
+    const tableNameForPermission = selectedTable.TableName
     Promise.all([
       isCurrentUserInAdminList(username),
-      getTablePermissions(username, selectedTable.TableName)
+      getTablePermissions(username, tableNameForPermission)
     ])
       .then(([isAdmin, permissions]) => {
         if (!isCancelled) {
           setCanRollbackAudit(isAdmin)
           setTablePermission(permissions)
+          setPermissionTableName(tableNameForPermission)
         }
       })
       .catch(error => {
@@ -152,6 +155,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
           console.warn('Cannot load authorization settings:', error)
           setCanRollbackAudit(false)
           setTablePermission(FULL_TABLE_PERMISSION)
+          setPermissionTableName(tableNameForPermission)
         }
       })
       .finally(() => {
@@ -163,7 +167,9 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
     }
   }, [username, selectedTable?.TableName])
 
-  const isAccessDenied = !permissionLoading && !tablePermission.canView
+  const permissionReady = !permissionLoading && permissionTableName === selectedTable?.TableName
+  const canViewTable = permissionReady && tablePermission.canView
+  const isAccessDenied = permissionReady && !tablePermission.canView
   const canCreateTable = tablePermission.canCreate
   const canUpdateTable = tablePermission.canUpdate && tablePermission.updateEnabled
   const canDeleteTable = tablePermission.canDelete && tablePermission.deleteEnabled
@@ -175,6 +181,13 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
       </MessageStrip>
     </div>
   )
+  const permissionPendingPanel = (
+    <div className="tab-panel-form table-permission-loading">
+      <BusyIndicator active size="M" />
+      <Text>Loading table access...</Text>
+    </div>
+  )
+  const tableAccessPanel = isAccessDenied ? accessDeniedPanel : permissionPendingPanel
 
   const handleLoadAiDescriptions = useCallback(async (forceRefresh = false) => {
     if (!selectedTable) return
@@ -265,30 +278,26 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
         </div>
       )}
 
+      <div className="maintenance-sticky-title">
+        <FlexBox alignItems="Center" gap="8px" className="maintenance-sticky-title-main">
+          <Button
+            design="Transparent"
+            icon={'navigation-left-arrow' as any}
+            accessibleName="Back to table overview"
+            onClick={() => {
+              releaseTableLockIfHeld()
+              onSelectTable(null)
+            }}
+          />
+          <Title level="H4" className="maintenance-table-name">{selectedTable.TableName}</Title>
+        </FlexBox>
+        <Text className="maintenance-table-description">
+          {selectedTable.Description || 'Database Table'}
+        </Text>
+      </div>
+
       <DynamicPage
         hidePinButton
-        titleArea={
-          <DynamicPageTitle
-            heading={
-              <FlexBox alignItems="Center" gap="8px">
-                <Button
-                  design="Transparent"
-                  icon={'navigation-left-arrow' as any}
-                  accessibleName="Back to table overview"
-                  onClick={() => {
-                    releaseTableLockIfHeld()
-                    onSelectTable(null)
-                  }}
-                />
-                <Title>{selectedTable.TableName}</Title>
-                {selectedTable.ApprovalRequired === 'X' && (
-                  <Tag colorScheme="6">Approval Required</Tag>
-                )}
-              </FlexBox>
-            }
-            subheading={<Text>{selectedTable.Description || 'Database Table'}</Text>}
-          />
-        }
         headerArea={
           <DynamicPageHeader style={{ padding: '0px' }}>
             <FlexBox
@@ -367,7 +376,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
           }}
         >
           <Tab text="Table Data" selected={activeTab === 'tableData'}>
-            {!isAccessDenied ? (
+            {canViewTable ? (
               <DynamicDataTable
                 selectedTable={selectedTable}
                 fields={fields}
@@ -412,19 +421,19 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
                 aiLoading={aiLoading}
                 onRequestAiDescriptions={() => handleLoadAiDescriptions(false)}
               />
-            ) : accessDeniedPanel}
+            ) : tableAccessPanel}
           </Tab>
           <Tab text="Excel" selected={activeTab === 'excel'}>
-            {!isAccessDenied ? (
+            {canViewTable ? (
               <ExcelPipelineTab
                 tableName={selectedTable.TableName}
                 canUpload={canUploadTable}
                 onImported={() => loadTable(selectedTable)}
               />
-            ) : accessDeniedPanel}
+            ) : tableAccessPanel}
           </Tab>
           <Tab text="Field Schema" selected={activeTab === 'fieldSchema'}>
-            {!isAccessDenied ? (
+            {canViewTable ? (
               <FieldSchemaTab
                 allFields={allFields}
                 aiDescriptions={aiDescriptions}
@@ -433,20 +442,20 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
                 onLoadAiDescriptions={() => handleLoadAiDescriptions(true)}
                 onExportPdf={handleExportDataDictionary}
               />
-            ) : accessDeniedPanel}
+            ) : tableAccessPanel}
           </Tab>
           <Tab text="Audit Log" selected={activeTab === 'auditLog'}>
-            {!isAccessDenied ? (
+            {canViewTable ? (
               <AuditLogPanel tableName={selectedTable.TableName} canRollback={canRollbackAudit} />
-            ) : accessDeniedPanel}
+            ) : tableAccessPanel}
           </Tab>
           <Tab text="Dependencies" selected={activeTab === 'dependencies'}>
-            {!isAccessDenied && activeTab === 'dependencies' ? (
+            {canViewTable && activeTab === 'dependencies' ? (
               <RepositoryInfoTab
                 configUuid={selectedTable.ConfigUuid}
                 tableName={selectedTable.TableName}
               />
-            ) : isAccessDenied ? accessDeniedPanel : null}
+            ) : !canViewTable ? tableAccessPanel : null}
           </Tab>
         </TabContainer>
       </DynamicPage>

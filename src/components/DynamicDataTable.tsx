@@ -82,9 +82,27 @@ export default function DynamicDataTable({
   } | null>(null)
   const [aiTooltipLoadingField, setAiTooltipLoadingField] = useState('')
 
+  const getDuplicateHeaderLabel = (headerLabel: string, technicalName: string) => {
+    const normalizedName = technicalName.toUpperCase()
+    if (normalizedName === 'LAST_CHANGED_AT') return `${headerLabel} (UTC)`
+    if (normalizedName === 'LOCAL_LAST_CHANGED_AT') return `${headerLabel} (Local)`
+    if (normalizedName === 'CHANGED_AT') return `${headerLabel} (System)`
+    if (normalizedName === 'CREATED_AT') return `${headerLabel} (System)`
+    return `${headerLabel} (${technicalName})`
+  }
+
+  const baseHeaderLabels = fields.map(f => formatHeaderLabel(f))
+  const headerLabelCounts = baseHeaderLabels.reduce<Record<string, number>>((counts, label) => {
+    counts[label] = (counts[label] || 0) + 1
+    return counts
+  }, {})
+
   const fieldsWithWidths = fields.map(f => {
     const technicalName = f.field_name || f.FieldName
-    const headerLabel = formatHeaderLabel(f)
+    const baseHeaderLabel = formatHeaderLabel(f)
+    const headerLabel = headerLabelCounts[baseHeaderLabel] > 1
+      ? getDuplicateHeaderLabel(baseHeaderLabel, technicalName)
+      : baseHeaderLabel
     const feType = f.fe_type || f.FeType
     const isDate = feType === 'date'
     const isDomain = feType === 'domain' || feType === 'fk_select'

@@ -45,9 +45,9 @@ export default function FieldSchemaTab({
       <div className="tab-panel-header field-schema-header">
         <div className="tab-panel-title-block field-schema-title-block">
           <div className="tab-panel-title field-schema-title">Schema Assistant</div>
-          <div className="tab-panel-subtitle field-schema-muted">
+          <Text className="tab-panel-subtitle field-schema-muted">
             AI-generated field descriptions and input guidance are available as table tooltips and in the PDF data dictionary.
-          </div>
+          </Text>
         </div>
         <FlexBox className="tab-panel-actions" alignItems="Center" gap="0.5rem">
           {aiLoading && <BusyIndicator active size="S" />}
