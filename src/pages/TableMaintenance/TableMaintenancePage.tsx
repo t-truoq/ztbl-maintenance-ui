@@ -11,6 +11,7 @@ import {
   MessageStrip,
   TabContainer,
   Tab,
+  Tag,
   Toast,
 } from '@ui5/webcomponents-react'
 import {
@@ -42,7 +43,7 @@ import { AiDescriptionMap } from '../../types'
 
 const PENDING_TABLE_PERMISSION: TablePermissionState = {
   ...FULL_TABLE_PERMISSION,
-  canView: false
+  canView: true
 }
 
 export default function TableMaintenancePage(props: TableMaintenancePageProps) {
@@ -54,6 +55,8 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
     dataLoading,
     error,
     setError,
+    successMsg,
+    setSuccessMsg,
     searchQuery,
     setSearchQuery,
     filterValues,
@@ -160,7 +163,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
     }
   }, [username, selectedTable?.TableName])
 
-  const canViewTable = tablePermission.canView
+  const isAccessDenied = !permissionLoading && !tablePermission.canView
   const canCreateTable = tablePermission.canCreate
   const canUpdateTable = tablePermission.canUpdate && tablePermission.updateEnabled
   const canDeleteTable = tablePermission.canDelete && tablePermission.deleteEnabled
@@ -228,7 +231,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
   return (
     <>
       {/* Permission banner */}
-      {!permissionLoading && !canViewTable && (
+      {isAccessDenied && (
         <div style={{ padding: '1rem', paddingBottom: 0 }}>
           <MessageStrip design="Negative" hideCloseButton>
             Access Denied. You do not have permission to view this data. Please contact your administrator if you need access.
@@ -248,12 +251,17 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
 
       {/* Error / success strips */}
       {(error) && (
-        <div style={{ padding: '1rem' }}>
-          {error && (
-            <MessageStrip design="Negative" onClose={() => setError('')}>
-              {error}
-            </MessageStrip>
-          )}
+        <div style={{ padding: '1rem', paddingBottom: 0 }}>
+          <MessageStrip design="Negative" onClose={() => setError('')}>
+            {error}
+          </MessageStrip>
+        </div>
+      )}
+      {successMsg && (
+        <div style={{ padding: '1rem', paddingBottom: 0 }}>
+          <MessageStrip design="Positive" onClose={() => setSuccessMsg('')}>
+            {successMsg}
+          </MessageStrip>
         </div>
       )}
 
@@ -273,6 +281,9 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
                   }}
                 />
                 <Title>{selectedTable.TableName}</Title>
+                {selectedTable.ApprovalRequired === 'X' && (
+                  <Tag colorScheme="6">Approval Required</Tag>
+                )}
               </FlexBox>
             }
             subheading={<Text>{selectedTable.Description || 'Database Table'}</Text>}
@@ -356,12 +367,12 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
           }}
         >
           <Tab text="Table Data" selected={activeTab === 'tableData'}>
-            {canViewTable ? (
+            {!isAccessDenied ? (
               <DynamicDataTable
                 selectedTable={selectedTable}
                 fields={fields}
                 filteredData={filteredData}
-                dataLoading={dataLoading}
+                dataLoading={dataLoading || permissionLoading}
                 isEditingTable={isEditingTable}
                 editedData={editedData}
                 inlineErrors={inlineErrors}
@@ -404,7 +415,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
             ) : accessDeniedPanel}
           </Tab>
           <Tab text="Excel" selected={activeTab === 'excel'}>
-            {canViewTable ? (
+            {!isAccessDenied ? (
               <ExcelPipelineTab
                 tableName={selectedTable.TableName}
                 canUpload={canUploadTable}
@@ -413,7 +424,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
             ) : accessDeniedPanel}
           </Tab>
           <Tab text="Field Schema" selected={activeTab === 'fieldSchema'}>
-            {canViewTable ? (
+            {!isAccessDenied ? (
               <FieldSchemaTab
                 allFields={allFields}
                 aiDescriptions={aiDescriptions}
@@ -425,17 +436,17 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
             ) : accessDeniedPanel}
           </Tab>
           <Tab text="Audit Log" selected={activeTab === 'auditLog'}>
-            {canViewTable ? (
+            {!isAccessDenied ? (
               <AuditLogPanel tableName={selectedTable.TableName} canRollback={canRollbackAudit} />
             ) : accessDeniedPanel}
           </Tab>
           <Tab text="Dependencies" selected={activeTab === 'dependencies'}>
-            {canViewTable && activeTab === 'dependencies' ? (
+            {!isAccessDenied && activeTab === 'dependencies' ? (
               <RepositoryInfoTab
                 configUuid={selectedTable.ConfigUuid}
                 tableName={selectedTable.TableName}
               />
-            ) : accessDeniedPanel}
+            ) : isAccessDenied ? accessDeniedPanel : null}
           </Tab>
         </TabContainer>
       </DynamicPage>
