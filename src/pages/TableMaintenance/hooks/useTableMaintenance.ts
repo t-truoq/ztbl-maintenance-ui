@@ -22,6 +22,7 @@ import {
   buildKeyRecord,
   buildRecordKeyString,
   buildFullRecordPayload,
+  buildUpdateRecord,
   buildEtagMap,
   resolveEtagForUpdate,
   mergeRecordForConcurrentEdit,
@@ -148,6 +149,16 @@ export function useTableMaintenance({
       .map(item => `#${item.record_index}: ${item.message}`)
       .join(' | ')
     return `${failures.length} record(s) failed during bulk ${action}${preview ? `: ${preview}` : ''}`
+  }
+
+  function findOriginalRow(row: TableRowData): TableRowData | null {
+    const keyStr = buildRecordKeyString(allFields, row)
+    return data.find(orig => buildRecordKeyString(allFields, orig) === keyStr) || null
+  }
+
+  function buildInlineUpdateRecord(row: TableRowData): TableRowData {
+    const originalRow = findOriginalRow(row)
+    return buildUpdateRecord(allFields, row, originalRow, tableDataJson, buildKeyRecord(allFields, row))
   }
 
   function clearPageData() {
@@ -520,11 +531,12 @@ export function useTableMaintenance({
         const keyStr = buildRecordKeyString(allFields, row)
         const storedEtag = etagMap[keyStr] ?? null
         const etagInfo = resolveEtagForUpdate(allFields, row, tableDataJson, recordKey, storedEtag)
+        const recordData = buildInlineUpdateRecord(row)
         const res = await updateRecord(
           selectedTable.ConfigUuid,
           selectedTable.TableName,
           recordKey,
-          row,
+          recordData,
           etagInfo.field || '',
           etagInfo.value || ''
         )
@@ -535,10 +547,11 @@ export function useTableMaintenance({
         if (code && !approvalCodes.includes(code)) approvalCodes.push(code)
       } else if (modifiedRows.length > 1) {
         for (const chunk of chunkRecords(modifiedRows)) {
+          const records = chunk.map(row => buildInlineUpdateRecord(row))
           const res = await bulkUpdateRecords(
             selectedTable.ConfigUuid,
             selectedTable.TableName,
-            chunk
+            records
           )
           if (res.success === false) throw new Error(getActionMessage(res) || 'Failed to update records')
 

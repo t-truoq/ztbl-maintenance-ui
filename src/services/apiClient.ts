@@ -215,11 +215,19 @@ export function formatActionErrorMessage(message: string): string {
     console.error('[ABAP JSON format]', msg)
     return enhanceJsonFormatError(msg)
   }
+  if (isDateTimeConversionError(msg)) {
+    console.error('[ABAP date/time conversion]', msg)
+    return 'Rollback failed because SAP could not convert a date/time value from the audit record. Please check the original audit payload for DATE/TIME/TIMESTAMP fields or contact the backend team to normalize rollback date/time values.'
+  }
   return msg
 }
 
 function isJsonFormatError(message: string): boolean {
   return /invalid format in json/i.test(String(message || ''))
+}
+
+function isDateTimeConversionError(message: string): boolean {
+  return /CX_SY_CONVERSION_NO_DATE_TIME|does not represent a valid date\/time|valid date\/time/i.test(String(message || ''))
 }
 
 function enhanceJsonFormatError(message: string): string {
@@ -248,6 +256,10 @@ export function getFriendlyErrorMessage(error: any): string {
     return 'The table configuration is locked. The resource might be in use or open in another session (e.g., SAP GUI). Please close other sessions and try again.'
   }
   if (status >= 500) {
+    const sapMessage = getSapErrorMessage(error)
+    if (sapMessage && sapMessage !== error?.message) {
+      return formatActionErrorMessage(sapMessage)
+    }
     return 'Server error. Please contact administrator.'
   }
   return formatActionErrorMessage(getSapErrorMessage(error))

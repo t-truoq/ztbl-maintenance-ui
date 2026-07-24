@@ -36,7 +36,7 @@ export interface ExcelDiffRow {
   field_name: string
   old_value: string
   new_value: string
-  status: 'NEW' | 'CHANGED' | 'UNCHANGED' | 'ERROR' | 'INFO' | string
+  status: 'NEW' | 'CHANGED' | 'DELETE' | 'DELETED' | 'UNCHANGED' | 'WARNING' | 'ERROR' | 'INFO' | string
   message: string
 }
 
@@ -203,6 +203,7 @@ export function filterDiffForCommit(rows: ExcelDiffRow[], tableName?: string): E
     row.row_no !== 0 &&
     normalizeStatus(row.status) !== 'INFO' &&
     normalizeStatus(row.status) !== 'UNCHANGED' &&
+    normalizeStatus(row.status) !== 'WARNING' &&
     normalizeStatus(row.status) !== 'ERROR'
   )
 }

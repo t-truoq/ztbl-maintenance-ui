@@ -888,13 +888,68 @@ ui5-toast {
   border-left: 4px solid #107e3e;
 }
 
+.excel-diff-table-scroll {
+  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  border-radius: 6px;
+}
+
+.excel-diff-table-scroll::-webkit-scrollbar {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.excel-diff-table-scroll::-webkit-scrollbar-track {
+  background: var(--sapScrollBar_TrackColor, #f5f6f7);
+  border-radius: 999px;
+}
+
+.excel-diff-table-scroll::-webkit-scrollbar-thumb {
+  background: #6f879d;
+  border: 2px solid var(--sapScrollBar_TrackColor, #f5f6f7);
+  border-radius: 999px;
+}
+
+.excel-diff-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: #4f6f89;
+}
+
+.audit-modern-modal-body::-webkit-scrollbar {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.audit-modern-modal-body::-webkit-scrollbar-track {
+  background: var(--sapScrollBar_TrackColor, #f5f6f7);
+  border-radius: 999px;
+}
+
+.audit-modern-modal-body::-webkit-scrollbar-thumb {
+  background: #6f879d;
+  border: 2px solid var(--sapScrollBar_TrackColor, #f5f6f7);
+  border-radius: 999px;
+}
+
+.audit-modern-modal-body::-webkit-scrollbar-thumb:hover {
+  background: #4f6f89;
+}
+
 .excel-diff-row--changed {
   background: #fff4c2;
   border-left: 4px solid #e09d00;
 }
 
+.excel-diff-row--warning {
+  background: #fff8d6;
+  border-left: 4px solid #e09d00;
+}
+
 .excel-diff-row--error {
   background: #fff5f5;
+  border-left: 4px solid #bb0000;
+}
+
+.excel-diff-row--deleted {
+  background: #fff1f0;
   border-left: 4px solid #bb0000;
 }
 
@@ -920,12 +975,28 @@ ui5-toast {
   color: #6b4c00;
 }
 
+.excel-diff-note--warning {
+  background: #fff0b3;
+  color: #6b4c00;
+}
+
 .excel-status--changed ui5-object-status,
 .excel-status--changed {
   color: #8a5a00;
 }
 
+.excel-status--deleted ui5-object-status,
+.excel-status--deleted {
+  color: #970000;
+}
+
 .excel-diff-note--error {
+  background: #ffe5e5;
+  color: #8b0000;
+}
+
+.excel-diff-note--delete,
+.excel-diff-note--deleted {
   background: #ffe5e5;
   color: #8b0000;
 }
@@ -935,6 +1006,34 @@ ui5-toast {
   height: 0.875rem;
   flex: 0 0 auto;
   margin-top: 0.125rem;
+}
+
+.excel-record-summary {
+  display: grid;
+  gap: 0.25rem;
+  width: 100%;
+  min-width: 0;
+  white-space: normal;
+}
+
+.excel-record-summary-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 42%) minmax(0, 1fr);
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.excel-record-summary-key {
+  color: var(--sapContent_LabelColor, #556b82);
+  font-size: 0.75rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.excel-record-summary-value {
+  color: var(--sapTextColor, #32363a);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 980px) {

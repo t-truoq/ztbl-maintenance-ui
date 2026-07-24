@@ -119,6 +119,17 @@ export function toAbapUtclong(value: any): string | null {
     return `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)} ${d.slice(8, 10)}:${d.slice(10, 12)}:${d.slice(12, 14)}${padFractional(frac)}`
   }
 
+  const display = s.match(
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4}),?\s+(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d+))?\s*(AM|PM)$/i
+  )
+  if (display) {
+    const [, month, day, year, hourRaw, minute, second, frac, meridiem] = display
+    let hour = Number(hourRaw)
+    if (/PM/i.test(meridiem) && hour < 12) hour += 12
+    if (/AM/i.test(meridiem) && hour === 12) hour = 0
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')} ${String(hour).padStart(2, '0')}:${minute}:${second}${padFractional(frac)}`
+  }
+
   return null
 }
 

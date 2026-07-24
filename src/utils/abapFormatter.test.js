@@ -74,6 +74,15 @@ describe('toAbapUtclong', () => {
     )
   })
 
+  it('normalizes UI display timestamp with AM/PM back to ABAP UTCLONG', () => {
+    expect(toAbapUtclong('06/20/2026, 12:27:58.642 PM')).toBe(
+      '2026-06-20 12:27:58.6420000'
+    )
+    expect(toAbapUtclong('06/20/2026, 12:27:58 AM')).toBe(
+      '2026-06-20 00:27:58.0000000'
+    )
+  })
+
   it('returns null for empty', () => {
     expect(toAbapUtclong('')).toBe(null)
     expect(toAbapUtclong(null)).toBe(null)
