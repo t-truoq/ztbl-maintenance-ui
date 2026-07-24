@@ -106,6 +106,11 @@ export function getBulkActionType(entry: AuditLogEntry, childItems: AuditItemEnt
   return entry.ActionType || 'B'
 }
 
+export function getAuditItemDisplayActionType(parentEntry: AuditLogEntry, item: AuditItemEntry): string {
+  if (parentEntry.ActionType === 'R') return 'R'
+  return item.ActionType || parentEntry.ActionType
+}
+
 export function paginateAuditEntries<T>(
   entries: T[],
   pageIndex: number,

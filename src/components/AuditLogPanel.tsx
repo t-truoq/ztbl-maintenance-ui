@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import {
-  Bar,
   BusyIndicator,
   Button,
   DatePicker,
-  Dialog,
   Icon,
   Input,
   Label,
@@ -20,6 +19,7 @@ import { getAuditDisplayCells, getAuditValueParts } from '../utils/auditFormatte
 import {
   extractBulkCount,
   findBulkChildren,
+  getAuditItemDisplayActionType,
   getBulkActionType,
   getRawRecordKey,
   getRecordKey,
@@ -227,32 +227,9 @@ function BulkAuditItemsDialog({
   onItemsLoaded?: (auditId: string, items: AuditItemEntry[]) => void
   onClose: () => void
 }) {
-  const dialogRef = useRef<HTMLElement | null>(null)
-  const dialogBodyRef = useRef<HTMLDivElement | null>(null)
   const [items, setItems] = useState<AuditItemEntry[]>(initialChildItems || [])
   const [loading, setLoading] = useState(!initialChildItems || initialChildItems.length === 0)
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    function handleOutsidePointerDown(event: PointerEvent) {
-      const dialogBody = dialogBodyRef.current
-      if (!dialogBody) return
-
-      const rect = dialogBody.getBoundingClientRect()
-      const headerAndFooterPadding = 96
-      const insideDialogX = event.clientX >= rect.left && event.clientX <= rect.right
-      const insideDialogY =
-        event.clientY >= rect.top - headerAndFooterPadding &&
-        event.clientY <= rect.bottom + headerAndFooterPadding
-
-      if (insideDialogX && insideDialogY) return
-
-      onClose()
-    }
-
-    document.addEventListener('pointerdown', handleOutsidePointerDown, true)
-    return () => document.removeEventListener('pointerdown', handleOutsidePointerDown, true)
-  }, [onClose])
 
   useEffect(() => {
     if (!auditEntry) return
@@ -306,26 +283,18 @@ function BulkAuditItemsDialog({
   const displayActionType = isRollbackSummary ? 'R' : getBulkActionType(auditEntry, items)
 
   return (
-    <Dialog
-      ref={dialogRef as any}
-      {...({
-        open: true,
-        headerText: `${dialogTitle} - ${summaryText}`,
-        onAfterClose: onClose,
-        footer: (
-          <Bar
-            design="Footer"
-            endContent={
-              <Button design="Emphasized" onClick={onClose}>
-                Close
-              </Button>
-            }
-          />
-        )
-      } as any)}
-      style={{ width: '90vw', maxWidth: '900px' }}
+    <AuditModernModal
+      open
+      title={`${dialogTitle} - ${summaryText}`}
+      onClose={onClose}
+      width="min(92vw, 900px)"
+      footer={
+        <Button design="Emphasized" onClick={onClose}>
+          Close
+        </Button>
+      }
     >
-      <div ref={dialogBodyRef} style={{ padding: '0.5rem 0' }}>
+      <div style={{ padding: '0.5rem 0' }}>
         <div
           style={{
             display: 'flex',
@@ -383,7 +352,7 @@ function BulkAuditItemsDialog({
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {items.map((item, index) => {
               const display = getAuditDisplayCells(item)
-              const itemAction = item.ActionType || auditEntry.ActionType
+              const itemAction = getAuditItemDisplayActionType(auditEntry, item)
               const isUpdate = itemAction === 'U'
               return (
                 <div
@@ -432,8 +401,137 @@ function BulkAuditItemsDialog({
           </div>
         )}
       </div>
-    </Dialog>
+    </AuditModernModal>
   )
+}
+
+function AuditModernModal({
+  open,
+  title,
+  onClose,
+  children,
+  footer,
+  width = 'min(94vw, 900px)',
+  closeOnBackdrop = true
+}: {
+  open: boolean
+  title: string
+  onClose: () => void
+  children: ReactNode
+  footer?: ReactNode
+  width?: string
+  closeOnBackdrop?: boolean
+}) {
+  useEffect(() => {
+    if (!open) return undefined
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [open])
+
+  if (!open) return null
+
+  const modal = (
+    <div
+      role="presentation"
+      onMouseDown={event => {
+        if (closeOnBackdrop && event.target === event.currentTarget) {
+          onClose()
+        }
+      }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 2147483000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '24px',
+        background: 'rgba(15, 23, 42, 0.72)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
+        isolation: 'isolate',
+        boxSizing: 'border-box'
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onMouseDown={event => event.stopPropagation()}
+        style={{
+          width,
+          maxHeight: 'calc(100vh - 48px)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          borderRadius: '8px',
+          border: '1px solid var(--sapGroup_BorderColor, #d9d9d9)',
+          background: 'var(--sapGroup_ContentBackground, #fff)',
+          boxShadow: '0 24px 70px rgba(15, 23, 42, 0.28)'
+        }}
+      >
+        <header
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '14px 18px',
+            borderBottom: '1px solid var(--sapGroup_BorderColor, #d9d9d9)',
+            background: 'var(--sapShellColor, #fff)',
+            flex: '0 0 auto'
+          }}
+        >
+          <Title level="H5" style={{ flex: 1, minWidth: 0 }}>
+            {title}
+          </Title>
+          <Button
+            design="Transparent"
+            icon={'decline' as any}
+            accessibleName="Close dialog"
+            onClick={onClose}
+          />
+        </header>
+
+        <div
+          className="audit-modern-modal-body"
+          style={{
+            padding: '16px 18px',
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            flex: 1,
+            minHeight: 0,
+            boxSizing: 'border-box'
+          }}
+        >
+          {children}
+        </div>
+
+        {footer && (
+          <footer
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 18px',
+              borderTop: '1px solid var(--sapGroup_BorderColor, #d9d9d9)',
+              background: 'var(--sapShellColor, #fff)',
+              flex: '0 0 auto'
+            }}
+          >
+            {footer}
+          </footer>
+        )}
+      </section>
+    </div>
+  )
+
+  return createPortal(modal, document.body)
 }
 
 function AuditEntryItem({
@@ -678,7 +776,11 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
         setRollbackResultMsg({ type: 'error', message: res.message || 'Rollback failed' })
       }
     } catch (err: any) {
-      setRollbackResultMsg({ type: 'error', message: getFriendlyErrorMessage(err) })
+      const message = getFriendlyErrorMessage(err)
+      setRollbackResultMsg({
+        type: 'error',
+        message: `${message} Audit ID: ${rollbackConfirmEntry.AuditId}`
+      })
     } finally {
       setRollbackLoading(false)
     }
@@ -841,36 +943,33 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
       )}
 
       {canRollback && rollbackConfirmEntry && (
-        <Dialog
-          {...({
-            open: true,
-            headerText: 'Confirm Audit Rollback',
-            onAfterClose: () => !rollbackLoading && setRollbackConfirmEntry(null),
-            footer: (
-              <Bar
-                design="Footer"
-                endContent={
-                  <>
-                    <Button
-                      design="Transparent"
-                      onClick={() => setRollbackConfirmEntry(null)}
-                      disabled={rollbackLoading}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      design="Attention"
-                      icon={'undo' as any}
-                      onClick={handleConfirmRollback}
-                      disabled={rollbackLoading}
-                    >
-                      {rollbackLoading ? 'Rolling back...' : 'Confirm Rollback'}
-                    </Button>
-                  </>
-                }
-              />
-            )
-          } as any)}
+        <AuditModernModal
+          open
+          title="Confirm Audit Rollback"
+          onClose={() => {
+            if (!rollbackLoading) setRollbackConfirmEntry(null)
+          }}
+          width="min(92vw, 520px)"
+          closeOnBackdrop={!rollbackLoading}
+          footer={
+            <>
+              <Button
+                design="Transparent"
+                onClick={() => setRollbackConfirmEntry(null)}
+                disabled={rollbackLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                design="Attention"
+                icon={'undo' as any}
+                onClick={handleConfirmRollback}
+                disabled={rollbackLoading}
+              >
+                {rollbackLoading ? 'Rolling back...' : 'Confirm Rollback'}
+              </Button>
+            </>
+          }
         >
           <div style={{ padding: '0.5rem 0' }}>
             <Text style={{ display: 'block', marginBottom: '0.5rem' }}>
@@ -885,7 +984,7 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
               </Text>
             </div>
           </div>
-        </Dialog>
+        </AuditModernModal>
       )}
     </section>
   )

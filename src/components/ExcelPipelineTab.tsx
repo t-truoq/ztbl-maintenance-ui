@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import {
   BusyIndicator,
   Button,
@@ -45,16 +46,19 @@ interface ExcelFeedback {
 const columns = [
   { key: 'row_no', label: 'Row', width: '90px' },
   { key: 'record_key', label: 'Record Key', width: '180px' },
-  { key: 'field_name', label: 'Field', width: '170px' },
-  { key: 'old_value', label: 'Old Value', width: '240px' },
-  { key: 'new_value', label: 'New Value', width: '240px' },
+  { key: 'field_name', label: 'Field', width: '150px' },
+  { key: 'old_value', label: 'Old Value', width: '320px' },
+  { key: 'new_value', label: 'New Value', width: '220px' },
   { key: 'status', label: 'Status', width: '130px' },
-  { key: 'message', label: 'Message', width: '260px' }
+  { key: 'message', label: 'Message', width: '240px' }
 ] as const
 
 const DIFF_STATUS_META: Record<string, { state: 'Positive' | 'Critical' | 'Negative' | 'Information' | 'None'; className: string }> = {
   NEW: { state: 'Positive', className: 'excel-diff-row--new' },
   CHANGED: { state: 'Critical', className: 'excel-diff-row--changed' },
+  DELETE: { state: 'Negative', className: 'excel-diff-row--deleted' },
+  DELETED: { state: 'Negative', className: 'excel-diff-row--deleted' },
+  WARNING: { state: 'Critical', className: 'excel-diff-row--warning' },
   ERROR: { state: 'Negative', className: 'excel-diff-row--error' },
   UNCHANGED: { state: 'None', className: 'excel-diff-row--unchanged' },
   INFO: { state: 'Information', className: '' }
@@ -85,6 +89,10 @@ export default function ExcelPipelineTab({
   const commitRows = useMemo(() => filterDiffForCommit(diffRows, tableName), [diffRows, tableName])
   const errorRows = useMemo(
     () => diffRows.filter(row => row.status === 'ERROR'),
+    [diffRows]
+  )
+  const warningRows = useMemo(
+    () => diffRows.filter(row => row.status === 'WARNING'),
     [diffRows]
   )
   const statusCounts = useMemo(() => buildStatusCounts(visibleRows), [visibleRows])
@@ -167,11 +175,17 @@ export default function ExcelPipelineTab({
       const commitCount = filterDiffForCommit(rows, tableName).length
       const visibleCount = rows.filter(row => !(row.row_no === 0 || row.status === 'INFO')).length
       const errorCount = rows.filter(row => row.status === 'ERROR').length
+      const warningCount = rows.filter(row => row.status === 'WARNING').length
       const unchangedCount = rows.filter(row => row.status === 'UNCHANGED').length
       if (visibleCount > 0 && unchangedCount === visibleCount && commitCount === 0 && errorCount === 0) {
         setFeedback({
           text: 'No changes detected. The uploaded file matches the current table data.',
           design: 'Positive'
+        })
+      } else if (warningCount > 0 && commitCount === 0 && errorCount === 0) {
+        setFeedback({
+          text: `Upload parsed ${visibleCount} row(s). ${warningCount} existing exported value warning(s) were ignored because those rows have no changes.`,
+          design: 'Critical'
         })
       } else if (errorCount > 0) {
         setFeedback({
@@ -298,7 +312,7 @@ export default function ExcelPipelineTab({
       <section className="excel-flow">
         <FlowStep index="1" title="Download" text="Get a template or the current table data." active={!selectedFileName} />
         <FlowStep index="2" title="Upload" text="Drop the edited .xlsx file or browse from your device." active={busyStep === 'upload'} />
-        <FlowStep index="3" title="Review" text="Check NEW, CHANGED, UNCHANGED, and ERROR rows." active={diffRows.length > 0 && !confirmResult} />
+        <FlowStep index="3" title="Review" text="Check NEW, CHANGED, UNCHANGED, WARNING, and ERROR rows." active={diffRows.length > 0 && !confirmResult} />
         <FlowStep index="4" title="Confirm" text="Commit only NEW and CHANGED rows." active={!!confirmResult} />
       </section>
 
@@ -437,7 +451,7 @@ export default function ExcelPipelineTab({
           <FlexBox direction="Column" gap="4px">
             <Title level="H5">{tableName}</Title>
             <Text>
-              Review the Excel diff before committing. Only NEW and CHANGED rows are sent to confirm.
+              Review the Excel diff before committing. NEW, CHANGED, and DELETED rows are sent to confirm.
             </Text>
           </FlexBox>
 
@@ -456,6 +470,12 @@ export default function ExcelPipelineTab({
           {errorRows.length > 0 && (
             <MessageStrip design="Negative" hideCloseButton>
               Resolve ERROR rows before confirming the import.
+            </MessageStrip>
+          )}
+
+          {warningRows.length > 0 && errorRows.length === 0 && (
+            <MessageStrip design="Critical" hideCloseButton>
+              Existing exported values raised warnings, but unchanged warning rows will not be sent to confirm.
             </MessageStrip>
           )}
 
@@ -716,9 +736,20 @@ function ModernModal({
   width?: string
   closeOnBackdrop?: boolean
 }) {
+  useEffect(() => {
+    if (!open) return undefined
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [open])
+
   if (!open) return null
 
-  return (
+  const modal = (
     <div
       role="presentation"
       onMouseDown={event => {
@@ -729,13 +760,15 @@ function ModernModal({
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 10000,
+        zIndex: 2147483000,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: '24px',
-        background: 'rgba(15, 23, 42, 0.38)',
-        backdropFilter: 'blur(2px)',
+        background: 'rgba(15, 23, 42, 0.72)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
+        isolation: 'isolate',
         boxSizing: 'border-box'
       }}
     >
@@ -746,7 +779,7 @@ function ModernModal({
         onMouseDown={event => event.stopPropagation()}
         style={{
           width,
-          maxHeight: '92vh',
+          maxHeight: 'calc(100vh - 48px)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -763,7 +796,8 @@ function ModernModal({
             gap: '12px',
             padding: '14px 18px',
             borderBottom: '1px solid var(--sapGroup_BorderColor, #d9d9d9)',
-            background: 'var(--sapShellColor, #fff)'
+            background: 'var(--sapShellColor, #fff)',
+            flex: '0 0 auto'
           }}
         >
           <Title level="H5" style={{ flex: 1, minWidth: 0 }}>
@@ -799,7 +833,8 @@ function ModernModal({
               gap: '8px',
               padding: '12px 18px',
               borderTop: '1px solid var(--sapGroup_BorderColor, #d9d9d9)',
-              background: 'var(--sapShellColor, #fff)'
+              background: 'var(--sapShellColor, #fff)',
+              flex: '0 0 auto'
             }}
           >
             {footer}
@@ -808,6 +843,8 @@ function ModernModal({
       </section>
     </div>
   )
+
+  return createPortal(modal, document.body)
 }
 
 function StatusSummary({
@@ -823,7 +860,9 @@ function StatusSummary({
     { label: 'Total', value: total, accent: '#5b738b' },
     { label: 'New', value: statusCounts.NEW, accent: '#107e3e' },
     { label: 'Changed', value: statusCounts.CHANGED, accent: '#e09d00' },
+    { label: 'Deleted', value: (statusCounts.DELETE ?? 0) + (statusCounts.DELETED ?? 0), accent: '#bb0000' },
     { label: 'Unchanged', value: statusCounts.UNCHANGED, accent: '#6a6d70' },
+    { label: 'Warnings', value: statusCounts.WARNING, accent: '#e09d00' },
     { label: 'Errors', value: statusCounts.ERROR, accent: '#bb0000' },
     { label: 'Commit', value: commit, accent: '#0a6ed1' }
   ]
@@ -878,6 +917,15 @@ function StatusSummary({
   )
 }
 
+function normalizeDiffStatus(status: string): string {
+  return String(status || '').trim().toUpperCase()
+}
+
+function isDeleteDiffStatus(status: string): boolean {
+  const normalized = normalizeDiffStatus(status)
+  return normalized === 'DELETE' || normalized === 'DELETED'
+}
+
 function DiffTable({
   rows,
   columnsStyle,
@@ -894,12 +942,31 @@ function DiffTable({
   highlightStatus?: boolean
 }) {
   return (
-    <div style={{ width: '100%', overflowX: 'auto', padding: compact ? 0 : '0 1rem 1rem', boxSizing: 'border-box' }}>
+    <div
+      className={compact ? 'excel-diff-table-scroll' : undefined}
+      style={{
+        width: '100%',
+        overflowX: 'auto',
+        overflowY: compact ? 'auto' : undefined,
+        maxHeight: compact ? 'min(54vh, 560px)' : undefined,
+        padding: compact ? 0 : '0 1rem 1rem',
+        boxSizing: 'border-box',
+        scrollbarGutter: compact ? 'stable both-edges' : undefined
+      }}
+    >
       <Table
         overflowMode="Scroll"
         style={{ minWidth: `${totalTableWidth}px`, width: '100%' }}
         headerRow={
-          <TableHeaderRow style={{ gridTemplateColumns: columnsStyle }}>
+          <TableHeaderRow
+            style={{
+              gridTemplateColumns: columnsStyle,
+              position: 'sticky',
+              top: 0,
+              zIndex: 2,
+              background: 'var(--sapList_HeaderBackground, #fff)'
+            }}
+          >
             {columns.map(col => (
               <TableHeaderCell key={col.key} minWidth={col.width} style={{ minWidth: col.width }}>
                 {col.label}
@@ -925,26 +992,26 @@ function DiffTable({
                 <Text>{String(row.row_no ?? '')}</Text>
               </TableCell>
               <TableCell>
-                <Text>{row.record_key || '-'}</Text>
+                <Text>{formatDiffRecordKey(row.record_key)}</Text>
               </TableCell>
               <TableCell>
-                <Text>{row.field_name || '-'}</Text>
+                <Text>{getDiffFieldLabel(row)}</Text>
               </TableCell>
               <TableCell>
-                <Text>{row.old_value || '-'}</Text>
+                <DiffValue row={row} valueKind="old" />
               </TableCell>
               <TableCell>
-                <Text>{row.new_value || '-'}</Text>
+                <DiffValue row={row} valueKind="new" />
               </TableCell>
               <TableCell>
-                <span className={String(row.status || '').toUpperCase() === 'CHANGED' ? 'excel-status--changed' : undefined}>
+                <span className={getStatusClassName(row.status)}>
                   <ObjectStatus state={statusState(row.status)}>
                     {row.status || '-'}
                   </ObjectStatus>
                 </span>
               </TableCell>
               <TableCell>
-                <DiffMessage status={row.status} message={row.message} />
+                <DiffMessage row={row} />
               </TableCell>
             </TableRow>
           ))
@@ -955,21 +1022,92 @@ function DiffTable({
 }
 
 function diffRowClass(status: string): string {
-  const normalized = String(status || '').toUpperCase()
+  const normalized = normalizeDiffStatus(status)
   return DIFF_STATUS_META[normalized]?.className || ''
 }
 
-function DiffMessage({ status, message }: { status: string; message: string }) {
-  const normalized = String(status || '').toUpperCase()
-  const text = message || (normalized === 'CHANGED' ? 'Value changed' : '-')
-  const showNote = normalized === 'CHANGED' || normalized === 'ERROR'
+function getStatusClassName(status: string): string | undefined {
+  const normalized = normalizeDiffStatus(status)
+  if (normalized === 'CHANGED') return 'excel-status--changed'
+  if (isDeleteDiffStatus(status)) return 'excel-status--deleted'
+  return undefined
+}
+
+function getDiffFieldLabel(row: ExcelDiffRow): string {
+  if (isDeleteDiffStatus(row.status) && row.field_name === '__ACTION') return 'Record'
+  return row.field_name || '-'
+}
+
+function formatDiffRecordKey(value: string): string {
+  const text = String(value || '').trim()
+  if (!text) return '-'
+
+  const parsed = parseDiffRecordValue(text)
+  if (!parsed) return text
+
+  const entries = Object.entries(parsed)
+    .filter(([, entryValue]) => entryValue != null && String(entryValue).trim() !== '')
+
+  if (entries.length === 0) return '-'
+  if (entries.length === 1) return String(entries[0][1])
+
+  return entries
+    .map(([key, entryValue]) => `${key}=${String(entryValue)}`)
+    .join(', ')
+}
+
+function DiffValue({ row, valueKind }: { row: ExcelDiffRow; valueKind: 'old' | 'new' }) {
+  if (isDeleteDiffStatus(row.status)) {
+    if (valueKind === 'new') return <Text>Removed from Excel</Text>
+    return <DeletedRecordSummary value={row.old_value} />
+  }
+
+  return <Text>{(valueKind === 'old' ? row.old_value : row.new_value) || '-'}</Text>
+}
+
+function DeletedRecordSummary({ value }: { value: string }) {
+  const record = parseDiffRecordValue(value)
+  if (!record) return <Text>{value || 'Deleted record'}</Text>
+
+  return (
+    <div className="excel-record-summary" aria-label="Deleted record values">
+      {Object.entries(record).map(([key, entryValue]) => (
+        <div className="excel-record-summary-row" key={key}>
+          <span className="excel-record-summary-key">{key}</span>
+          <span className="excel-record-summary-value">{String(entryValue ?? '') || '-'}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function parseDiffRecordValue(value: string): Record<string, unknown> | null {
+  const text = String(value || '').trim()
+  if (!text.startsWith('{') || !text.endsWith('}')) return null
+
+  try {
+    const parsed = JSON.parse(text)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null
+  } catch {
+    return null
+  }
+}
+
+function DiffMessage({ row }: { row: ExcelDiffRow }) {
+  const normalized = normalizeDiffStatus(row.status)
+  const text = isDeleteDiffStatus(row.status)
+    ? 'Record will be deleted'
+    : row.message || (normalized === 'CHANGED' ? 'Value changed' : '-')
+  const showNote = normalized === 'CHANGED' || normalized === 'WARNING' || normalized === 'ERROR' || isDeleteDiffStatus(row.status)
 
   if (!showNote) return <Text>{text}</Text>
 
   return (
     <div className={`excel-diff-note excel-diff-note--${normalized.toLowerCase()}`}>
       <Icon
-        name={(normalized === 'ERROR' ? 'message-error' : 'hint') as any}
+        name={(normalized === 'ERROR' ? 'message-error' : isDeleteDiffStatus(row.status) ? 'delete' : 'hint') as any}
         className="excel-diff-note-icon"
       />
       <span>{text}</span>
@@ -981,12 +1119,15 @@ function buildStatusCounts(rows: ExcelDiffRow[]): Record<string, number> {
   const counts: Record<string, number> = {
     NEW: 0,
     CHANGED: 0,
+    DELETE: 0,
+    DELETED: 0,
     UNCHANGED: 0,
+    WARNING: 0,
     ERROR: 0,
     OTHER: 0
   }
   rows.forEach(row => {
-    const status = String(row.status || 'OTHER').toUpperCase()
+    const status = normalizeDiffStatus(row.status || 'OTHER')
     if (counts[status] == null) {
       counts.OTHER += 1
     } else {

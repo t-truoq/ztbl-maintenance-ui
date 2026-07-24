@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   extractBulkCount,
+  getAuditItemDisplayActionType,
   findBulkChildren,
   getBulkActionType,
   getRecordKey,
@@ -85,6 +86,17 @@ describe('auditLogHelpers bulk flow', () => {
       { ActionType: 'C' },
       { ActionType: 'U' }
     ])).toBe('B')
+  })
+
+  it('keeps rollback child items displayed as rollback instead of the technical reversal action', () => {
+    const rollbackEntry = {
+      ...bulkEntry,
+      ActionType: 'R'
+    }
+
+    expect(getAuditItemDisplayActionType(rollbackEntry, { ActionType: 'C' })).toBe('R')
+    expect(getAuditItemDisplayActionType(rollbackEntry, { ActionType: 'D' })).toBe('R')
+    expect(getAuditItemDisplayActionType(bulkEntry, { ActionType: 'D' })).toBe('D')
   })
 })
 

@@ -59,16 +59,34 @@ describe('excelPipelineApi diff helpers', () => {
     expect(rows.every(row => row.table_name === 'Z251_SCHEDULE')).toBe(true)
   })
 
-  it('commits only changed or new rows from the active table', () => {
+  it('commits only changed, new, or deleted rows from the active table', () => {
     const rows = [
       diffRow({ status: 'CHANGED', table_name: 'Z251_SCHEDULE' }),
       diffRow({ status: 'NEW', table_name: 'Z251_SCHEDULE', record_key: '2' }),
-      diffRow({ status: 'UNCHANGED', table_name: 'Z251_SCHEDULE', record_key: '3' }),
-      diffRow({ status: 'ERROR', table_name: 'Z251_SCHEDULE', record_key: '4' }),
-      diffRow({ status: 'CHANGED', table_name: 'Z253_CAT', record_key: '5' })
+      diffRow({ status: 'DELETE', table_name: 'Z251_SCHEDULE', record_key: '3' }),
+      diffRow({ status: 'DELETED', table_name: 'Z251_SCHEDULE', record_key: '4' }),
+      diffRow({ status: 'UNCHANGED', table_name: 'Z251_SCHEDULE', record_key: '5' }),
+      diffRow({ status: 'WARNING', table_name: 'Z251_SCHEDULE', record_key: 'warning' }),
+      diffRow({ status: 'ERROR', table_name: 'Z251_SCHEDULE', record_key: '6' }),
+      diffRow({ status: 'CHANGED', table_name: 'Z253_CAT', record_key: '7' })
     ]
 
-    expect(filterDiffForCommit(rows, 'Z251_SCHEDULE').map(row => row.record_key)).toEqual(['1', '2'])
+    expect(filterDiffForCommit(rows, 'Z251_SCHEDULE').map(row => row.record_key)).toEqual(['1', '2', '3', '4'])
+  })
+
+  it('preserves backend domain validation errors', () => {
+    const rows = normalizeExcelDiffRows([
+      diffRow({
+        status: 'ERROR',
+        field_name: '-',
+        old_value: '-',
+        new_value: '-',
+        message: "Field COMPANY_CODE value 'ZFS5' is not allowed by domain BUKRS."
+      })
+    ], 'Z251_SCHEDULE')
+
+    expect(rows[0].status).toBe('ERROR')
+    expect(filterDiffForCommit(rows, 'Z251_SCHEDULE')).toEqual([])
   })
 
   it('translates common Vietnamese backend messages to English', () => {
