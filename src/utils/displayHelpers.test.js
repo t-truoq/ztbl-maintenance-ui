@@ -18,4 +18,9 @@ describe('displayHelpers timestamp formatting', () => {
   it('hides zero placeholder timestamps', () => {
     expect(formatTimestampValue('0', 'LOCAL_LAST_CHANGED_AT')).toBe('')
   })
+
+  it('handles undefined or null field parameter safely without throwing', () => {
+    expect(formatCellValue(undefined, 'SCH001')).toBe('SCH001')
+    expect(formatCellValue(null, 'SCH001')).toBe('SCH001')
+  })
 })

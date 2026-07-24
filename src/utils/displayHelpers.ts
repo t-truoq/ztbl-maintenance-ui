@@ -1,23 +1,26 @@
 import { FieldMeta } from '../types'
 
-export function formatCellValue(field: FieldMeta, value: any): string {
+export function formatCellValue(field?: FieldMeta | null, value?: any): string {
   if (value === undefined || value === null || value === '') return ''
 
   const str = String(value)
-  const feType = field.fe_type || field.FeType
+  if (!field) return str
+
+  const feType = field.fe_type || field.FeType || ''
   const fieldName = field.field_name || field.FieldName || ''
-  const timestampField = isTimestampFieldName(fieldName) || field.FieldType === 'TIMESTAMP'
+  const fieldType = field.FieldType || ''
+  const timestampField = isTimestampFieldName(fieldName) || fieldType === 'TIMESTAMP'
 
   if (timestampField && str.trim() === '0') {
     return ''
   }
 
-  if (feType === 'boolean' || field.FieldType === 'CHECK') {
+  if (feType === 'boolean' || fieldType === 'CHECK') {
     return str === 'X' ? 'Yes' : ''
   }
 
   const hex = str.replace(/-/g, '')
-  if (feType === 'uuid' || field.FieldType === 'UUID' || /^[0-9A-F]{32}$/i.test(hex)) {
+  if (feType === 'uuid' || fieldType === 'UUID' || /^[0-9A-F]{32}$/i.test(hex)) {
     if (hex.length >= 8) return `${hex.substring(0, 8)}...`
     return str
   }
@@ -86,8 +89,9 @@ export function formatTimestampValue(value: any, fieldName = ''): string {
   return ''
 }
 
-export function isTimestampFieldName(fieldName = ''): boolean {
-  const normalizedField = fieldName.trim().toUpperCase()
+export function isTimestampFieldName(fieldName?: string | null): boolean {
+  if (!fieldName) return false
+  const normalizedField = String(fieldName).trim().toUpperCase()
   return (
     normalizedField.includes('CHANGED_AT') ||
     normalizedField.includes('CHANGE_AT') ||

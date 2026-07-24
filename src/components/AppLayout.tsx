@@ -215,7 +215,7 @@ export default function AppLayout({
           style={{
             flex: 1,
             minWidth: 0,
-            overflowY: 'auto',
+            overflowY: selectedTable ? 'hidden' : 'auto',
             overflowX: 'hidden',
             background: '#f5f6f7'
           }}

@@ -11,6 +11,7 @@ import {
   MessageStrip,
   TabContainer,
   Tab,
+  Tag,
   Toast,
 } from '@ui5/webcomponents-react'
 import {
@@ -242,7 +243,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
 
   // ── Main table maintenance view ────────────────────────────────────────────
   return (
-    <>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden' }}>
       {/* Permission banner */}
       {isAccessDenied && (
         <div style={{ padding: '1rem', paddingBottom: 0 }}>
@@ -290,6 +291,9 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
             }}
           />
           <Title level="H4" className="maintenance-table-name">{selectedTable.TableName}</Title>
+          {selectedTable.ApprovalRequired === 'X' && (
+            <Tag colorScheme="6">Approval Required</Tag>
+          )}
         </FlexBox>
         <Text className="maintenance-table-description">
           {selectedTable.Description || 'Database Table'}
@@ -297,6 +301,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
       </div>
 
       <DynamicPage
+        style={{ flex: 1, minHeight: 0 }}
         hidePinButton
         headerArea={
           <DynamicPageHeader style={{ padding: '0px' }}>
@@ -515,6 +520,6 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
           {toastMessage}
         </div>
       </Toast>
-    </>
+    </div>
   )
 }

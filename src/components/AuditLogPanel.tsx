@@ -455,7 +455,6 @@ function AuditEntryItem({
   const normalizedField = normalizeDash(fieldName)
   const isUpdate = entry.ActionType === 'U'
   const isBulk = isBulkAuditEntry(entry)
-  const isRollbackType = entry.ActionType === 'R'
   const hasItemSummary = hasAuditItemSummary(entry)
 
   const childItems = useMemo(() => {
@@ -467,6 +466,8 @@ function AuditEntryItem({
   const displayActionType = isBulk
     ? getBulkActionType(entry, childItems)
     : entry.ActionType
+
+  const isRollbackType = entry.ActionType === 'R' || (entry as any).ActionType === 'ROLLBACK' || displayActionType === 'R'
   const summaryLabel = isRollbackType ? 'Rollback Summary' : 'Bulk Operation Summary'
 
   return (
@@ -483,15 +484,14 @@ function AuditEntryItem({
             </span>
             {normalizedField && !hasItemSummary && <span>{normalizedField}</span>}
           </div>
-          {canRollback && (
+          {canRollback && !isRollbackType && (
             <div className="audit-entry-actions">
               <Button
-                design={isRollbackType ? 'Transparent' : 'Attention'}
+                design="Attention"
                 icon={'undo' as any}
-                disabled={isRollbackType}
                 onClick={() => onRollback(entry)}
               >
-                {isRollbackType ? 'Rolled Back' : 'Rollback'}
+                Rollback
               </Button>
             </div>
           )}
