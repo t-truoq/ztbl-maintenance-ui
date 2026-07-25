@@ -94,7 +94,6 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
     handleCancelInlineEdits,
     handleRemoveNewRow,
     handleSaveInlineEdits,
-    openEditDialog,
     openDeleteDialog,
     handleGo,
     handleClear,
@@ -147,7 +146,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
       .then(([isAdmin, permissions]) => {
         if (!isCancelled) {
           setCanRollbackAudit(isAdmin)
-          setTablePermission(permissions)
+          setTablePermission(isAdmin ? FULL_TABLE_PERMISSION : permissions)
           setPermissionTableName(tableNameForPermission)
         }
       })

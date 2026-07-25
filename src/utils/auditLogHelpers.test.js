@@ -7,6 +7,8 @@ import {
   getRecordKey,
   hasAuditItemSummary,
   isBulkAuditEntry,
+  isRollbackAuditAction,
+  normalizeAuditActionType,
   paginateAuditEntries
 } from './auditLogHelpers'
 
@@ -78,10 +80,13 @@ describe('auditLogHelpers bulk flow', () => {
       ActionType: 'C'
     })
     expect(getRecordKey(children[0])).toBe('CATEGORY_ID: C004')
-    expect(getBulkActionType(bulkEntry, children)).toBe('C')
+    expect(getBulkActionType(bulkEntry, children)).toBe('B')
   })
 
-  it('uses generic bulk badge when child actions are mixed', () => {
+  it('uses generic bulk badge for summary entries regardless of child actions', () => {
+    expect(getBulkActionType(bulkEntry, [
+      { ActionType: 'U' }
+    ])).toBe('B')
     expect(getBulkActionType(bulkEntry, [
       { ActionType: 'C' },
       { ActionType: 'U' }
@@ -97,6 +102,20 @@ describe('auditLogHelpers bulk flow', () => {
     expect(getAuditItemDisplayActionType(rollbackEntry, { ActionType: 'C' })).toBe('R')
     expect(getAuditItemDisplayActionType(rollbackEntry, { ActionType: 'D' })).toBe('R')
     expect(getAuditItemDisplayActionType(bulkEntry, { ActionType: 'D' })).toBe('D')
+  })
+
+  it('normalizes rollback action values returned by the backend', () => {
+    const rollbackEntry = {
+      ...bulkEntry,
+      RecordKey: 'ENTITY_ID: 1',
+      ActionType: 'ROLLBACK'
+    }
+
+    expect(normalizeAuditActionType('rollback')).toBe('R')
+    expect(isRollbackAuditAction('ROLLBACK')).toBe(true)
+    expect(hasAuditItemSummary(rollbackEntry)).toBe(true)
+    expect(getBulkActionType(rollbackEntry, [{ ActionType: 'C' }, { ActionType: 'D' }])).toBe('R')
+    expect(getAuditItemDisplayActionType(rollbackEntry, { ActionType: 'C' })).toBe('R')
   })
 })
 

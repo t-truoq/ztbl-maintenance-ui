@@ -94,8 +94,8 @@ export function extractApprovalCode(response: any): string | null {
     if (numMatch) {
       return numMatch[0]
     }
-    // 2. Match common patterns: "Approval request 1000201", "Request #100201", "mã yêu cầu: 1000201"
-    const match = message.match(/(?:approval\s+request|request|chứng\s+từ|mã\s+yêu\s+cầu|yêu\s+cầu)\s*[:#\s]*([a-zA-Z0-9_-]+)/i)
+    // 2. Match common approval request patterns from backend messages.
+    const match = message.match(/(?:approval\s+request|request|ch\u1ee9ng\s+t\u1eeb|m\u00e3\s+y\u00eau\s+c\u1ea7u|y\u00eau\s+c\u1ea7u)\s*[:#\s]*([a-zA-Z0-9_-]+)/i)
     if (match && match[1] && isNaN(Number(match[1])) === false) {
       return match[1]
     }
