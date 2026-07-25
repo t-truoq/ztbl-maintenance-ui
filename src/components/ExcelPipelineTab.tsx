@@ -161,7 +161,7 @@ export default function ExcelPipelineTab({
 
     try {
       if (!isExcelFilenameAllowed(file.name, tableName)) {
-        throw new Error(`Please select ${tableName}.xlsx or ${tableName} (n).xlsx.`)
+        throw new Error(`Please select ${tableName}.xlsx, ${tableName}_TEMPLATE.xlsx, or a browser-numbered copy.`)
       }
 
       const base64 = await fileToBase64(file)

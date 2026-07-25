@@ -251,6 +251,7 @@ export function normalizeExcelFileName(fileName: string): string {
     .trim()
     .replace(/\.xlsx$/i, '')
     .replace(/\s*\(\d+\)$/i, '')
+    .replace(/_TEMPLATE$/i, '')
     .trim()
     .toUpperCase()
 }
