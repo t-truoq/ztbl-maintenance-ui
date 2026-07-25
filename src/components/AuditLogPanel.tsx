@@ -717,6 +717,8 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
     try {
       setLoading(true)
       setError('')
+      setBulkChildMap({})
+      auditItemsInFlightRef.current.clear()
       const result = await getAuditLog(tableName)
       setEntries(result)
     } catch (e: any) {
