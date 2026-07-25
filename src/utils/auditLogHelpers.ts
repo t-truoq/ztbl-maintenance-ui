@@ -76,22 +76,18 @@ export function findBulkChildren(bulkEntry: AuditLogEntry, allEntries: AuditLogE
     return rawItems
   }
 
-  const bulkTime = new Date(bulkEntry.ChangedAt || '').getTime()
   const prefix20 = (bulkEntry.AuditId || '').slice(0, 20)
+  if (!prefix20 || prefix20.length < 20) return []
 
   const matched = allEntries.filter(e => {
     if (e.AuditId === bulkEntry.AuditId) return false
     if (hasAuditItemSummary(e)) return false
     if (e.TableName !== bulkEntry.TableName) return false
 
-    const samePrefix = prefix20 && e.AuditId.startsWith(prefix20)
-    const timeDiff = Math.abs(new Date(e.ChangedAt || '').getTime() - bulkTime)
+    const samePrefix = e.AuditId.length > 20 && e.AuditId.startsWith(prefix20)
     const sameUser = e.ChangedBy === bulkEntry.ChangedBy
 
-    if (samePrefix && sameUser) return true
-    if (sameUser && !Number.isNaN(timeDiff) && timeDiff <= 5000) return true
-
-    return false
+    return Boolean(samePrefix && sameUser)
   })
 
   return matched.map((e, idx) => ({
