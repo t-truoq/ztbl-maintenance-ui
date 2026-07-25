@@ -39,8 +39,15 @@ describe('excelPipelineApi diff helpers', () => {
     expect(isExcelFilenameAllowed(' z251_schedule (2).XLSX ', 'Z251_SCHEDULE')).toBe(true)
   })
 
+  it('allows exported template workbooks for the active table', () => {
+    expect(isExcelFilenameAllowed('Z251_SCHEDULE_TEMPLATE.xlsx', 'Z251_SCHEDULE')).toBe(true)
+    expect(isExcelFilenameAllowed('Z251_SCHEDULE_TEMPLATE (1).xlsx', 'Z251_SCHEDULE')).toBe(true)
+    expect(normalizeExcelFileName('Z251_SCHEDULE_TEMPLATE (12).xlsx')).toBe('Z251_SCHEDULE')
+  })
+
   it('rejects Excel filenames that do not match the active table', () => {
     expect(isExcelFilenameAllowed('Z253_CAT.xlsx', 'Z251_SCHEDULE')).toBe(false)
+    expect(isExcelFilenameAllowed('Z253_CAT_TEMPLATE.xlsx', 'Z251_SCHEDULE')).toBe(false)
     expect(isExcelFilenameAllowed('Z251_SCHEDULE (copy).xlsx', 'Z251_SCHEDULE')).toBe(false)
     expect(isExcelFilenameAllowed('Z251_SCHEDULE.xls', 'Z251_SCHEDULE')).toBe(false)
     expect(normalizeExcelFileName('Z251_SCHEDULE (12).xlsx')).toBe('Z251_SCHEDULE')
