@@ -17,7 +17,8 @@ const excelApi = axios.create({
   baseURL: EXCEL_SERVICE,
   params: { 'sap-client': SAP_CLIENT },
   headers: { 'Content-Type': 'application/json' },
-  withCredentials: true
+  withCredentials: true,
+  timeout: 180000
 })
 
 let csrfToken = ''
@@ -335,15 +336,24 @@ function normalizeVietnameseText(value: string): string {
 }
 
 export function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const dataUrl = String(reader.result || '')
-      resolve(dataUrl.split(',')[1] || '')
+  return file.arrayBuffer().then(buffer => arrayBufferToBase64(buffer))
+}
+
+async function arrayBufferToBase64(buffer: ArrayBuffer): Promise<string> {
+  const bytes = new Uint8Array(buffer)
+  const chunkSize = 0x8000
+  let binary = ''
+
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const chunk = bytes.subarray(offset, offset + chunkSize)
+    binary += String.fromCharCode(...chunk)
+
+    if (offset % (chunkSize * 32) === 0) {
+      await new Promise<void>(resolve => window.setTimeout(resolve, 0))
     }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
+  }
+
+  return btoa(binary)
 }
 
 export function downloadBase64AsXlsx(base64: string, fileName: string): void {
