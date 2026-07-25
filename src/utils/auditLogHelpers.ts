@@ -70,36 +70,13 @@ export function extractBulkCount(entry: AuditLogEntry): string {
   return 'Bulk CRUD Operation'
 }
 
-export function findBulkChildren(bulkEntry: AuditLogEntry, allEntries: AuditLogEntry[]): AuditItemEntry[] {
+export function findBulkChildren(bulkEntry: AuditLogEntry, _allEntries: AuditLogEntry[]): AuditItemEntry[] {
   const rawItems = (bulkEntry as any)._Items?.value || (bulkEntry as any)._Items
   if (Array.isArray(rawItems) && rawItems.length > 0) {
     return rawItems
   }
 
-  const prefix20 = (bulkEntry.AuditId || '').slice(0, 20)
-  if (!prefix20 || prefix20.length < 20) return []
-
-  const matched = allEntries.filter(e => {
-    if (e.AuditId === bulkEntry.AuditId) return false
-    if (hasAuditItemSummary(e)) return false
-    if (e.TableName !== bulkEntry.TableName) return false
-
-    const samePrefix = e.AuditId.length > 20 && e.AuditId.startsWith(prefix20)
-    const sameUser = e.ChangedBy === bulkEntry.ChangedBy
-
-    return Boolean(samePrefix && sameUser)
-  })
-
-  return matched.map((e, idx) => ({
-    AuditId: e.AuditId,
-    ItemNo: idx + 1,
-    TableName: e.TableName,
-    RecordKey: e.RecordKey,
-    FieldName: e.FieldName,
-    OldValue: e.OldValue,
-    NewValue: e.NewValue,
-    ActionType: e.ActionType
-  }))
+  return []
 }
 
 export function getBulkActionType(entry: AuditLogEntry, childItems: AuditItemEntry[]): string {

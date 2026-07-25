@@ -47,31 +47,23 @@ describe('auditLogHelpers bulk flow', () => {
     expect(extractBulkCount(rollbackEntry)).toBe('1 item(s)')
   })
 
-  it('matches bulk child entries by audit id prefix/user/time and skips unrelated rows', () => {
-    const entries = [
-      bulkEntry,
-      {
-        AuditId: 'BULK-AUDIT-1234567890-A',
-        TableName: 'Z253_CAT',
-        RecordKey: JSON.stringify({ MANDT: '324', CATEGORY_ID: 'C004' }),
-        FieldName: '',
-        ActionType: 'C',
-        NewValue: JSON.stringify({ CATEGORY_ID: 'C004' }),
-        ChangedBy: 'DEV-213',
-        ChangedAt: '2026-07-23T01:04:15'
-      },
-      {
-        AuditId: 'OTHER',
-        TableName: 'Z253_CAT',
-        RecordKey: JSON.stringify({ CATEGORY_ID: 'C005' }),
-        FieldName: '',
-        ActionType: 'D',
-        ChangedBy: 'DEV-999',
-        ChangedAt: '2026-07-23T01:04:15'
-      }
-    ]
+  it('returns bulk child entries from _Items property', () => {
+    const entryWithItems = {
+      ...bulkEntry,
+      _Items: [
+        {
+          AuditId: 'BULK-AUDIT-1234567890',
+          ItemNo: 1,
+          TableName: 'Z253_CAT',
+          RecordKey: JSON.stringify({ MANDT: '324', CATEGORY_ID: 'C004' }),
+          FieldName: '',
+          ActionType: 'C',
+          NewValue: JSON.stringify({ CATEGORY_ID: 'C004' })
+        }
+      ]
+    }
 
-    const children = findBulkChildren(bulkEntry, entries)
+    const children = findBulkChildren(entryWithItems, [entryWithItems])
 
     expect(children).toHaveLength(1)
     expect(children[0]).toMatchObject({
@@ -80,7 +72,7 @@ describe('auditLogHelpers bulk flow', () => {
       ActionType: 'C'
     })
     expect(getRecordKey(children[0])).toBe('CATEGORY_ID: C004')
-    expect(getBulkActionType(bulkEntry, children)).toBe('B')
+    expect(getBulkActionType(entryWithItems, children)).toBe('B')
   })
 
   it('uses generic bulk badge for summary entries regardless of child actions', () => {
