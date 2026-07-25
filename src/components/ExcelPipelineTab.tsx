@@ -25,6 +25,7 @@ import {
   filterDiffForCommit,
   getExcelErrorMessage,
   getInfoRows,
+  isExcelConfirmFailure,
   isExcelFilenameAllowed,
   uploadExcel
 } from '../services/excelPipelineApi'
@@ -239,10 +240,11 @@ export default function ExcelPipelineTab({
 
     try {
       const result = await confirmImport(tableName, diffRows)
+      const confirmFailed = isExcelConfirmFailure(result)
       setConfirmResult(result)
       setFeedback({
         text: buildConfirmFeedbackText(result),
-        design: (result.error_count ?? 0) > 0 ? 'Negative' : 'Positive'
+        design: confirmFailed ? 'Negative' : 'Positive'
       })
       setDiffDialogOpen(false)
       setResultDialogOpen(true)
@@ -535,10 +537,10 @@ function busyLabel(step: BusyStep): string {
 }
 
 function buildConfirmFeedbackText(result: ExcelConfirmResult): string {
-  const hasErrors = (result.error_count ?? 0) > 0
+  const hasErrors = isExcelConfirmFailure(result)
   const approvalId = parseImportResultMessage(result.message || '').approvalId
   if (hasErrors) {
-    return `Import completed with ${result.error_count ?? 0} error(s). Review the result details.`
+    return 'Import failed. Review the result details.'
   }
   if (approvalId) {
     return 'Import submitted for approval. Review the approval request details.'
@@ -619,10 +621,10 @@ function buildParseSummary(infoRows: ExcelDiffRow[]): string {
 
 function ExcelImportResultSummary({ result }: { result: ExcelConfirmResult | null }) {
   const parsed = parseImportResultMessage(result?.message || '')
-  const hasErrors = (result?.error_count ?? 0) > 0
+  const hasErrors = isExcelConfirmFailure(result)
   const statusState = hasErrors ? 'Negative' : parsed.approvalId ? 'Information' : 'Positive'
   const statusText = hasErrors
-    ? 'Completed with errors'
+    ? 'Import failed'
     : parsed.approvalId
       ? 'Approval required'
       : 'Import completed'
@@ -706,6 +708,17 @@ function parseImportResultMessage(message: string): {
       rowNo,
       waitingText,
       fallback: ''
+    }
+  }
+
+  if (/no valid excel row/i.test(text) || /cannot create a new request/i.test(text)) {
+    return {
+      title: 'Import failed',
+      description: 'No valid Excel rows were submitted. Review skipped rows and approval locks.',
+      approvalId: '',
+      rowNo,
+      waitingText: '',
+      fallback: text
     }
   }
 

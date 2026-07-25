@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   filterDiffForCommit,
+  isExcelConfirmFailure,
   isExcelFilenameAllowed,
   normalizeExcelConfirmResult,
   normalizeExcelDiffRows,
@@ -90,9 +91,9 @@ describe('excelPipelineApi diff helpers', () => {
   })
 
   it('translates common Vietnamese backend messages to English', () => {
-    expect(translateExcelMessage('Không thay đổi')).toBe('No changes')
-    expect(translateExcelMessage('Giá trị thay đổi')).toBe('Value changed')
-    expect(translateExcelMessage('User DEV-213 không có quyền UPLOAD trên ZTPC_HEADER')).toBe(
+    expect(translateExcelMessage('Kh\u00f4ng thay \u0111\u1ed5i')).toBe('No changes')
+    expect(translateExcelMessage('Gi\u00e1 tr\u1ecb thay \u0111\u1ed5i')).toBe('Value changed')
+    expect(translateExcelMessage('User DEV-213 kh\u00f4ng c\u00f3 quy\u1ec1n UPLOAD tr\u00ean ZTPC_HEADER')).toBe(
       'User DEV-213 does not have permission to UPLOAD on ZTPC_HEADER.'
     )
   })
@@ -105,11 +106,28 @@ describe('excelPipelineApi diff helpers', () => {
       unchanged_count: 0,
       skipped_count: 0,
       error_count: 0,
-      message: 'Row 8: Request submitted for approval (ID: 8B95F36A4F271FE19EC0D1524746A2C5); Đã gửi duyệt: C=0, U=1, E=0. Chờ Approve trên UI.'
+      message: 'Row 8: Request submitted for approval (ID: 8B95F36A4F271FE19EC0D1524746A2C5); \u0110\u00e3 g\u1eedi duy\u1ec7t: C=0, U=1, E=0. Ch\u1edd Approve tr\u00ean UI.'
     })
 
     expect(result.message).toBe(
       'Row 8: Approval request submitted (ID: 8B95F36A4F271FE19EC0D1524746A2C5). Submitted for approval: created 0, updated 1, errors 0. Waiting for approval in the UI.'
     )
+  })
+
+  it('marks no-valid-row confirm results as failures and translates skipped approval locks', () => {
+    const result = normalizeExcelConfirmResult({
+      id: 'X',
+      inserted_count: 0,
+      updated_count: 0,
+      unchanged_count: 0,
+      skipped_count: 2,
+      error_count: 0,
+      message: 'Row 9 skipped: Record \u0111ang ch\u1edd duy\u1ec7t b\u1edfi DEV-253. Kh\u00f4ng th\u1ec3 t\u1ea1o request m\u1edbi.; Row 10 skipped: Record \u0111ang ch\u1edd duy\u1ec7t b\u1edfi DEV-253. Kh\u00f4ng th\u1ec3 t\u1ea1o request m\u1edbi.; No valid Excel row to submit for approval.; \u0110\u00e3 g\u1eedi duy\u1ec7t: C=0, U/D=0, E=0. Ch\u1edd Approve tr\u00ean UI.'
+    })
+
+    expect(result.message).toBe(
+      'Row 9 skipped: Record is pending approval by DEV-253. Cannot create a new request.; Row 10 skipped: Record is pending approval by DEV-253. Cannot create a new request.; No valid Excel row to submit for approval.; Submitted for approval: created 0, updated/deleted 0, errors 0. Waiting for approval in the UI.'
+    )
+    expect(isExcelConfirmFailure(result)).toBe(true)
   })
 })

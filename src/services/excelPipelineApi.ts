@@ -230,6 +230,22 @@ export function normalizeExcelConfirmResult(result: ExcelConfirmResult): ExcelCo
   }
 }
 
+export function isExcelConfirmFailure(result: ExcelConfirmResult | null | undefined): boolean {
+  if (!result) return false
+
+  const inserted = result.inserted_count ?? 0
+  const updated = result.updated_count ?? 0
+  const unchanged = result.unchanged_count ?? 0
+  const skipped = result.skipped_count ?? 0
+  const errors = result.error_count ?? 0
+  const message = String(result.message || '')
+
+  return errors > 0 ||
+    /no valid excel row/i.test(message) ||
+    /cannot create a new request/i.test(message) ||
+    (skipped > 0 && inserted + updated + unchanged === 0)
+}
+
 export function normalizeExcelFileName(fileName: string): string {
   return String(fileName || '')
     .trim()
@@ -262,34 +278,59 @@ export function translateExcelMessage(message: string): string {
   const text = String(message || '').trim()
   if (!text) return ''
 
-  const approvalMatch = text.match(
-    /^Row\s+(\d+):\s*Request submitted for approval\s*\(ID:\s*([^)]+)\);\s*Đã gửi duyệt:\s*C=(\d+),\s*U=(\d+),\s*E=(\d+)\.?\s*Chờ Approve trên UI\.?$/i
-  )
-  if (approvalMatch) {
-    const [, rowNo, approvalId, created, updated, errors] = approvalMatch
+  const approvalMessageMatch = text.match(/^Row\s+(\d+):\s*Request submitted for approval\s*\(ID:\s*([^)]+)\)/i)
+  if (approvalMessageMatch) {
+    const [, rowNo, approvalId] = approvalMessageMatch
+    const counts = text.match(/C=(\d+),\s*U(?:\/D)?=(\d+),\s*E=(\d+)/i)
+    const created = counts?.[1] ?? '0'
+    const updated = counts?.[2] ?? '0'
+    const errors = counts?.[3] ?? '0'
     return `Row ${rowNo}: Approval request submitted (ID: ${approvalId}). Submitted for approval: created ${created}, updated ${updated}, errors ${errors}. Waiting for approval in the UI.`
   }
 
-  const permissionMatch = text.match(/^User\s+(.+?)\s+không\s+có\s+quyền\s+(.+?)\s+trên\s+(.+)$/i)
-  if (permissionMatch) {
-    const [, user, action, table] = permissionMatch
-    return `User ${user} does not have permission to ${action.toUpperCase()} on ${table}.`
+  const segments = text.split(';').map(segment => translateExcelMessageSegment(segment)).filter(Boolean)
+  return segments.length > 1 ? segments.join('; ') : segments[0] || text
+}
+
+function translateExcelMessageSegment(message: string): string {
+  const text = String(message || '').trim()
+  const normalized = normalizeVietnameseText(text)
+
+  const pendingApprovalMatch = normalized.match(/^row\s+(\d+)\s+skipped:\s+record\s+dang\s+cho\s+duyet\s+boi\s+(.+?)\.?\s+khong\s+the\s+tao\s+request\s+moi\.?$/i)
+  if (pendingApprovalMatch) {
+    const [, rowNo, user] = pendingApprovalMatch
+    return `Row ${rowNo} skipped: Record is pending approval by ${user.toUpperCase()}. Cannot create a new request.`
   }
 
-  const normalized = text
-    .toLowerCase()
-    .replace(/đ/g, 'd')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+  const approvalSummaryMatch = text.match(/C=(\d+),\s*U(?:\/D)?=(\d+),\s*E=(\d+)/i)
+  if (/^da gui duyet\b/i.test(normalized) && approvalSummaryMatch) {
+    const [, created, updated, errors] = approvalSummaryMatch
+    return `Submitted for approval: created ${created}, updated/deleted ${updated}, errors ${errors}. Waiting for approval in the UI.`
+  }
+
+  const permissionMatch = normalized.match(/^user\s+(.+?)\s+khong\s+co\s+quyen\s+(.+?)\s+tren\s+(.+)$/i)
+  if (permissionMatch) {
+    const [, user, action, table] = permissionMatch
+    return `User ${user.toUpperCase()} does not have permission to ${action.toUpperCase()} on ${table.toUpperCase()}.`
+  }
 
   if (/^khong thay doi/.test(normalized)) return 'No changes'
   if (/^khong co thay doi/.test(normalized)) return 'No changes'
   if (/^du lieu khong thay doi/.test(normalized)) return 'No changes'
   if (/^gia tri thay doi/.test(normalized)) return 'Value changed'
   if (/^dong moi/.test(normalized) || /^ban ghi moi/.test(normalized)) return 'New record'
-  if (/^loi/.test(normalized)) return text.replace(/^lỗi[:\s-]*/i, 'Error: ')
+  if (/^loi/.test(normalized)) return `Error: ${text.replace(/^.*?[:\s-]+/, '') || 'Import failed.'}`
 
   return text
+}
+
+function normalizeVietnameseText(value: string): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\u0111/g, 'd')
+    .replace(/\u0110/g, 'D')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
 }
 
 export function fileToBase64(file: File): Promise<string> {

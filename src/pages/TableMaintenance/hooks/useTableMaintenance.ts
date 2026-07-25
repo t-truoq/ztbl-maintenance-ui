@@ -894,6 +894,7 @@ export function useTableMaintenance({
     error,
     setError,
     successMsg,
+    setSuccessMsg,
     searchQuery,
     setSearchQuery,
     filterValues,

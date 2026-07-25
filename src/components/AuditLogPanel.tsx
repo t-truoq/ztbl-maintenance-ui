@@ -24,7 +24,9 @@ import {
   getRawRecordKey,
   getRecordKey,
   hasAuditItemSummary,
+  isRollbackAuditAction,
   isBulkAuditEntry,
+  normalizeAuditActionType,
   paginateAuditEntries
 } from '../utils/auditLogHelpers'
 import { AuditLogEntry, AuditItemEntry } from '../types'
@@ -124,16 +126,39 @@ function includesText(value: unknown, query: string): boolean {
 }
 
 function actionLabel(actionType: string): string {
-  return ACTION_LABELS[actionType] || actionType || 'Unknown'
+  const normalizedAction = normalizeAuditActionType(actionType)
+  return ACTION_LABELS[normalizedAction] || normalizedAction || 'Unknown'
+}
+
+function auditFilterActionType(entry: AuditLogEntry, cachedChildItems?: AuditItemEntry[]): string {
+  if (isRollbackAuditAction(entry.ActionType)) return 'R'
+  if (isBulkAuditEntry(entry) || hasAuditItemSummary(entry)) {
+    const count = cachedChildItems?.length ?? extractAuditItemCount(entry)
+    if (count === 1 && cachedChildItems?.[0]) {
+      return normalizeAuditActionType(cachedChildItems[0].ActionType || entry.ActionType)
+    }
+    return count === 1 ? normalizeAuditActionType(entry.ActionType) : 'B'
+  }
+  return normalizeAuditActionType(entry.ActionType)
 }
 
 function formatItemCount(count: number): string {
   return `${count} item(s)`
 }
 
-function ActionBadge({ actionType }: { actionType: string }) {
-  const actionLabelText = actionLabel(actionType)
-  const meta = ACTION_META[actionType] || { icon: 'question-mark', color: '#556b82', background: '#eef2f5' }
+function extractAuditItemCount(entry: AuditLogEntry | AuditItemEntry): number | null {
+  const rawItems = (entry as any)._Items?.value || (entry as any)._Items
+  if (Array.isArray(rawItems)) return rawItems.length
+
+  const raw = String((entry as any).NewValue || (entry as any).OldValue || '')
+  const match = raw.match(/(\d+)\s*item/i) || raw.match(/Bulk audit:\s*(\d+)/i)
+  return match ? parseInt(match[1], 10) : null
+}
+
+function ActionBadge({ actionType, label }: { actionType: string; label?: string }) {
+  const normalizedAction = normalizeAuditActionType(actionType)
+  const actionLabelText = label || actionLabel(normalizedAction)
+  const meta = ACTION_META[normalizedAction] || { icon: 'question-mark', color: '#556b82', background: '#eef2f5' }
 
   return (
     <div
@@ -277,7 +302,7 @@ function BulkAuditItemsDialog({
   if (!auditEntry) return null
 
   const summaryText = items.length > 0 ? formatItemCount(items.length) : extractBulkCount(auditEntry)
-  const isRollbackSummary = auditEntry.ActionType === 'R'
+  const isRollbackSummary = isRollbackAuditAction(auditEntry.ActionType)
   const dialogTitle = isRollbackSummary ? 'Rollback Audit Items' : 'Bulk Audit Items'
   const summaryLabel = isRollbackSummary ? 'Rollback Summary' : 'Bulk Operation Summary'
   const displayActionType = isRollbackSummary ? 'R' : getBulkActionType(auditEntry, items)
@@ -351,9 +376,12 @@ function BulkAuditItemsDialog({
         {!loading && !error && items.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {items.map((item, index) => {
-              const display = getAuditDisplayCells(item)
               const itemAction = getAuditItemDisplayActionType(auditEntry, item)
-              const isUpdate = itemAction === 'U'
+              const itemDisplayAction = isRollbackSummary
+                ? normalizeAuditActionType(item.ActionType || itemAction)
+                : itemAction
+              const display = getAuditDisplayCells(item, itemDisplayAction)
+              const isUpdate = itemDisplayAction === 'U'
               return (
                 <div
                   key={item.ItemNo ?? index}
@@ -375,7 +403,7 @@ function BulkAuditItemsDialog({
                     }}
                   >
                     <Label style={{ fontWeight: 700 }}>Item #{item.ItemNo ?? index + 1}</Label>
-                    <ActionBadge actionType={itemAction} />
+                    <ActionBadge actionType={itemDisplayAction} />
                     <div style={{ marginLeft: 'auto' }}>
                       <Text style={{ fontSize: '0.85rem', color: '#6a7075' }}>
                         Key: <strong style={{ color: '#32363a' }}>{getRecordKey(item)}</strong>
@@ -387,10 +415,10 @@ function BulkAuditItemsDialog({
                     <DiffBlock fieldName={display.fieldName} oldValue={display.oldValue} newValue={display.newValue} />
                   ) : (
                     <div style={{ display: 'grid', gap: '0.5rem' }}>
-                      {itemAction !== 'C' && (
+                      {itemDisplayAction !== 'C' && (
                         <ValueBlock title="Old Value" value={display.oldValue} emptyText="No previous value" />
                       )}
-                      {itemAction !== 'D' && (
+                      {itemDisplayAction !== 'D' && (
                         <ValueBlock title="New Value" value={display.newValue} emptyText="No new value" />
                       )}
                     </div>
@@ -549,10 +577,7 @@ function AuditEntryItem({
   onRollback: (entry: AuditLogEntry) => void
   canRollback: boolean
 }) {
-  const { fieldName, oldValue, newValue } = getAuditDisplayCells(entry)
-  const normalizedField = normalizeDash(fieldName)
-  const isUpdate = entry.ActionType === 'U'
-  const isBulk = isBulkAuditEntry(entry)
+  const normalizedEntryAction = normalizeAuditActionType(entry.ActionType)
   const hasItemSummary = hasAuditItemSummary(entry)
 
   const childItems = useMemo(() => {
@@ -561,11 +586,24 @@ function AuditEntryItem({
     return findBulkChildren(entry, allEntries)
   }, [hasItemSummary, cachedChildItems, entry, allEntries])
 
-  const displayActionType = isBulk
+  const isRollbackType = isRollbackAuditAction(normalizedEntryAction)
+  const singleSummaryItem = hasItemSummary && !isRollbackType && childItems.length === 1
+    ? childItems[0]
+    : null
+  const singleSummaryActionType = singleSummaryItem
+    ? normalizeAuditActionType(singleSummaryItem.ActionType || entry.ActionType)
+    : ''
+  const displaySource = singleSummaryItem || entry
+  const displayActionType = singleSummaryItem
+    ? singleSummaryActionType
+    : hasItemSummary
     ? getBulkActionType(entry, childItems)
-    : entry.ActionType
-
-  const isRollbackType = entry.ActionType === 'R' || (entry as any).ActionType === 'ROLLBACK' || displayActionType === 'R'
+    : normalizedEntryAction
+  const { fieldName, oldValue, newValue } = getAuditDisplayCells(displaySource, displayActionType)
+  const normalizedField = normalizeDash(fieldName)
+  const isUpdate = displayActionType === 'U'
+  const showSummaryPanel = hasItemSummary && !singleSummaryItem
+  const canRollbackEntry = canRollback && !isRollbackAuditAction(normalizedEntryAction) && !isRollbackAuditAction(displayActionType)
   const summaryLabel = isRollbackType ? 'Rollback Summary' : 'Bulk Operation Summary'
 
   return (
@@ -577,12 +615,12 @@ function AuditEntryItem({
           <div className="audit-entry-meta">
             <span>{entry.ChangedBy || '-'}</span>
             <span>{formatDateTime(entry.ChangedAt)}</span>
-            <span className={hasItemSummary ? 'audit-record-key audit-record-key-strong' : 'audit-record-key'}>
-              {getRecordKey(entry)}
+            <span className={showSummaryPanel ? 'audit-record-key audit-record-key-strong' : 'audit-record-key'}>
+              {getRecordKey(displaySource)}
             </span>
-            {normalizedField && !hasItemSummary && <span>{normalizedField}</span>}
+            {normalizedField && !showSummaryPanel && <span>{normalizedField}</span>}
           </div>
-          {canRollback && !isRollbackType && (
+          {canRollbackEntry && (
             <div className="audit-entry-actions">
               <Button
                 design="Attention"
@@ -596,7 +634,7 @@ function AuditEntryItem({
         </div>
 
         <div className="audit-entry-content">
-          {hasItemSummary ? (
+          {showSummaryPanel ? (
             <div className="audit-bulk-summary">
               <div>
                 <Label>{summaryLabel}</Label>
@@ -616,10 +654,10 @@ function AuditEntryItem({
             <DiffBlock fieldName={fieldName} oldValue={oldValue} newValue={newValue} />
           ) : (
             <div className="audit-value-stack">
-              {entry.ActionType !== 'C' && (
+              {displayActionType !== 'C' && (
                 <ValueBlock title="Old Value" value={oldValue} emptyText="No previous value" />
               )}
-              {entry.ActionType !== 'D' && (
+              {displayActionType !== 'D' && (
                 <ValueBlock title="New Value" value={newValue} emptyText="No new value" />
               )}
             </div>
@@ -686,7 +724,8 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
     const query = searchQuery.trim().toLowerCase()
 
     return entries.filter(entry => {
-      if (actionFilter !== 'ALL' && entry.ActionType !== actionFilter) return false
+      const filterActionType = auditFilterActionType(entry, bulkChildMap[entry.AuditId])
+      if (actionFilter !== 'ALL' && filterActionType !== actionFilter) return false
 
       const entryDate = dateInputValue(entry.ChangedAt)
       if (dateFrom && entryDate && entryDate < dateFrom) return false
@@ -710,7 +749,7 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
         includesText(actionLabel(entry.ActionType), query)
       )
     })
-  }, [entries, searchQuery, actionFilter, dateFrom, dateTo])
+  }, [entries, searchQuery, actionFilter, dateFrom, dateTo, bulkChildMap])
 
   const {
     pageItems: pagedEntries,
@@ -729,7 +768,7 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
     }
   }, [safePageIndex, pageIndex])
 
-  // Pre-fetch audit items for visible summary entries so parent badges match child items.
+  // Pre-fetch audit items for visible summary entries so item counts are ready.
   useEffect(() => {
     const summaryEntries = pagedEntries.filter(hasAuditItemSummary)
     if (summaryEntries.length === 0) return

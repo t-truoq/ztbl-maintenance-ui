@@ -1,4 +1,5 @@
 import { AuditLogEntry, AuditItemEntry } from '../types'
+import { normalizeAuditActionType } from './auditLogHelpers'
 import { formatTimestampValue, isTimestampFieldName } from './displayHelpers'
 
 export type AuditValuePart = {
@@ -168,8 +169,8 @@ export function formatAuditValue(value: any): string {
 }
 
 /** Per ActionType: which columns to populate. */
-export function getAuditDisplayCells(entry: AuditLogEntry | AuditItemEntry): { fieldName: string; oldValue: string; newValue: string } {
-  const action = entry.ActionType
+export function getAuditDisplayCells(entry: AuditLogEntry | AuditItemEntry, actionTypeOverride?: string): { fieldName: string; oldValue: string; newValue: string } {
+  const action = normalizeAuditActionType(actionTypeOverride || entry.ActionType)
   const formattedOld = formatAuditValue(entry.OldValue)
   const formattedNew = formatAuditValue(entry.NewValue)
   const fieldName = entry.FieldName || '-'

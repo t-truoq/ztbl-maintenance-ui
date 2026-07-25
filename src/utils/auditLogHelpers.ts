@@ -2,6 +2,17 @@ import { AuditItemEntry, AuditLogEntry } from '../types'
 
 const TECHNICAL_KEY_FIELDS = new Set(['CLIENT', 'MANDT', '__SNAPSHOT__', '__BATCH__'])
 
+export function normalizeAuditActionType(actionType?: string): string {
+  const normalized = String(actionType || '').trim().toUpperCase()
+  if (normalized === 'ROLLBACK') return 'R'
+  if (normalized === 'BULK') return 'B'
+  return normalized
+}
+
+export function isRollbackAuditAction(actionType?: string): boolean {
+  return normalizeAuditActionType(actionType) === 'R'
+}
+
 export function getRawRecordKey(entry: AuditLogEntry | AuditItemEntry): string {
   const anyEntry = entry as any
   return (
@@ -24,7 +35,7 @@ export function hasAuditItemSummary(entry: AuditLogEntry | AuditItemEntry): bool
   if (Array.isArray(rawItems) && rawItems.length > 0) return true
   if (isBulkAuditEntry(entry)) return true
 
-  const actionType = String((entry as any).ActionType || '').toUpperCase()
+  const actionType = normalizeAuditActionType((entry as any).ActionType)
   if (actionType !== 'B' && actionType !== 'R') return false
   const summaryText = `${(entry as any).NewValue || ''} ${(entry as any).OldValue || ''}`
   return /bulk audit\s*:/i.test(summaryText) || /\d+\s*item\(s\)/i.test(summaryText)
@@ -96,19 +107,14 @@ export function findBulkChildren(bulkEntry: AuditLogEntry, allEntries: AuditLogE
 }
 
 export function getBulkActionType(entry: AuditLogEntry, childItems: AuditItemEntry[]): string {
-  if (childItems && childItems.length > 0) {
-    const actions = new Set(childItems.map(item => item.ActionType || entry.ActionType).filter(Boolean))
-    if (actions.size === 1) {
-      return Array.from(actions)[0]
-    }
-    return 'B'
-  }
-  return entry.ActionType || 'B'
+  if (isRollbackAuditAction(entry.ActionType)) return 'R'
+  if (isBulkAuditEntry(entry) || hasAuditItemSummary(entry) || childItems.length > 0) return 'B'
+  return normalizeAuditActionType(entry.ActionType) || 'B'
 }
 
 export function getAuditItemDisplayActionType(parentEntry: AuditLogEntry, item: AuditItemEntry): string {
-  if (parentEntry.ActionType === 'R') return 'R'
-  return item.ActionType || parentEntry.ActionType
+  if (isRollbackAuditAction(parentEntry.ActionType)) return 'R'
+  return normalizeAuditActionType(item.ActionType || parentEntry.ActionType)
 }
 
 export function paginateAuditEntries<T>(
