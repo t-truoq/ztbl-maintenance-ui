@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import {
   BusyIndicator,
@@ -252,16 +252,17 @@ function BulkAuditItemsDialog({
   onItemsLoaded?: (auditId: string, items: AuditItemEntry[]) => void
   onClose: () => void
 }) {
+  const hasInitialChildItems = initialChildItems !== undefined
   const [items, setItems] = useState<AuditItemEntry[]>(initialChildItems || [])
-  const [loading, setLoading] = useState(!initialChildItems || initialChildItems.length === 0)
+  const [loading, setLoading] = useState(!hasInitialChildItems)
   const [error, setError] = useState('')
 
   useEffect(() => {
     if (!auditEntry) return
     let isCancelled = false
 
-    // If initial items were provided, check if we still need remote fetch
-    if (initialChildItems && initialChildItems.length > 0) {
+    // An empty cached item list is still a valid loaded state.
+    if (initialChildItems !== undefined) {
       setItems(initialChildItems)
       setLoading(false)
       return
@@ -686,8 +687,18 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
   const [rollbackResultMsg, setRollbackResultMsg] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
   const [bulkChildMap, setBulkChildMap] = useState<Record<string, AuditItemEntry[]>>({})
+  const auditItemsInFlightRef = useRef<Set<string>>(new Set())
+  const auditPanelMountedRef = useRef(true)
 
   useEffect(() => {
+    return () => {
+      auditPanelMountedRef.current = false
+    }
+  }, [])
+
+  useEffect(() => {
+    setBulkChildMap({})
+    auditItemsInFlightRef.current.clear()
     if (tableName) loadAuditLog()
   }, [tableName])
 
@@ -716,9 +727,12 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
     }
   }
 
-  function handleChildItemsLoaded(auditId: string, items: AuditItemEntry[]) {
-    setBulkChildMap(prev => ({ ...prev, [auditId]: items }))
-  }
+  const handleChildItemsLoaded = useCallback((auditId: string, items: AuditItemEntry[]) => {
+    setBulkChildMap(prev => {
+      if (Object.prototype.hasOwnProperty.call(prev, auditId)) return prev
+      return { ...prev, [auditId]: items }
+    })
+  }, [])
 
   const filteredEntries = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -770,10 +784,18 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
 
   // Pre-fetch audit items for visible summary entries so item counts are ready.
   useEffect(() => {
-    const summaryEntries = pagedEntries.filter(hasAuditItemSummary)
-    if (summaryEntries.length === 0) return
+    const seenAuditIds = new Set<string>()
+    const summaryEntries = pagedEntries.filter(entry => {
+      if (!hasAuditItemSummary(entry) || !entry.AuditId) return false
+      if (seenAuditIds.has(entry.AuditId)) return false
+      if (Object.prototype.hasOwnProperty.call(bulkChildMap, entry.AuditId)) return false
+      if (auditItemsInFlightRef.current.has(entry.AuditId)) return false
+      seenAuditIds.add(entry.AuditId)
+      return true
+    })
+    if (summaryEntries.length === 0) return undefined
 
-    let isCancelled = false
+    summaryEntries.forEach(entry => auditItemsInFlightRef.current.add(entry.AuditId))
 
     Promise.all(
       summaryEntries.map(async entry => {
@@ -788,18 +810,25 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
         }
       })
     ).then(results => {
-      if (isCancelled) return
-      const map: Record<string, AuditItemEntry[]> = {}
-      results.forEach(res => {
-        map[res.auditId] = res.items
-      })
-      setBulkChildMap(prev => ({ ...prev, ...map }))
-    })
+      if (!auditPanelMountedRef.current) return
 
-    return () => {
-      isCancelled = true
-    }
-  }, [entries, pagedEntries])
+      setBulkChildMap(prev => {
+        let changed = false
+        const next = { ...prev }
+
+        results.forEach(res => {
+          if (!Object.prototype.hasOwnProperty.call(next, res.auditId)) {
+            next[res.auditId] = res.items
+            changed = true
+          }
+        })
+
+        return changed ? next : prev
+      })
+    }).finally(() => {
+      summaryEntries.forEach(entry => auditItemsInFlightRef.current.delete(entry.AuditId))
+    })
+  }, [entries, pagedEntries, bulkChildMap])
 
   async function handleConfirmRollback() {
     if (!rollbackConfirmEntry) return
