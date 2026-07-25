@@ -712,14 +712,26 @@ export async function deleteRecord(configUuid: string, tableName: string, record
 }
 
 export async function getAuditLog(tableName: string): Promise<AuditLogEntry[]> {
-  const res = await api.get('/AuditLog', {
-    params: {
-      'sap-client': SAP_CLIENT,
-      '$filter': `TableName eq '${tableName}'`,
-      '$orderby': 'ChangedAt desc'
-    }
-  })
-  return res.data.value || []
+  try {
+    const res = await api.get('/AuditLog', {
+      params: {
+        'sap-client': SAP_CLIENT,
+        '$filter': `TableName eq '${tableName}'`,
+        '$expand': '_Items',
+        '$orderby': 'ChangedAt desc'
+      }
+    })
+    return res.data.value || []
+  } catch {
+    const res = await api.get('/AuditLog', {
+      params: {
+        'sap-client': SAP_CLIENT,
+        '$filter': `TableName eq '${tableName}'`,
+        '$orderby': 'ChangedAt desc'
+      }
+    })
+    return res.data.value || []
+  }
 }
 
 export async function getAuditItems(auditId: string): Promise<AuditItemEntry[]> {

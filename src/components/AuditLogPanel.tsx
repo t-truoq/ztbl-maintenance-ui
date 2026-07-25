@@ -721,6 +721,17 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
       auditItemsInFlightRef.current.clear()
       const result = await getAuditLog(tableName)
       setEntries(result)
+
+      const initialMap: Record<string, AuditItemEntry[]> = {}
+      result.forEach(entry => {
+        const items = (entry as any)._Items?.value || (entry as any)._Items
+        if (Array.isArray(items) && items.length > 0) {
+          initialMap[entry.AuditId] = items
+        }
+      })
+      if (Object.keys(initialMap).length > 0) {
+        setBulkChildMap(initialMap)
+      }
     } catch (e: any) {
       setError(getFriendlyErrorMessage(e))
       setEntries([])
