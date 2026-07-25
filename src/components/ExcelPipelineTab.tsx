@@ -54,6 +54,11 @@ const columns = [
   { key: 'message', label: 'Message', width: '240px' }
 ] as const
 
+const MAIN_DIFF_ROW_LIMIT = 200
+const PREVIEW_DIFF_ROW_LIMIT = 500
+const STORED_UNCHANGED_ROW_LIMIT = 200
+const MAX_UPLOAD_FILE_BYTES = 12 * 1024 * 1024
+
 const DIFF_STATUS_META: Record<string, { state: 'Positive' | 'Critical' | 'Negative' | 'Information' | 'None'; className: string }> = {
   NEW: { state: 'Positive', className: 'excel-diff-row--new' },
   CHANGED: { state: 'Critical', className: 'excel-diff-row--changed' },
@@ -71,6 +76,7 @@ export default function ExcelPipelineTab({
   onImported
 }: ExcelPipelineTabProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const uploadInFlightRef = useRef(false)
   const [busyStep, setBusyStep] = useState<BusyStep>('')
   const [diffRows, setDiffRows] = useState<ExcelDiffRow[]>([])
   const [feedback, setFeedback] = useState<ExcelFeedback | null>(null)
@@ -150,18 +156,28 @@ export default function ExcelPipelineTab({
   }
 
   async function processFile(file: File) {
+    if (uploadInFlightRef.current) return
     if (!canUpload) {
       setError('You do not have permission to upload data.')
       return
     }
+    uploadInFlightRef.current = true
     resetFeedback()
     setDiffRows([])
     setSelectedFileName(file.name)
     setBusyStep('upload')
 
     try {
+      await waitForBrowserPaint()
+
       if (!isExcelFilenameAllowed(file.name, tableName)) {
         throw new Error(`Please select ${tableName}.xlsx, ${tableName}_TEMPLATE.xlsx, or a browser-numbered copy.`)
+      }
+
+      if (file.size > MAX_UPLOAD_FILE_BYTES) {
+        throw new Error(
+          `The selected workbook is too large (${formatFileSize(file.size)}). Please upload a file smaller than ${formatFileSize(MAX_UPLOAD_FILE_BYTES)}.`
+        )
       }
 
       const base64 = await fileToBase64(file)
@@ -172,12 +188,12 @@ export default function ExcelPipelineTab({
       })
 
       const rows = await uploadExcel(tableName, base64)
-      setDiffRows(rows)
       const commitCount = filterDiffForCommit(rows, tableName).length
       const visibleCount = rows.filter(row => !(row.row_no === 0 || row.status === 'INFO')).length
       const errorCount = rows.filter(row => row.status === 'ERROR').length
       const warningCount = rows.filter(row => row.status === 'WARNING').length
       const unchangedCount = rows.filter(row => row.status === 'UNCHANGED').length
+      setDiffRows(compactRowsForUi(rows))
       if (visibleCount > 0 && unchangedCount === visibleCount && commitCount === 0 && errorCount === 0) {
         setFeedback({
           text: 'No changes detected. The uploaded file matches the current table data.',
@@ -199,7 +215,6 @@ export default function ExcelPipelineTab({
           design: 'Information'
         })
       }
-      setDiffDialogOpen(true)
       console.debug('[ExcelPipeline] upload completed', {
         tableName,
         rows: rows.length,
@@ -210,6 +225,7 @@ export default function ExcelPipelineTab({
       console.error('[ExcelPipeline] upload failed', e)
       setError(msg)
     } finally {
+      uploadInFlightRef.current = false
       setBusyStep('')
     }
   }
@@ -218,7 +234,20 @@ export default function ExcelPipelineTab({
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
-    await processFile(file)
+    window.setTimeout(() => {
+      void processFile(file)
+    }, 0)
+  }
+
+  function openFilePicker() {
+    if (busy || !canUpload || uploadInFlightRef.current) return
+    fileInputRef.current?.click()
+  }
+
+  function handleBrowseClick(event: React.MouseEvent<HTMLElement>) {
+    event?.preventDefault()
+    event?.stopPropagation()
+    openFilePicker()
   }
 
   function handleDrop(event: React.DragEvent<HTMLDivElement>) {
@@ -267,7 +296,8 @@ export default function ExcelPipelineTab({
   }
 
   const busy = !!busyStep
-  const canConfirm = canUpload && commitRows.length > 0 && errorRows.length === 0 && !busy
+  const canReview = visibleRows.length > 0 && !busy && !confirmResult
+  const canConfirm = canUpload && commitRows.length > 0 && errorRows.length === 0 && !busy && !confirmResult
   const noChangesDetected = visibleRows.length > 0 && commitRows.length === 0 && errorRows.length === 0
   const confirmLabel = noChangesDetected ? 'Nothing to Import' : `Confirm Import (${commitRows.length})`
 
@@ -303,7 +333,7 @@ export default function ExcelPipelineTab({
           <Button
             design="Emphasized"
             icon={'accept' as any}
-            disabled={!canConfirm}
+            disabled={!canReview}
             onClick={() => setDiffDialogOpen(true)}
           >
             Review & Confirm
@@ -344,10 +374,9 @@ export default function ExcelPipelineTab({
           tabIndex={0}
           onKeyDown={event => {
             if ((event.key === 'Enter' || event.key === ' ') && !busy && canUpload) {
-              fileInputRef.current?.click()
+              openFilePicker()
             }
           }}
-          onClick={() => !busy && canUpload && fileInputRef.current?.click()}
         >
           <Icon name="upload-to-cloud" className="excel-dropzone-icon" />
           <div className="excel-dropzone-text">
@@ -356,7 +385,12 @@ export default function ExcelPipelineTab({
               Drop an .xlsx file here or click to browse. Use the exported data file for the cleanest import.
             </Text>
           </div>
-          <Button design="Transparent" icon={'upload' as any} disabled={busy || !canUpload}>
+          <Button
+            design="Transparent"
+            icon={'upload' as any}
+            disabled={busy || !canUpload}
+            onClick={handleBrowseClick}
+          >
             Browse
           </Button>
         </div>
@@ -420,6 +454,7 @@ export default function ExcelPipelineTab({
         columnsStyle={columnsStyle}
         totalTableWidth={totalTableWidth}
         statusState={statusState}
+        rowLimit={MAIN_DIFF_ROW_LIMIT}
       />
 
       <ModernModal
@@ -486,6 +521,7 @@ export default function ExcelPipelineTab({
             columnsStyle={columnsStyle}
             totalTableWidth={totalTableWidth}
             statusState={statusState}
+            rowLimit={PREVIEW_DIFF_ROW_LIMIT}
             compact
             highlightStatus
           />
@@ -534,6 +570,30 @@ function busyLabel(step: BusyStep): string {
   if (step === 'upload') return 'Uploading and parsing Excel file...'
   if (step === 'confirm') return 'Confirming import...'
   return ''
+}
+
+function waitForBrowserPaint(): Promise<void> {
+  return new Promise(resolve => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => resolve())
+    })
+  })
+}
+
+function compactRowsForUi(rows: ExcelDiffRow[]): ExcelDiffRow[] {
+  let unchangedCount = 0
+
+  return rows.filter(row => {
+    if (normalizeDiffStatus(row.status) !== 'UNCHANGED') return true
+    unchangedCount += 1
+    return unchangedCount <= STORED_UNCHANGED_ROW_LIMIT
+  })
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  if (bytes >= 1024) return `${Math.ceil(bytes / 1024)} KB`
+  return `${bytes} bytes`
 }
 
 function buildConfirmFeedbackText(result: ExcelConfirmResult): string {
@@ -622,6 +682,7 @@ function buildParseSummary(infoRows: ExcelDiffRow[]): string {
 function ExcelImportResultSummary({ result }: { result: ExcelConfirmResult | null }) {
   const parsed = parseImportResultMessage(result?.message || '')
   const hasErrors = isExcelConfirmFailure(result)
+  const isPlainSuccess = !hasErrors && !parsed.approvalId
   const statusState = hasErrors ? 'Negative' : parsed.approvalId ? 'Information' : 'Positive'
   const statusText = hasErrors
     ? 'Import failed'
@@ -635,6 +696,43 @@ function ExcelImportResultSummary({ result }: { result: ExcelConfirmResult | nul
     { label: 'Skipped', value: result?.skipped_count ?? 0, accent: '#5b738b' },
     { label: 'Errors', value: result?.error_count ?? 0, accent: '#bb0000' }
   ]
+
+  if (isPlainSuccess) {
+    return (
+      <div
+        className="excel-result-panel"
+        style={{
+          minHeight: '220px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '28px',
+          alignItems: 'center',
+          justifyContent: 'center',
+          textAlign: 'center'
+        }}
+      >
+        <Title
+          level="H3"
+          style={{
+            color: 'var(--sapPositiveTextColor, #107e3e)',
+            fontSize: '2rem',
+            lineHeight: '2.5rem',
+            fontWeight: 700
+          }}
+        >
+          Import completed
+        </Title>
+        <div className="excel-result-count-grid" style={{ width: '100%' }}>
+          {countItems.map(item => (
+            <div key={item.label} className="excel-result-count" style={{ borderLeftColor: item.accent }}>
+              <span className="excel-result-count-label">{item.label}</span>
+              <span className="excel-result-count-value">{item.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="excel-result-panel">
@@ -944,6 +1042,7 @@ function DiffTable({
   columnsStyle,
   totalTableWidth,
   statusState,
+  rowLimit,
   compact = false,
   highlightStatus = false
 }: {
@@ -951,9 +1050,14 @@ function DiffTable({
   columnsStyle: string
   totalTableWidth: number
   statusState: (status: string) => 'Positive' | 'Critical' | 'Negative' | 'Information' | 'None'
+  rowLimit?: number
   compact?: boolean
   highlightStatus?: boolean
 }) {
+  const displayedRows = rowLimit && rows.length > rowLimit
+    ? rows.slice(0, rowLimit)
+    : rows
+
   return (
     <div
       className={compact ? 'excel-diff-table-scroll' : undefined}
@@ -967,6 +1071,11 @@ function DiffTable({
         scrollbarGutter: compact ? 'stable both-edges' : undefined
       }}
     >
+      {rowLimit && rows.length > rowLimit && (
+        <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '8px' }}>
+          Showing first {rowLimit} of {rows.length} rows. Import counts and confirmation still use all rows.
+        </MessageStrip>
+      )}
       <Table
         overflowMode="Scroll"
         style={{ minWidth: `${totalTableWidth}px`, width: '100%' }}
@@ -995,7 +1104,7 @@ function DiffTable({
             </TableCell>
           </TableRow>
         ) : (
-          rows.map((row, index) => (
+          displayedRows.map((row, index) => (
             <TableRow
               key={row.id || `${row.row_no}-${row.record_key}-${row.field_name}-${index}`}
               className={highlightStatus ? diffRowClass(row.status) : undefined}
