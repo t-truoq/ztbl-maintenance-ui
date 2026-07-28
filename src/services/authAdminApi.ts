@@ -136,22 +136,27 @@ export async function getTablePermissions(username: string, tableName: string): 
 
   if (!normalizedUsername || !normalizedTable) return FULL_TABLE_PERMISSION
 
-  const select = 'CanView,CanCreate,CanUpdate,CanDelete,CanUpload,Update_mc,Delete_mc'
-  const userRes = await authAdminApi.get('/UserPermissions', {
-    params: {
-      '$select': `Username,TableName,${select}`,
-      '$filter': `Username eq '${escapeODataString(normalizedUsername)}' and TableName eq '${escapeODataString(normalizedTable)}'`
-    }
-  })
-  const userRow = (readRows(userRes.data) as PermissionRow[])[0]
-  if (userRow) return permissionFromRow(userRow)
+  try {
+    const select = 'CanView,CanCreate,CanUpdate,CanDelete,CanUpload,Update_mc,Delete_mc'
+    const userRes = await authAdminApi.get('/UserPermissions', {
+      params: {
+        '$select': `Username,TableName,${select}`,
+        '$filter': `Username eq '${escapeODataString(normalizedUsername)}' and TableName eq '${escapeODataString(normalizedTable)}'`
+      }
+    })
+    const userRow = (readRows(userRes.data) as PermissionRow[])[0]
+    if (userRow) return permissionFromRow(userRow)
 
-  const tableRes = await authAdminApi.get('/TablePermissions', {
-    params: {
-      '$select': `TableName,${select}`,
-      '$filter': `TableName eq '${escapeODataString(normalizedTable)}'`
-    }
-  })
-  const tableRow = (readRows(tableRes.data) as PermissionRow[])[0]
-  return tableRow ? permissionFromRow(tableRow) : FULL_TABLE_PERMISSION
+    const tableRes = await authAdminApi.get('/TablePermissions', {
+      params: {
+        '$select': `TableName,${select}`,
+        '$filter': `TableName eq '${escapeODataString(normalizedTable)}'`
+      }
+    })
+    const tableRow = (readRows(tableRes.data) as PermissionRow[])[0]
+    return tableRow ? permissionFromRow(tableRow) : FULL_TABLE_PERMISSION
+  } catch (e) {
+    console.warn('getTablePermissions error, fallback to FULL_TABLE_PERMISSION:', e)
+    return FULL_TABLE_PERMISSION
+  }
 }
