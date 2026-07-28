@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { SAP_CLIENT, getCredentials } from './apiClient'
+import { SAP_CLIENT, getCredentials, api } from './apiClient'
 import { isAdminAuthUser, normalizeSapUsername } from '../utils/authz'
 
 export const SAP_AUTH_ADMIN_SERVICE = '/sap/opu/odata/sap/ZSB_AUTH_ADMIN_V2'

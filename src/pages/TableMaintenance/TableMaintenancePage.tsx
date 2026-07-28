@@ -143,8 +143,8 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
 
     const tableNameForPermission = selectedTable.TableName
     Promise.all([
-      isCurrentUserInAdminList(effectiveUsername).catch(() => true),
-      getTablePermissions(effectiveUsername, tableNameForPermission).catch(() => FULL_TABLE_PERMISSION)
+      isCurrentUserInAdminList(effectiveUsername),
+      getTablePermissions(effectiveUsername, tableNameForPermission)
     ])
       .then(([isAdmin, permissions]) => {
         if (!isCancelled) {
