@@ -104,7 +104,8 @@ export async function getActiveAdminUsers(): Promise<string[]> {
 }
 
 export async function isCurrentUserInAdminList(username?: string): Promise<boolean> {
-  const normalizedUsername = normalizeSapUsername(username)
+  const effectiveUser = username || getCredentials()?.username || ''
+  const normalizedUsername = normalizeSapUsername(effectiveUser)
   if (!normalizedUsername) return false
 
   const adminUsers = await getActiveAdminUsers()
@@ -112,7 +113,8 @@ export async function isCurrentUserInAdminList(username?: string): Promise<boole
 }
 
 export async function getTablePermissions(username: string, tableName: string): Promise<TablePermissionState> {
-  const normalizedUsername = normalizeSapUsername(username)
+  const effectiveUser = username || getCredentials()?.username || ''
+  const normalizedUsername = normalizeSapUsername(effectiveUser)
   const normalizedTable = normalizeSapUsername(tableName)
 
   if (!normalizedUsername || !normalizedTable) return FULL_TABLE_PERMISSION

@@ -32,6 +32,7 @@ import OptimisticLockDialog from '../../components/dialogs/OptimisticLockDialog'
 import FKErrorDialog from '../../components/dialogs/FKErrorDialog'
 import ApprovalSuccessDialog from '../../components/dialogs/ApprovalSuccessDialog'
 import { getAiDescription } from '../../services/tableConfigApi'
+import { getCredentials } from '../../services/apiClient'
 import {
   FULL_TABLE_PERMISSION,
   TablePermissionState,
@@ -133,15 +134,17 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
     setTablePermission(PENDING_TABLE_PERMISSION)
     setPermissionLoading(true)
     setPermissionTableName('')
-    if (!username || !selectedTable?.TableName) {
+
+    const effectiveUsername = username || getCredentials()?.username || ''
+    if (!effectiveUsername || !selectedTable?.TableName) {
       setPermissionLoading(false)
       return
     }
 
     const tableNameForPermission = selectedTable.TableName
     Promise.all([
-      isCurrentUserInAdminList(username),
-      getTablePermissions(username, tableNameForPermission)
+      isCurrentUserInAdminList(effectiveUsername),
+      getTablePermissions(effectiveUsername, tableNameForPermission)
     ])
       .then(([isAdmin, permissions]) => {
         if (!isCancelled) {
