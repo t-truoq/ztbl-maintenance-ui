@@ -18,6 +18,7 @@ import {
   buildFieldMetaFromFieldList
 } from '../utils/fieldMeta'
 import { TableConfig, FieldMeta, AuditLogEntry, AuditItemEntry, TableRowData, AiFieldDescription } from '../types'
+import { isYesFlag } from '../utils/tableHelpers'
 import { normalizeAiDescriptions } from '../utils/aiDescriptions'
 
 export function isOptimisticLockError(message: string): boolean {
@@ -126,33 +127,18 @@ export async function getTables(): Promise<TableConfig[]> {
       }
     })
     rows = res.data.value || []
-  } catch (e1: any) {
-    console.warn('getTables IsActiveEntity filter failed, fetching without $filter:', e1?.message)
-    try {
-      const res = await api.get('/TableConfig', {
-        params: {
-          'sap-client': SAP_CLIENT,
-          '$select': selectFields
-        }
-      })
-      rows = res.data.value || []
-    } catch (e2: any) {
-      console.error('getTables all attempts failed:', e2?.message)
-      throw e2
-    }
+  } catch (e: any) {
+    console.warn('getTables IsActiveEntity filter failed, fetching without $filter:', e?.message)
+    const res = await api.get('/TableConfig', {
+      params: {
+        'sap-client': SAP_CLIENT,
+        '$select': selectFields
+      }
+    })
+    rows = res.data.value || []
   }
 
-  const activeRows = rows.filter(row => {
-    const isActiveEntity = row.IsActiveEntity !== false
-    const activeFlag = row.ActiveFlag
-    const isFlagActive =
-      activeFlag === true ||
-      activeFlag === 'X' ||
-      activeFlag === 'x' ||
-      activeFlag === '1' ||
-      String(activeFlag ?? '').trim().toUpperCase() === 'TRUE'
-    return isActiveEntity && isFlagActive
-  })
+  const activeRows = rows.filter(row => row.IsActiveEntity !== false && isYesFlag(row.ActiveFlag))
 
   return Array.from(
     new Map(activeRows.map(row => [normalizeConfigUuid(row.ConfigUuid), {
