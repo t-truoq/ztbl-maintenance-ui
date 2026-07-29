@@ -114,15 +114,52 @@ function parseDomainValuesJson(valuesJson: string): Array<{ value: string; descr
 }
 
 export async function getTables(): Promise<TableConfig[]> {
-  const res = await api.get('/TableConfig', {
-    params: {
-      'sap-client': SAP_CLIENT,
-      '$filter': "IsActiveEntity eq true and ActiveFlag eq 'X'",
-      '$select': 'TableName,Description,ConfigUuid,ActiveFlag,ApprovalRequired,IsActiveEntity'
+  const selectFields = 'TableName,Description,ConfigUuid,ActiveFlag,ApprovalRequired,IsActiveEntity'
+  let rows: TableConfig[] = []
+
+  try {
+    const res = await api.get('/TableConfig', {
+      params: {
+        'sap-client': SAP_CLIENT,
+        '$filter': "ActiveFlag eq 'X'",
+        '$select': selectFields
+      }
+    })
+    rows = res.data.value || []
+  } catch (e1: any) {
+    console.warn('getTables ActiveFlag eq X filter failed, trying IsActiveEntity fallback:', e1?.message)
+    try {
+      const res = await api.get('/TableConfig', {
+        params: {
+          'sap-client': SAP_CLIENT,
+          '$filter': "IsActiveEntity eq true and ActiveFlag eq 'X'",
+          '$select': selectFields
+        }
+      })
+      rows = res.data.value || []
+    } catch (e2: any) {
+      console.warn('getTables IsActiveEntity filter failed, fetching without $filter:', e2?.message)
+      try {
+        const res = await api.get('/TableConfig', {
+          params: {
+            'sap-client': SAP_CLIENT,
+            '$select': selectFields
+          }
+        })
+        rows = res.data.value || []
+      } catch (e3: any) {
+        console.error('getTables all filter attempts failed:', e3?.message)
+        throw e3
+      }
     }
+  }
+
+  const activeRows = rows.filter(row => {
+    const isActiveEntity = row.IsActiveEntity !== false
+    const activeFlag = String(row.ActiveFlag ?? '').trim().toUpperCase()
+    return isActiveEntity && (activeFlag === 'X' || activeFlag === 'TRUE' || activeFlag === '1')
   })
-  const rows: TableConfig[] = res.data.value || []
-  const activeRows = rows.filter(row => row.IsActiveEntity !== false && row.ActiveFlag === 'X')
+
   return Array.from(
     new Map(activeRows.map(row => [normalizeConfigUuid(row.ConfigUuid), {
       ...row,

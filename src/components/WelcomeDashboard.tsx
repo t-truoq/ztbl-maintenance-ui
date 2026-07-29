@@ -10,6 +10,7 @@ import {
   Tag,
 } from '@ui5/webcomponents-react'
 import { TableConfig } from '../types'
+import { isYesFlag } from '../utils/tableHelpers'
 
 interface WelcomeDashboardProps {
   tables: TableConfig[]
@@ -151,7 +152,7 @@ export default function WelcomeDashboard({
           }}
         >
           {tables.map(t => {
-            const requiresApproval = t.ApprovalRequired === 'X'
+            const requiresApproval = isYesFlag(t.ApprovalRequired)
             return (
               <div
                 key={t.ConfigUuid}

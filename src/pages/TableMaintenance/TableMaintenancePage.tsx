@@ -19,7 +19,7 @@ import {
   TableMaintenancePageProps,
 } from './hooks/useTableMaintenance'
 import { initFormValues } from '../../utils/recordHelpers'
-import { formatHeaderLabel } from '../../utils/tableHelpers'
+import { formatHeaderLabel, isYesFlag } from '../../utils/tableHelpers'
 import WelcomeDashboard from '../../components/WelcomeDashboard'
 import DynamicDataTable from '../../components/DynamicDataTable'
 import ExcelPipelineTab from '../../components/ExcelPipelineTab'
@@ -294,7 +294,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
             }}
           />
           <Title level="H4" className="maintenance-table-name">{selectedTable.TableName}</Title>
-          {selectedTable.ApprovalRequired === 'X' && (
+          {isYesFlag(selectedTable.ApprovalRequired) && (
             <Tag colorScheme="6">Approval Required</Tag>
           )}
         </FlexBox>

@@ -12,6 +12,15 @@ export function formatHeaderLabel(f: FieldMeta): string {
   return formatTechnicalFieldName(technicalName)
 }
 
+/**
+ * Normalizes boolean or CHAR(1) SAP flag ('X', 'true', '1') to a boolean.
+ */
+export function isYesFlag(val: unknown): boolean {
+  if (typeof val === 'boolean') return val
+  const s = String(val ?? '').trim().toUpperCase()
+  return s === 'X' || s === 'TRUE' || s === '1' || s === 'YES'
+}
+
 function formatTechnicalFieldName(technicalName: string): string {
   return technicalName
     .toLowerCase()
