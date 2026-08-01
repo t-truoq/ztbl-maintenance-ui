@@ -404,16 +404,13 @@ export async function getDomainValues(configUuid: string, domainName: string, se
       params: { 'sap-client': SAP_CLIENT }
     })
 
-    if (res.data?.error_msg) {
-      console.error('getDomainValues error_msg:', res.data.error_msg)
-      return []
-    }
-
     const options = res.data?.values_json
       ? parseDomainValuesJson(res.data.values_json)
       : []
 
-    setCachedDomainValues(domainName, search, options)
+    if (options.length > 0) {
+      setCachedDomainValues(domainName, search, options)
+    }
     return options
   } catch (e: any) {
     console.error('getDomainValues error:', e.response?.data ?? e.message)
