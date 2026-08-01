@@ -29,7 +29,7 @@ export default function WelcomeDashboard({
   onSelectTable,
   onRefreshTableList,
 }: WelcomeDashboardProps) {
-  const approvalRequiredCount = tables.filter(t => t.ApprovalRequired === 'X').length
+  const approvalRequiredCount = tables.filter(t => isYesFlag(t.ApprovalRequired)).length
 
   return (
     <div
