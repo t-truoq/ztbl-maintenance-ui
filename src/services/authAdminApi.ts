@@ -86,7 +86,7 @@ function permissionFromRow(row: PermissionRow): TablePermissionState {
     canCreate: flagEnabled(row.CanCreate),
     canUpdate: flagEnabled(row.CanUpdate),
     canDelete: flagEnabled(row.CanDelete),
-    canUpload: flagEnabled(row.CanUpload),
+    canUpload: row.CanUpload !== undefined ? flagEnabled(row.CanUpload) : true,
     updateEnabled: row.Update_mc !== false,
     deleteEnabled: row.Delete_mc !== false
   }
@@ -97,7 +97,7 @@ export async function getActiveAdminUsers(): Promise<string[]> {
     const res = await authAdminApi.get('/AuthUsers', {
       params: {
         '$select': 'Username,RoleType,ActiveFlag',
-        '$filter': "ActiveFlag eq 'X' and RoleType eq 'ADMIN'"
+        '$filter': "RoleType eq 'ADMIN'"
       }
     })
 
@@ -137,7 +137,7 @@ export async function getTablePermissions(username: string, tableName: string): 
   if (!normalizedUsername || !normalizedTable) return FULL_TABLE_PERMISSION
 
   try {
-    const select = 'CanView,CanCreate,CanUpdate,CanDelete,CanUpload,Update_mc,Delete_mc'
+    const select = 'CanView,CanCreate,CanUpdate,CanDelete,Update_mc,Delete_mc'
     const userRes = await authAdminApi.get('/UserPermissions', {
       params: {
         '$select': `Username,TableName,${select}`,
