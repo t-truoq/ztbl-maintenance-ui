@@ -79,7 +79,10 @@ function dateInputValue(value?: string): string {
   const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T')
   const date = new Date(normalized)
   if (Number.isNaN(date.getTime())) return ''
-  return date.toISOString().slice(0, 10)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function splitAuditParts(value: string): Array<{ key: string; value: string }> {
