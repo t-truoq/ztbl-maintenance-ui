@@ -103,14 +103,19 @@ export default function DynamicDataTable({
     e.stopPropagation()
 
     const startX = e.clientX
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
 
     const onMouseMove = (moveEvent: MouseEvent) => {
+      moveEvent.preventDefault()
       const deltaX = moveEvent.clientX - startX
       const newWidth = Math.max(90, startWidth + deltaX)
       setColumnWidths(prev => ({ ...prev, [technicalName]: newWidth }))
     }
 
     const onMouseUp = () => {
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseup', onMouseUp)
     }
@@ -461,9 +466,19 @@ export default function DynamicDataTable({
       >
         <Table
           overflowMode="Scroll"
-          style={{ minWidth: `${totalTableWidth}px`, width: `${totalTableWidth}px` }}
+          style={{
+            minWidth: `${totalTableWidth}px`,
+            width: `${totalTableWidth}px`,
+            gridTemplateColumns: columnsStyle,
+            ['--ui5-table-grid-columns' as any]: columnsStyle
+          }}
           headerRow={
-            <TableHeaderRow style={{ gridTemplateColumns: columnsStyle }}>
+            <TableHeaderRow
+              style={{
+                gridTemplateColumns: columnsStyle,
+                ['--ui5-table-grid-columns' as any]: columnsStyle
+              }}
+            >
               <TableHeaderCell minWidth={`${selectionColumnWidth}px`} style={selectionCellStyle}>
                 <CheckBox
                   checked={allVisibleRowsSelected}
@@ -567,7 +582,13 @@ export default function DynamicDataTable({
               </TableRow>
             ) : (
               editedData.map((row, i) => (
-                <TableRow key={i} style={{ gridTemplateColumns: columnsStyle }}>
+                <TableRow
+                  key={i}
+                  style={{
+                    gridTemplateColumns: columnsStyle,
+                    ['--ui5-table-grid-columns' as any]: columnsStyle
+                  }}
+                >
                   <TableCell style={selectionCellStyle}>
                     <CheckBox checked={row._isNew || selectedRowKeys.has(getRowKey(row, i))} disabled />
                   </TableCell>
@@ -658,7 +679,10 @@ export default function DynamicDataTable({
                   if (activeTableLock) return
                   toggleRowSelection(getRowKey(row, i), !selectedRowKeys.has(getRowKey(row, i)))
                 }}
-                style={{ gridTemplateColumns: columnsStyle }}
+                style={{
+                  gridTemplateColumns: columnsStyle,
+                  ['--ui5-table-grid-columns' as any]: columnsStyle
+                }}
               >
                 <TableCell
                   style={selectionCellStyle}
