@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   FlexBox,
   Title,
@@ -29,7 +30,18 @@ export default function WelcomeDashboard({
   onSelectTable,
   onRefreshTableList,
 }: WelcomeDashboardProps) {
+  const [refreshing, setRefreshing] = useState(false)
   const approvalRequiredCount = tables.filter(t => isYesFlag(t.ApprovalRequired)).length
+
+  const handleRefreshConfig = async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      await onRefreshTableList()
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   return (
     <div
@@ -123,8 +135,13 @@ export default function WelcomeDashboard({
             {approvalRequiredCount} table(s) require approval before changes are applied.
           </Text>
         </FlexBox>
-        <Button icon="refresh" design="Transparent" onClick={onRefreshTableList}>
-          Refresh Config
+        <Button
+          icon="refresh"
+          design="Transparent"
+          onClick={handleRefreshConfig}
+          disabled={refreshing}
+        >
+          {refreshing ? 'Refreshing...' : 'Refresh Config'}
         </Button>
       </FlexBox>
 
