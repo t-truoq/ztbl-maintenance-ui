@@ -461,7 +461,7 @@ export default function DynamicDataTable({
       >
         <Table
           overflowMode="Scroll"
-          style={{ minWidth: `${totalTableWidth}px`, width: '100%' }}
+          style={{ minWidth: `${totalTableWidth}px`, width: `${totalTableWidth}px` }}
           headerRow={
             <TableHeaderRow style={{ gridTemplateColumns: columnsStyle }}>
               <TableHeaderCell minWidth={`${selectionColumnWidth}px`} style={selectionCellStyle}>
@@ -579,7 +579,10 @@ export default function DynamicDataTable({
                     return (
                       <TableCell
                         key={name}
+                        width={`${minColWidth}px`}
+                        minWidth={`${minColWidth}px`}
                         style={{
+                          width: `${minColWidth}px`,
                           minWidth: `${minColWidth}px`,
                           overflow: feType === 'date' || feType === 'fk_select' ? 'visible' : undefined,
                         }}
@@ -676,7 +679,15 @@ export default function DynamicDataTable({
                   const singleLine = shouldKeepCellSingleLine(f, val)
 
                   return (
-                    <TableCell key={name} style={{ minWidth: `${minColWidth}px` }}>
+                    <TableCell
+                      key={name}
+                      width={`${minColWidth}px`}
+                      minWidth={`${minColWidth}px`}
+                      style={{
+                        width: `${minColWidth}px`,
+                        minWidth: `${minColWidth}px`,
+                      }}
+                    >
                       <FlexBox alignItems="Center" gap="4px" style={{ width: '100%', minWidth: 0 }}>
                         <Text
                           title={String(val ?? '')}
