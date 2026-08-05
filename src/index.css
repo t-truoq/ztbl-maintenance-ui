@@ -360,6 +360,40 @@ ui5-filter-bar {
   overflow-y: visible;
 }
 
+.column-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease;
+  user-select: none;
+}
+
+.column-resize-handle:hover,
+.column-resize-handle:active {
+  background-color: rgba(0, 112, 242, 0.2);
+}
+
+.column-resize-handle::after {
+  content: '';
+  width: 2px;
+  height: 55%;
+  background-color: #cccccc;
+  border-radius: 1px;
+  transition: background-color 0.15s ease;
+}
+
+.column-resize-handle:hover::after,
+.column-resize-handle:active::after {
+  background-color: #0070f2;
+}
+
 .dynamic-table-bottom-spacer {
   height: max(5rem, env(safe-area-inset-bottom));
   flex: 0 0 auto;

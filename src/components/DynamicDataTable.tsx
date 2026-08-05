@@ -83,6 +83,7 @@ export default function DynamicDataTable({
   const [aiTooltipLoadingField, setAiTooltipLoadingField] = useState('')
   const [sortField, setSortField] = useState<string>('')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | ''>('')
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({})
 
   const handleHeaderSort = (fieldName: string) => {
     if (isEditingTable) return
@@ -95,6 +96,27 @@ export default function DynamicDataTable({
       setSortField('')
       setSortDirection('')
     }
+  }
+
+  const handleResizeStart = (technicalName: string, startWidth: number, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    const startX = e.clientX
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX
+      const newWidth = Math.max(90, startWidth + deltaX)
+      setColumnWidths(prev => ({ ...prev, [technicalName]: newWidth }))
+    }
+
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
   }
 
   const sortedData = useMemo(() => {
@@ -152,10 +174,11 @@ export default function DynamicDataTable({
     const isDate = feType === 'date'
     const isDomain = feType === 'domain' || feType === 'fk_select'
     const hasKeyIcon = f.is_key || f.IsKeyField === 'X'
-    const minColWidth = Math.max(
+    const defaultWidth = Math.max(
       isDate ? 260 : isDomain ? 200 : 150,
       headerLabel.length * 10 + 80 + (hasKeyIcon ? 18 : 0)
     )
+    const minColWidth = columnWidths[technicalName] || defaultWidth
     return { field: f, minColWidth, headerLabel, technicalName }
   })
 
@@ -186,6 +209,7 @@ export default function DynamicDataTable({
   useEffect(() => {
     setSortField('')
     setSortDirection('')
+    setColumnWidths({})
     setSelectedRowKeys(new Set())
     setActiveAiTooltip(null)
   }, [selectedTable.ConfigUuid])
@@ -455,7 +479,7 @@ export default function DynamicDataTable({
                     key={technicalName}
                     width={`${minColWidth}px`}
                     minWidth={`${minColWidth}px`}
-                    style={{ minWidth: `${minColWidth}px` }}
+                    style={{ minWidth: `${minColWidth}px`, position: 'relative' }}
                   >
                     <FlexBox
                       alignItems="Center"
@@ -464,7 +488,8 @@ export default function DynamicDataTable({
                         width: '100%',
                         minWidth: 0,
                         cursor: isEditingTable ? 'default' : 'pointer',
-                        userSelect: 'none'
+                        userSelect: 'none',
+                        paddingRight: '12px'
                       }}
                       onClick={() => handleHeaderSort(technicalName)}
                       title={`Click to sort by ${headerLabel} (${technicalName})`}
@@ -513,6 +538,12 @@ export default function DynamicDataTable({
                         </button>
                       )}
                     </FlexBox>
+                    <div
+                      className="column-resize-handle"
+                      title="Kéo để điều chỉnh độ rộng cột"
+                      onMouseDown={(e) => handleResizeStart(technicalName, minColWidth, e)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
                   </TableHeaderCell>
                 )
               })}
