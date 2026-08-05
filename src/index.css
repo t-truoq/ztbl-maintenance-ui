@@ -360,6 +360,12 @@ ui5-filter-bar {
   overflow-y: visible;
 }
 
+.dynamic-table-scroll ui5-table-header-row,
+.dynamic-table-scroll ui5-table-row {
+  display: grid !important;
+  grid-template-columns: var(--dynamic-table-grid-columns) !important;
+}
+
 .column-resize-handle-inline {
   margin-left: auto;
   display: flex;

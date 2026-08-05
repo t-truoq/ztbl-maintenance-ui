@@ -462,6 +462,7 @@ export default function DynamicDataTable({
       {/* ── Scrollable Table Wrapper ───────────────────────────────────── */}
       <div
         className={`dynamic-table-scroll${isEditingTable ? ' dynamic-table-scroll--editing' : ''}`}
+        style={{ ['--dynamic-table-grid-columns' as any]: columnsStyle }}
         onScroll={() => setActiveAiTooltip(null)}
       >
         <Table
