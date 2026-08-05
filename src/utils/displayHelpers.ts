@@ -21,7 +21,6 @@ export function formatCellValue(field?: FieldMeta | null, value?: any): string {
 
   const hex = str.replace(/-/g, '')
   if (feType === 'uuid' || fieldType === 'UUID' || /^[0-9A-F]{32}$/i.test(hex)) {
-    if (hex.length >= 8) return `${hex.substring(0, 8)}...`
     return str
   }
 
