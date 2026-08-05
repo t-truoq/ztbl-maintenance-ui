@@ -1192,11 +1192,32 @@ ui5-toast {
   background: #fff8f8;
 }
 
-.excel-record-delete-label,
-.excel-record-delete-action-label {
+.excel-record-delete-label {
   color: #8b0000;
   font-size: 0.75rem;
   font-weight: 700;
+}
+
+.excel-record-delete-action-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  color: #a90000;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.excel-record-delete-action-icon {
+  flex: 0 0 auto;
+  color: currentColor;
+}
+
+.excel-record-delete-action-description {
+  color: var(--sapTextColor, #32363a);
+  font-size: 0.875rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .excel-record-delete-body {

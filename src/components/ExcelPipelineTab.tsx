@@ -1041,7 +1041,7 @@ function DiffRecordGroupView({
         </div>
         <span className="excel-record-group-count">
           {isDelete
-            ? `Record will be deleted · Excel row ${sourceRows}`
+            ? `Excel row ${sourceRows}`
             : `${fieldCount} field${fieldCount === 1 ? '' : 's'} · Excel row ${sourceRows}`}
         </span>
       </header>
@@ -1111,9 +1111,13 @@ function DeletedRecordGroup({ row }: { row: ExcelDiffRow }) {
       <div className="excel-record-delete-body">
         <DeletedRecordSummary value={row.old_value} />
         <div className="excel-record-delete-action">
-          <span className="excel-record-delete-action-label">New Value</span>
-          <Text className="excel-diff-cell-text">Removed from Excel</Text>
-          <DiffMessage row={row} />
+          <div className="excel-record-delete-action-title">
+            <Icon name="delete" className="excel-record-delete-action-icon" />
+            <span>Record will be deleted</span>
+          </div>
+          <Text className="excel-record-delete-action-description">
+            This record was removed from the uploaded Excel file.
+          </Text>
         </div>
       </div>
     </div>
@@ -1150,7 +1154,9 @@ function formatDiffRecordKey(value: string): string {
 
 function DiffValue({ row, valueKind }: { row: ExcelDiffRow; valueKind: 'old' | 'new' }) {
   if (isDeleteDiffStatus(row.status)) {
-    if (valueKind === 'new') return <Text className="excel-diff-cell-text">Removed from Excel</Text>
+    if (valueKind === 'new') {
+      return <Text className="excel-diff-cell-text">This record was removed from the uploaded Excel file.</Text>
+    }
     return <DeletedRecordSummary value={row.old_value} />
   }
 
