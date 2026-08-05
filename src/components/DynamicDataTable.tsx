@@ -81,6 +81,51 @@ export default function DynamicDataTable({
     y: number
   } | null>(null)
   const [aiTooltipLoadingField, setAiTooltipLoadingField] = useState('')
+  const [sortField, setSortField] = useState<string>('')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | ''>('')
+
+  const handleHeaderSort = (fieldName: string) => {
+    if (isEditingTable) return
+    if (sortField !== fieldName) {
+      setSortField(fieldName)
+      setSortDirection('asc')
+    } else if (sortDirection === 'asc') {
+      setSortDirection('desc')
+    } else {
+      setSortField('')
+      setSortDirection('')
+    }
+  }
+
+  const sortedData = useMemo(() => {
+    if (!sortField || !sortDirection) return filteredData
+
+    const fieldMeta = fields.find(f => (f.field_name || f.FieldName) === sortField)
+    const feType = fieldMeta ? (fieldMeta.fe_type || fieldMeta.FeType || '').toLowerCase() : ''
+
+    return [...filteredData].sort((a, b) => {
+      const valA = a[sortField]
+      const valB = b[sortField]
+
+      if (valA == null || valA === '') return sortDirection === 'asc' ? 1 : -1
+      if (valB == null || valB === '') return sortDirection === 'asc' ? -1 : 1
+
+      let cmp = 0
+      if (feType === 'number' || feType === 'decimal' || feType === 'integer') {
+        const numA = Number(valA)
+        const numB = Number(valB)
+        cmp = isNaN(numA) || isNaN(numB) ? String(valA).localeCompare(String(valB)) : numA - numB
+      } else if (feType === 'date') {
+        const dateA = new Date(String(valA)).getTime()
+        const dateB = new Date(String(valB)).getTime()
+        cmp = isNaN(dateA) || isNaN(dateB) ? String(valA).localeCompare(String(valB)) : dateA - dateB
+      } else {
+        cmp = String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' })
+      }
+
+      return sortDirection === 'asc' ? cmp : -cmp
+    })
+  }, [filteredData, sortField, sortDirection, fields])
 
   const getDuplicateHeaderLabel = (headerLabel: string, technicalName: string) => {
     const normalizedName = technicalName.toUpperCase()
@@ -124,8 +169,8 @@ export default function DynamicDataTable({
   }
 
   const filteredRowKeys = useMemo(
-    () => filteredData.map((row, index) => getRowKey(row, index)),
-    [filteredData, fields]
+    () => sortedData.map((row, index) => getRowKey(row, index)),
+    [sortedData, fields]
   )
 
   useEffect(() => {
@@ -139,6 +184,8 @@ export default function DynamicDataTable({
   }, [filteredRowKeys, isEditingTable])
 
   useEffect(() => {
+    setSortField('')
+    setSortDirection('')
     setSelectedRowKeys(new Set())
     setActiveAiTooltip(null)
   }, [selectedTable.ConfigUuid])
@@ -161,7 +208,7 @@ export default function DynamicDataTable({
   }, [activeAiTooltip])
 
   const selectedRowCount = selectedRowKeys.size
-  const selectedRows = filteredData.filter((row, index) => selectedRowKeys.has(getRowKey(row, index)))
+  const selectedRows = sortedData.filter((row, index) => selectedRowKeys.has(getRowKey(row, index)))
   const hasNewRows = isEditingTable && editedData.some(row => row._isNew)
   const allVisibleRowsSelected =
     filteredRowKeys.length > 0 && filteredRowKeys.every(key => selectedRowKeys.has(key))
@@ -402,6 +449,7 @@ export default function DynamicDataTable({
               </TableHeaderCell>
               {fieldsWithWidths.map(({ field: f, minColWidth, headerLabel }) => {
                 const technicalName = f.field_name || f.FieldName
+                const isSorted = sortField === technicalName
                 return (
                   <TableHeaderCell
                     key={technicalName}
@@ -409,14 +457,27 @@ export default function DynamicDataTable({
                     minWidth={`${minColWidth}px`}
                     style={{ minWidth: `${minColWidth}px` }}
                   >
-                    <FlexBox alignItems="Center" gap="5px" style={{ width: '100%', minWidth: 0 }}>
+                    <FlexBox
+                      alignItems="Center"
+                      gap="5px"
+                      style={{
+                        width: '100%',
+                        minWidth: 0,
+                        cursor: isEditingTable ? 'default' : 'pointer',
+                        userSelect: 'none'
+                      }}
+                      onClick={() => handleHeaderSort(technicalName)}
+                      title={`Click to sort by ${headerLabel} (${technicalName})`}
+                    >
                       <Label
-                        title={`${headerLabel} (${technicalName})`}
                         style={{
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           minWidth: 0,
+                          cursor: isEditingTable ? 'default' : 'pointer',
+                          fontWeight: isSorted ? 'bold' : undefined,
+                          color: isSorted ? '#0070f2' : undefined
                         }}
                       >
                         {headerLabel}
@@ -427,12 +488,26 @@ export default function DynamicDataTable({
                           style={{ minWidth: '12px', width: '12px', height: '12px', color: '#e09d00' }}
                         />
                       )}
+                      {isSorted && sortDirection ? (
+                        <Icon
+                          name={sortDirection === 'asc' ? 'sort-ascending' : 'sort-descending'}
+                          style={{ minWidth: '14px', width: '14px', height: '14px', color: '#0070f2' }}
+                        />
+                      ) : (
+                        <Icon
+                          name="sort"
+                          style={{ minWidth: '12px', width: '12px', height: '12px', color: '#8c8c8c', opacity: 0.3 }}
+                        />
+                      )}
                       {onRequestAiDescriptions && (
                         <button
                           type="button"
                           className="ai-field-tooltip-button"
                           aria-label={`Show AI description for ${headerLabel}`}
-                          onClick={(event) => openAiTooltip(technicalName, headerLabel, event)}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            openAiTooltip(technicalName, headerLabel, event)
+                          }}
                         >
                           ?
                         </button>
@@ -530,7 +605,7 @@ export default function DynamicDataTable({
                 </TableRow>
               ))
             )
-          ) : filteredData.length === 0 ? (
+          ) : sortedData.length === 0 ? (
             /* ── Read-only empty state ────────────────────────────────── */
             <TableRow>
               <TableCell {...({ colSpan: tableColumnCount } as any)}>
@@ -539,7 +614,7 @@ export default function DynamicDataTable({
             </TableRow>
           ) : (
             /* ── Read-only rows ───────────────────────────────────────── */
-            filteredData.map((row, i) => (
+            sortedData.map((row, i) => (
               <TableRow
                 key={i}
                 interactive={!activeTableLock}
