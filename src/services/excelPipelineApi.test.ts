@@ -110,15 +110,30 @@ describe('excelPipelineApi diff helpers', () => {
       id: 'X',
       inserted_count: 0,
       updated_count: 1,
+      deleted_count: 2,
       unchanged_count: 0,
       skipped_count: 0,
       error_count: 0,
       message: 'Row 8: Request submitted for approval (ID: 8B95F36A4F271FE19EC0D1524746A2C5); \u0110\u00e3 g\u1eedi duy\u1ec7t: C=0, U=1, E=0. Ch\u1edd Approve tr\u00ean UI.'
     })
 
+    expect(result.deleted_count).toBe(2)
     expect(result.message).toBe(
       'Row 8: Approval request submitted (ID: 8B95F36A4F271FE19EC0D1524746A2C5). Submitted for approval: created 0, updated 1, errors 0. Waiting for approval in the UI.'
     )
+  })
+
+  it('does not treat a successful delete as an all-skipped import', () => {
+    expect(isExcelConfirmFailure({
+      id: 'X',
+      inserted_count: 0,
+      updated_count: 0,
+      deleted_count: 1,
+      unchanged_count: 0,
+      skipped_count: 1,
+      error_count: 0,
+      message: 'Done'
+    })).toBe(false)
   })
 
   it('marks no-valid-row confirm results as failures and translates skipped approval locks', () => {
@@ -126,6 +141,7 @@ describe('excelPipelineApi diff helpers', () => {
       id: 'X',
       inserted_count: 0,
       updated_count: 0,
+      deleted_count: 0,
       unchanged_count: 0,
       skipped_count: 2,
       error_count: 0,

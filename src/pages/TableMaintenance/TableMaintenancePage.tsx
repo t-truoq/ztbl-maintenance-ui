@@ -298,9 +298,6 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
             <Tag colorScheme="6">Approval Required</Tag>
           )}
         </FlexBox>
-        <Text className="maintenance-table-description">
-          {selectedTable.Description || 'Database Table'}
-        </Text>
       </div>
 
       <DynamicPage
