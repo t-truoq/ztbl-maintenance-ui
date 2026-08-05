@@ -360,38 +360,39 @@ ui5-filter-bar {
   overflow-y: visible;
 }
 
-.column-resize-handle {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 8px;
-  cursor: col-resize;
-  z-index: 5;
+.column-resize-handle-inline {
+  margin-left: auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.15s ease;
+  width: 14px;
+  height: 100%;
+  min-height: 22px;
+  cursor: col-resize;
   user-select: none;
-}
-
-.column-resize-handle:hover,
-.column-resize-handle:active {
-  background-color: rgba(0, 112, 242, 0.2);
-}
-
-.column-resize-handle::after {
-  content: '';
-  width: 2px;
-  height: 55%;
-  background-color: #cccccc;
-  border-radius: 1px;
+  padding: 0 2px;
+  border-radius: 3px;
   transition: background-color 0.15s ease;
+  flex-shrink: 0;
 }
 
-.column-resize-handle:hover::after,
-.column-resize-handle:active::after {
+.column-resize-handle-inline:hover,
+.column-resize-handle-inline:active {
+  background-color: rgba(0, 112, 242, 0.15);
+}
+
+.column-resize-bar {
+  width: 2px;
+  height: 14px;
+  background-color: #a0aab4;
+  border-radius: 1px;
+  transition: background-color 0.15s ease, width 0.15s ease;
+}
+
+.column-resize-handle-inline:hover .column-resize-bar,
+.column-resize-handle-inline:active .column-resize-bar {
   background-color: #0070f2;
+  width: 3px;
 }
 
 .dynamic-table-bottom-spacer {

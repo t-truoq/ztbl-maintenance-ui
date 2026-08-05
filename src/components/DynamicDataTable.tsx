@@ -479,17 +479,16 @@ export default function DynamicDataTable({
                     key={technicalName}
                     width={`${minColWidth}px`}
                     minWidth={`${minColWidth}px`}
-                    style={{ minWidth: `${minColWidth}px`, position: 'relative' }}
+                    style={{ minWidth: `${minColWidth}px` }}
                   >
                     <FlexBox
                       alignItems="Center"
-                      gap="5px"
+                      gap="4px"
                       style={{
                         width: '100%',
                         minWidth: 0,
                         cursor: isEditingTable ? 'default' : 'pointer',
-                        userSelect: 'none',
-                        paddingRight: '12px'
+                        userSelect: 'none'
                       }}
                       onClick={() => handleHeaderSort(technicalName)}
                       title={`Click to sort by ${headerLabel} (${technicalName})`}
@@ -537,13 +536,16 @@ export default function DynamicDataTable({
                           ?
                         </button>
                       )}
+                      {/* Visible Column Resize Drag Handle */}
+                      <div
+                        className="column-resize-handle-inline"
+                        title="Kéo để thay đổi độ rộng cột"
+                        onMouseDown={(e) => handleResizeStart(technicalName, minColWidth, e)}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="column-resize-bar" />
+                      </div>
                     </FlexBox>
-                    <div
-                      className="column-resize-handle"
-                      title="Kéo để điều chỉnh độ rộng cột"
-                      onMouseDown={(e) => handleResizeStart(technicalName, minColWidth, e)}
-                      onClick={(e) => e.stopPropagation()}
-                    />
                   </TableHeaderCell>
                 )
               })}
