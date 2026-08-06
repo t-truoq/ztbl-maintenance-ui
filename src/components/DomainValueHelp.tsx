@@ -177,11 +177,12 @@ export default function DomainValueHelp({
         {loading && <BusyIndicator active size="M" />}
         {!loading && (
           <Table
-            style={{ maxHeight: '320px' }}
+            className="value-help-table"
+            style={{ width: '100%', maxHeight: '320px' }}
             headerRow={
               <TableHeaderRow>
-                <TableHeaderCell minWidth="120px"><Label>Value</Label></TableHeaderCell>
-                <TableHeaderCell minWidth="200px"><Label>Description</Label></TableHeaderCell>
+                <TableHeaderCell width="240px" minWidth="240px"><Label>Value</Label></TableHeaderCell>
+                <TableHeaderCell width="1fr" minWidth="240px"><Label>Description</Label></TableHeaderCell>
               </TableHeaderRow>
             }
           >

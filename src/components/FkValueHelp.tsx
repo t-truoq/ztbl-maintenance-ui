@@ -200,11 +200,12 @@ export default function FkValueHelp({
           style={{ width: '100%', marginBottom: '0.75rem' }}
         />
         <Table
-          style={{ maxHeight: '360px' }}
+          className="value-help-table"
+          style={{ width: '100%', maxHeight: '360px' }}
           headerRow={
             <TableHeaderRow>
-              <TableHeaderCell minWidth="180px"><Label>Value</Label></TableHeaderCell>
-              <TableHeaderCell minWidth="240px"><Label>Description</Label></TableHeaderCell>
+              <TableHeaderCell width="240px" minWidth="240px"><Label>Value</Label></TableHeaderCell>
+              <TableHeaderCell width="1fr" minWidth="240px"><Label>Description</Label></TableHeaderCell>
             </TableHeaderRow>
           }
         >

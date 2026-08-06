@@ -366,6 +366,14 @@ ui5-filter-bar {
   grid-template-columns: var(--dynamic-table-grid-columns) !important;
 }
 
+ui5-dialog ui5-table-header-row,
+ui5-dialog ui5-table-row,
+.value-help-table ui5-table-header-row,
+.value-help-table ui5-table-row {
+  display: grid !important;
+  grid-template-columns: var(--value-help-grid-columns, minmax(240px, 1fr) minmax(240px, 1.5fr)) !important;
+}
+
 .column-resize-handle-inline {
   margin-left: auto;
   display: flex;
