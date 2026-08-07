@@ -16,9 +16,18 @@ interface CellEditControlProps {
 }
 
 /**
- * Renders the appropriate edit control for a single table cell
- * based on the field's fe_type (date, boolean, domain, text).
- * Falls back to a read-only Text display for key/system-generated fields.
+ * ===================================================================================
+ * 🧩 DYNAMIC METADATA ENGINE & INLINE EDIT CONTROL (SINH LINH KIỆN NHẬP LIỆU ĐỘNG)
+ * ===================================================================================
+ * Component này nhận vào thuộc tính 'fe_type' của trường dữ liệu (được phân tích từ
+ * module fieldMeta.ts) và tự động quyết định sinh ra Control UI tương ứng:
+ * 
+ *  1. feType === 'date'      => Render UI5 <DatePicker /> (Định dạng YYYY-MM-DD)
+ *  2. feType === 'boolean'   => Render UI5 <CheckBox /> (Giá trị 'X' hoặc '')
+ *  3. feType === 'domain'    => Render Hộp thoại Value Help chọn giá trị cố định Domain
+ *  4. feType === 'fk_select' => Render Hộp thoại Search Help chọn Khóa ngoại Parent
+ *  5. Mặc định               => Render UI5 <Input /> kèm Real-time Validation Error
+ * ===================================================================================
  */
 export default function CellEditControl({
   row,
@@ -34,6 +43,7 @@ export default function CellEditControl({
   const isNewRow = !!row._isNew
   const mode = isNewRow ? 'create' : 'edit'
 
+  // Kiếm tra trường bị Read-Only hoặc Khóa chính tự động sinh khi Sửa dòng
   const readonly =
     isFieldReadonly(f, mode) ||
     isSystemGeneratedField(f) ||
@@ -48,8 +58,10 @@ export default function CellEditControl({
   }
 
   const feType = f.fe_type || f.FeType
+  // Lấy câu cảnh báo lỗi Validation thời gian thực của ô hiện tại
   const cellError = inlineErrors[rowIndex]?.[name]
 
+  // [ĐỘNG 1] Render Ô Ngày tháng (Date)
   if (feType === 'date') {
     const dateValue = val ? String(val).substring(0, 10) : ''
     return (
@@ -66,6 +78,7 @@ export default function CellEditControl({
     )
   }
 
+  // [ĐỘNG 2] Render Ô Boolean (Checkbox 'X' / '')
   if (feType === 'boolean') {
     const isChecked = val === 'X' || val === true
     return (
@@ -76,6 +89,7 @@ export default function CellEditControl({
     )
   }
 
+  // [ĐỘNG 3] Render Hộp thoại Value Help cho Domain fixed values
   if (feType === 'domain') {
     return (
       <DomainValueHelp
@@ -92,6 +106,7 @@ export default function CellEditControl({
     )
   }
 
+  // [ĐỘNG 4] Render Hộp thoại Search Help cho Khóa ngoại (Parent Foreign Key)
   if (feType === 'fk_select') {
     return (
       <FkValueHelp
@@ -108,6 +123,7 @@ export default function CellEditControl({
     )
   }
 
+  // [ĐỘNG 5] Render Ô nhập liệu Văn bản / Số mặc định kèm Cảnh báo Lỗi Validation
   return (
     <Input
       value={val}

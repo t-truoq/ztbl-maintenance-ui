@@ -459,7 +459,7 @@ export default function DynamicDataTable({
         </div>
       )}
 
-      {/* ── Scrollable Table Wrapper ───────────────────────────────────── */}
+      {/* ── Scrollable Table Wrapper: Đồng bộ CSS Grid với các ô table ── */}
       <div
         className={`dynamic-table-scroll${isEditingTable ? ' dynamic-table-scroll--editing' : ''}`}
         style={{ ['--dynamic-table-grid-columns' as any]: columnsStyle }}
@@ -487,6 +487,9 @@ export default function DynamicDataTable({
                   onChange={(e: any) => toggleAllVisibleRows(e.target.checked)}
                 />
               </TableHeaderCell>
+              {/* ========================================================================= */}
+              {/* 🎨 [DYNAMIC RENDER 1] SINH TIÊU ĐỀ CỘT ĐỘNG (DUYỆT MẢNG FIELDS)         */}
+              {/* ========================================================================= */}
               {fieldsWithWidths.map(({ field: f, minColWidth, headerLabel }) => {
                 const technicalName = f.field_name || f.FieldName
                 const isSorted = sortField === technicalName
@@ -522,12 +525,14 @@ export default function DynamicDataTable({
                       >
                         {headerLabel}
                       </Label>
+                      {/* Thêm biểu tượng Khóa Vàng nếu trường này là Khóa chính (Key Field) */}
                       {(f.is_key || f.IsKeyField === 'X') && (
                         <Icon
                           name="key"
                           style={{ minWidth: '12px', width: '12px', height: '12px', color: '#e09d00' }}
                         />
                       )}
+                      {/* Biểu tượng Sắp xếp Tăng / Giảm dần */}
                       {isSorted && sortDirection ? (
                         <Icon
                           name={sortDirection === 'asc' ? 'sort-ascending' : 'sort-descending'}
@@ -552,7 +557,7 @@ export default function DynamicDataTable({
                           ?
                         </button>
                       )}
-                      {/* Visible Column Resize Drag Handle */}
+                      {/* Thanh gạch đứng kéo dãn độ rộng cột động */}
                       <div
                         className="column-resize-handle-inline"
                         title="Kéo để thay đổi độ rộng cột"
@@ -573,7 +578,9 @@ export default function DynamicDataTable({
             </TableHeaderRow>
           }
         >
-          {/* ── Inline edit mode ──────────────────────────────────────── */}
+          {/* ========================================================================= */}
+          {/* ✏️ [INLINE CUD 1] CHẾ ĐỘ CHỈNH SỬA TẠI CHỖ (INLINE EDIT MODE)            */}
+          {/* ========================================================================= */}
           {isEditingTable ? (
             editedData.length === 0 ? (
               <TableRow>
@@ -593,6 +600,7 @@ export default function DynamicDataTable({
                   <TableCell style={selectionCellStyle}>
                     <CheckBox checked={row._isNew || selectedRowKeys.has(getRowKey(row, i))} disabled />
                   </TableCell>
+                  {/* Duyệt mảng fields để sinh các ô chỉnh sửa/hiển thị tương ứng */}
                   {fieldsWithWidths.map(({ field: f, minColWidth }) => {
                     const name = f.field_name || f.FieldName
                     const feType = f.fe_type || f.FeType

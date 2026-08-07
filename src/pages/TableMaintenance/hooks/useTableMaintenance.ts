@@ -504,6 +504,26 @@ export function useTableMaintenance({
         })
       })
 
+      // =========================================================================
+      // ✏️ [INLINE CUD 2] BẬT NÚT SAVE: XỬ LÝ ĐÓNG GÓI VÀ LỌC BỘ ĐỆM NHÁP
+      // =========================================================================
+      // 1. Lọc ra các dòng MỚI được thêm trên bảng nháp (_isNew === true)
+      const newRows = editedData.filter(r => r._isNew)
+
+      // 2. Lọc ra các dòng ĐÃ TỒN TẠI nhưng có ít nhất 1 ô dữ liệu bị sửa đổi
+      const modifiedRows = editedData.filter(row => {
+        if (row._isNew) return false
+        const key = getRowKey(row, originalData.indexOf(row))
+        const originalRow = originalMap[key]
+        if (!originalRow) return false
+
+        return fields.some(f => {
+          if (isSystemGeneratedField(f)) return false
+          const name = f.field_name || f.FieldName
+          return row[name] !== originalRow[name]
+        })
+      })
+
       if (newRows.length === 0 && modifiedRows.length === 0) {
         showSuccess('No changes to save')
         setIsEditingTable(false)
@@ -512,9 +532,11 @@ export function useTableMaintenance({
       }
 
       const approvalCodes: string[] = []
-
       const successMessages: string[] = []
-      // Creates run sequentially to avoid SAP resource lock conflicts
+
+      // -----------------------------------------------------------------------
+      // [C - CREATE INLINE] Thực thi tạo lần lượt từng dòng mới dưới SAP Backend
+      // -----------------------------------------------------------------------
       for (const row of newRows) {
         const payload = buildFullRecordPayload(allFields, row, null)
         const res = await createRecord(selectedTable.ConfigUuid, selectedTable.TableName, payload)
@@ -525,6 +547,9 @@ export function useTableMaintenance({
         if (code && !approvalCodes.includes(code)) approvalCodes.push(code)
       }
 
+      // -----------------------------------------------------------------------
+      // [U - UPDATE INLINE] Thực thi cập nhật các dòng có thay đổi kèm ETag
+      // -----------------------------------------------------------------------
       if (modifiedRows.length === 1) {
         const row = modifiedRows[0]
         const recordKey = buildKeyRecord(allFields, row)
@@ -546,6 +571,7 @@ export function useTableMaintenance({
         const code = extractApprovalCode(res)
         if (code && !approvalCodes.includes(code)) approvalCodes.push(code)
       } else if (modifiedRows.length > 1) {
+        // Cập nhật lô (Bulk Update) nếu sửa nhiều dòng cùng lúc
         for (const chunk of chunkRecords(modifiedRows)) {
           const records = chunk.map(row => buildInlineUpdateRecord(row))
           const res = await bulkUpdateRecords(
