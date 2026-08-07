@@ -97,7 +97,7 @@ export function buildFieldMetaFromFieldList(
 /** @param {Record<string, any>} raw */
 export function normalizeFieldMetaRow(raw: Record<string, any>): FieldMeta {
   const fieldName = String(raw.field_name ?? raw.FieldName ?? raw.FIELD_NAME ?? '')
-  const feType = normalizeFeType(raw.fe_type ?? raw.FeType ?? raw.FieldType ?? raw.FE_TYPE)
+  let feType = normalizeFeType(raw.fe_type ?? raw.FeType ?? raw.FieldType ?? raw.FE_TYPE)
   const abapType = String(
     raw.abap_type ??
     raw.AbapType ??
@@ -110,6 +110,26 @@ export function normalizeFieldMetaRow(raw: Record<string, any>): FieldMeta {
     raw.INTTYPE ??
     ''
   )
+
+  // Smart refinement for ABAP types (X = Hexadecimal/RAW/UUID, P = Timestamp/Packed Decimal)
+  const upperName = fieldName.toUpperCase()
+  const upperAbap = abapType.toUpperCase()
+  if (feType === 'text' || feType === 'decimal') {
+    if (/_(AT|ON|DATE)$/i.test(upperName) || /CREATED_|CHANGED_|LAST_CHANGED_/i.test(upperName)) {
+      feType = 'date'
+    } else if (upperAbap === 'X') {
+      const len = Number(raw.length ?? raw.Length ?? raw.LENGTH ?? 0)
+      if (len === 1) {
+        feType = 'boolean'
+      } else if (upperName.endsWith('_ID') || upperName.includes('UUID') || upperName === 'GUID' || len >= 16) {
+        feType = 'uuid'
+      } else if (/CAPACITY|QTY|QUANTITY|COUNT|SIZE/i.test(upperName)) {
+        feType = 'integer'
+      }
+    } else if (/CAPACITY|QTY|QUANTITY|COUNT|INTEGER|NUM/i.test(upperName) && (upperAbap === 'P' || upperAbap === 'I' || upperAbap === 'INT4')) {
+      feType = 'integer'
+    }
+  }
   const domainName = String(raw.domain_name ?? raw.DomainName ?? raw.DOMAIN_NAME ?? raw.domname ?? raw.DomName ?? raw.DOMNAME ?? '')
   const rollName = String(raw.rollname ?? raw.RollName ?? raw.ROLLNAME ?? '')
   const isFkKey = isTruthyFlag(raw.is_fk_key) || raw.IsFkKey === 'X' || isTruthyFlag(raw.IS_FK_KEY)
