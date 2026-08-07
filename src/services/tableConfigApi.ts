@@ -241,8 +241,10 @@ export async function getFieldConfig(tableName: string): Promise<FieldMeta[]> {
   const rows = res.data.value || []
   return rows.map((row: any) =>
     normalizeFieldMetaRow({
+      ...row,
       field_name: row.FieldName,
       fe_type: row.FieldType,
+      abap_type: row.AbapType || row.IntType || row.ABAP_TYPE || row.INTTYPE,
       length: row.Length,
       decimals: row.Decimals,
       is_key: row.IsKeyField === 'X',
@@ -287,10 +289,15 @@ export async function loadFieldMetaForTable(configUuid: string, tableName: strin
     )
     if (!custom) return dbField
 
+    const isSpecificType = (t: string) => Boolean(t && t !== 'text')
     const mergedFeType =
       dbField.fe_type === 'uuid' || dbField.fe_type === 'fk_select'
         ? dbField.fe_type
-        : custom.fe_type || dbField.fe_type
+        : isSpecificType(custom.fe_type)
+        ? custom.fe_type
+        : isSpecificType(dbField.fe_type)
+        ? dbField.fe_type
+        : custom.fe_type || dbField.fe_type || 'text'
 
     return {
       ...dbField,
