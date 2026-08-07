@@ -223,14 +223,14 @@ export function useTableMaintenance({
     }
   }, [selectedTable, username, sessionId, isEditingTable, recordDialogOpen, deleteDialogOpen])
 
-  // Load table on selection change
+  // Load table on selection change (only when selected table ConfigUuid changes)
   useEffect(() => {
     if (selectedTable) {
       loadTable(selectedTable)
     } else {
       clearPageData()
     }
-  }, [selectedTable])
+  }, [selectedTable?.ConfigUuid])
 
   // Auto-clear success message
   useEffect(() => {

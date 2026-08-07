@@ -48,7 +48,9 @@ export default function App({ credentials, onLogout }: AppProps) {
       setSelectedTable(current => {
         if (!current) return current
         const refreshed = result.find(table => table.ConfigUuid === current.ConfigUuid)
-        return refreshed || current
+        if (!refreshed) return current
+        if (JSON.stringify(current) === JSON.stringify(refreshed)) return current
+        return refreshed
       })
     } catch {
       // Quietly handle table loading failure on shell level, TablePage will show error
