@@ -128,4 +128,16 @@ describe('validateInlineField', () => {
 
     expect(validateInlineField(0, 'COURSE_ID', 'C001', draft, fields, [existing], [draft])).toBe('')
   })
+
+  it('rejects invalid text in integer and decimal fields', () => {
+    const numFields = [
+      field({ field_name: 'QTY', fe_type: 'integer' }),
+      field({ field_name: 'PRICE', fe_type: 'decimal' })
+    ]
+    const numRow = { QTY: 'sdasd', PRICE: 'abc' }
+    expect(validateInlineField(0, 'QTY', 'sdasd', numRow, numFields, [], [numRow])).toBe('Must be a valid integer')
+    expect(validateInlineField(0, 'PRICE', 'abc', numRow, numFields, [], [numRow])).toBe('Must be a valid number')
+    expect(validateInlineField(0, 'QTY', '123', { QTY: '123' }, numFields, [], [{ QTY: '123' }])).toBe('')
+    expect(validateInlineField(0, 'PRICE', '12.34', { PRICE: '12.34' }, numFields, [], [{ PRICE: '12.34' }])).toBe('')
+  })
 })

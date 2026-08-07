@@ -110,6 +110,21 @@ export function validateInlineField(
   const lengthError = validateFieldLength(field, val)
   if (lengthError) return lengthError
 
+  // 3. Numeric validation (integer & decimal)
+  const isNumeric = feType === 'integer' || feType === 'decimal' || feType === 'number'
+  if (isNumeric && val !== undefined && val !== null && String(val).trim() !== '') {
+    const strVal = String(val).trim()
+    if (feType === 'integer') {
+      if (!/^-?\d+$/.test(strVal)) {
+        return 'Must be a valid integer'
+      }
+    } else {
+      if (!/^-?\d+(\.\d+)?$/.test(strVal)) {
+        return 'Must be a valid number'
+      }
+    }
+  }
+
   // 3. Duplicate Key Check
   if (row._isNew && isKey) {
     const keyFields = getDuplicateCheckKeyFields(allFields)
