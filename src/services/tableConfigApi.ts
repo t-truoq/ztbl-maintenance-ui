@@ -614,13 +614,18 @@ function readActionField(response: any, field: string): any {
 }
 
 export function getActionMessage(response: any): string {
-  return (
+  const raw =
     readActionField(response, 'message') ||
     response?.value?.message ||
     response?.data?.message ||
     response?.data?.value?.message ||
     ''
-  )
+
+  if (typeof raw !== 'string') return ''
+
+  return raw
+    .replace(/\{"([^"]+)":\s*"([^"]+)"\}/g, '($1: $2)')
+    .replace(/\{"([^"]+)":\s*(\d+)\}/g, '($1: $2)')
 }
 
 export function parseBulkActionResults(response: any): BulkActionResult[] {

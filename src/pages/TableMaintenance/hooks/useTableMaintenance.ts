@@ -491,19 +491,6 @@ export function useTableMaintenance({
     try {
       setDataLoading(true)
 
-      const newRows = editedData.filter(r => r._isNew)
-      const modifiedRows = editedData.filter(row => {
-        if (row._isNew) return false
-        const keyStr = buildRecordKeyString(allFields, row)
-        const originalRow = data.find(orig => buildRecordKeyString(allFields, orig) === keyStr)
-        if (!originalRow) return true
-        return fields.some(f => {
-          if (isSystemGeneratedField(f)) return false
-          const name = f.field_name || f.FieldName
-          return row[name] !== originalRow[name]
-        })
-      })
-
       // =========================================================================
       // ✏️ [INLINE CUD 2] BẬT NÚT SAVE: XỬ LÝ ĐÓNG GÓI VÀ LỌC BỘ ĐỆM NHÁP
       // =========================================================================
@@ -513,10 +500,9 @@ export function useTableMaintenance({
       // 2. Lọc ra các dòng ĐÃ TỒN TẠI nhưng có ít nhất 1 ô dữ liệu bị sửa đổi
       const modifiedRows = editedData.filter(row => {
         if (row._isNew) return false
-        const key = getRowKey(row, originalData.indexOf(row))
-        const originalRow = originalMap[key]
-        if (!originalRow) return false
-
+        const keyStr = buildRecordKeyString(allFields, row)
+        const originalRow = data.find(orig => buildRecordKeyString(allFields, orig) === keyStr)
+        if (!originalRow) return true
         return fields.some(f => {
           if (isSystemGeneratedField(f)) return false
           const name = f.field_name || f.FieldName
