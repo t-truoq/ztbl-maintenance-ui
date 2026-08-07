@@ -289,15 +289,10 @@ export async function loadFieldMetaForTable(configUuid: string, tableName: strin
     )
     if (!custom) return dbField
 
-    const isSpecificType = (t: string) => Boolean(t && t !== 'text')
     const mergedFeType =
       dbField.fe_type === 'uuid' || dbField.fe_type === 'fk_select'
         ? dbField.fe_type
-        : isSpecificType(custom.fe_type)
-        ? custom.fe_type
-        : isSpecificType(dbField.fe_type)
-        ? dbField.fe_type
-        : custom.fe_type || dbField.fe_type || 'text'
+        : custom.fe_type || dbField.fe_type
 
     return {
       ...dbField,
