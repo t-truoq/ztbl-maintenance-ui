@@ -8,6 +8,7 @@ import {
   hasAuditItemSummary,
   isBulkAuditEntry,
   isRollbackAuditAction,
+  canRollbackAuditEntry,
   normalizeAuditActionType,
   paginateAuditEntries
 } from './auditLogHelpers'
@@ -108,6 +109,30 @@ describe('auditLogHelpers bulk flow', () => {
     expect(hasAuditItemSummary(rollbackEntry)).toBe(true)
     expect(getBulkActionType(rollbackEntry, [{ ActionType: 'C' }, { ActionType: 'D' }])).toBe('R')
     expect(getAuditItemDisplayActionType(rollbackEntry, { ActionType: 'C' })).toBe('R')
+  })
+
+  it('only allows rollback when the operation control explicitly enables it', () => {
+    expect(canRollbackAuditEntry({ _OperationControl: { rollback: true } })).toBe(true)
+    expect(canRollbackAuditEntry({ _OperationControl: { rollback: 'true' } })).toBe(true)
+    expect(canRollbackAuditEntry({ _OperationControl: { rollback: false } })).toBe(false)
+  })
+
+  it('does not allow an audit entry with RollbackAuditId to be rolled back again', () => {
+    expect(canRollbackAuditEntry({
+      RollbackAuditId: '8B95F36A4F271FD1A29827CC29B3AE99',
+      _OperationControl: { rollback: true }
+    })).toBe(false)
+  })
+
+  it('hides rollback for the backend payload when rollback is disabled', () => {
+    expect(canRollbackAuditEntry({
+      AuditId: '8B95F36A4F271A2CBBF0BA607EEF',
+      TableName: 'Z253_CAT',
+      RecordKey: 'BULK',
+      ActionType: 'U',
+      RollbackAuditId: '8B95F36A4F271A2CBBF0BA607EEF',
+      _OperationControl: { rollback: false }
+    })).toBe(false)
   })
 })
 

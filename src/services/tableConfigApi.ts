@@ -124,6 +124,10 @@ export async function getTables(): Promise<TableConfig[]> {
         'sap-client': SAP_CLIENT,
         '$filter': 'IsActiveEntity eq true',
         '$select': selectFields
+      },
+      headers: {
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache'
       }
     })
     rows = res.data.value || []
@@ -133,6 +137,10 @@ export async function getTables(): Promise<TableConfig[]> {
       params: {
         'sap-client': SAP_CLIENT,
         '$select': selectFields
+      },
+      headers: {
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache'
       }
     })
     rows = res.data.value || []

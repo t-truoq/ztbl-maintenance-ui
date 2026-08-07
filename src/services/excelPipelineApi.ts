@@ -45,6 +45,7 @@ export interface ExcelConfirmResult {
   id: string
   inserted_count: number
   updated_count: number
+  deleted_count: number
   unchanged_count: number
   skipped_count: number
   error_count: number
@@ -227,6 +228,7 @@ export function normalizeExcelDiffRows(rows: ExcelDiffRow[], tableName?: string)
 export function normalizeExcelConfirmResult(result: ExcelConfirmResult): ExcelConfirmResult {
   return {
     ...result,
+    deleted_count: result?.deleted_count ?? 0,
     message: translateExcelMessage(result?.message || '')
   }
 }
@@ -236,6 +238,7 @@ export function isExcelConfirmFailure(result: ExcelConfirmResult | null | undefi
 
   const inserted = result.inserted_count ?? 0
   const updated = result.updated_count ?? 0
+  const deleted = result.deleted_count ?? 0
   const unchanged = result.unchanged_count ?? 0
   const skipped = result.skipped_count ?? 0
   const errors = result.error_count ?? 0
@@ -244,7 +247,7 @@ export function isExcelConfirmFailure(result: ExcelConfirmResult | null | undefi
   return errors > 0 ||
     /no valid excel row/i.test(message) ||
     /cannot create a new request/i.test(message) ||
-    (skipped > 0 && inserted + updated + unchanged === 0)
+    (skipped > 0 && inserted + updated + deleted + unchanged === 0)
 }
 
 export function normalizeExcelFileName(fileName: string): string {

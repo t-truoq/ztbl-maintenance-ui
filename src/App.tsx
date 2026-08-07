@@ -45,6 +45,11 @@ export default function App({ credentials, onLogout }: AppProps) {
       setLoading(true)
       const result = await getTables()
       setTables(result)
+      setSelectedTable(current => {
+        if (!current) return current
+        const refreshed = result.find(table => table.ConfigUuid === current.ConfigUuid)
+        return refreshed || current
+      })
     } catch {
       // Quietly handle table loading failure on shell level, TablePage will show error
       setTables([])

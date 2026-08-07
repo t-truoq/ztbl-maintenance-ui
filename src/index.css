@@ -117,7 +117,7 @@ ui5-filter-bar {
   top: 0;
   z-index: 20;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 0.5rem 1rem;
   padding: 0.75rem 1.5rem 0.65rem;
@@ -139,15 +139,6 @@ ui5-filter-bar {
   font-size: 1.125rem;
   font-weight: 800;
   line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.maintenance-table-description {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--sapTextColor, #32363a);
-  font-size: 0.875rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -231,6 +222,7 @@ ui5-filter-bar {
   --_ui5_tc_headerItem_color: var(--sapTextColor, #32363a);
   --_ui5_tc_headerItem_text_selected_color: var(--sapHighlightColor, #0a6ed1);
   --_ui5_tc_headerItem_text_selected_hover_color: var(--sapHighlightColor, #0a6ed1);
+  --_ui5_tc_headerItem_focus_border: none;
   display: block;
   width: 100%;
   border: 1px solid var(--sapGroup_BorderColor, #d9e0e7);
@@ -311,6 +303,19 @@ ui5-filter-bar {
   min-width: 0;
 }
 
+/* The checkbox has its own selected state; remove UI5's extra focus card around it. */
+.table-data-panel ui5-checkbox {
+  --_ui5_checkbox_focus_outline: none !important;
+  --_ui5_checkbox_focus_outline_display: none !important;
+  --_ui5_checkbox_default_focus_border: none !important;
+}
+
+/* Keep action styling, without the doubled focus ring in any table toolbar button. */
+.table-data-panel .tab-panel-actions ui5-button {
+  --_ui5_button_focused_border: none !important;
+  --_ui5_button_emphasized_focused_border_before: none !important;
+}
+
 .table-permission-loading {
   min-height: 8rem;
   align-items: center;
@@ -321,6 +326,19 @@ ui5-filter-bar {
 .table-date-picker {
   width: 100%;
   max-width: 100%;
+}
+
+/* Keep the selected-today date cell to one visual layer inside the portal calendar. */
+body {
+  --_ui5_daypicker_item_now_border_color: transparent;
+  --_ui5_day_picker_item_selected_now_border: none;
+  --_ui5_daypicker_item_selected_text_outline: none;
+  --_ui5_daypicker_item_now_box_shadow: none;
+  --_ui5_daypicker_item_now_border_focus_after: none;
+  --_ui5_day_picker_item_selected_now_border_focus: none;
+  --_ui5_daypicker_item_selected_border: 0.125rem solid var(--sapContent_Selected_ForegroundColor, #0a6ed1);
+  --_ui5_daypicker_item_selected_focus_color: transparent;
+  --_ui5_daypicker_item_selected_focus_width: 0;
 }
 
 .fk-value-help {
@@ -776,6 +794,109 @@ ui5-toast {
   padding: 0.625rem;
 }
 
+.excel-session-context {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  min-width: 0;
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+
+.excel-session-context strong {
+  color: var(--sapTextColor, #32363a);
+  font-weight: 700;
+}
+
+.excel-session-context-separator {
+  color: var(--sapContent_NonInteractiveIconColor, #8c98a4);
+}
+
+.excel-status-label {
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1rem;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.excel-status-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.5rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.excel-status-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  min-height: 3.125rem;
+  padding: 0.45rem 0.625rem;
+  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  border-left: 4px solid;
+  border-radius: 6px;
+  background: var(--sapList_Background, #fff);
+  box-sizing: border-box;
+}
+
+.excel-status-label {
+  text-transform: none;
+}
+
+.excel-status-value {
+  color: var(--sapTextColor, #32363a);
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.25rem;
+}
+
+.excel-status-secondary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.excel-summary-note {
+  display: block;
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+.excel-status-secondary-item {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.375rem;
+  padding: 0 0.45rem;
+  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  border-radius: 999px;
+  background: var(--sapNeutralBackground, #f5f6f7);
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  white-space: nowrap;
+}
+
+.excel-status-secondary-item--warning {
+  border-color: #e09d00;
+  background: #fff8d6;
+  color: #6b4c00;
+}
+
+.excel-status-secondary-item--negative {
+  border-color: #bb0000;
+  background: #fff1f0;
+  color: #8b0000;
+}
+
 .excel-summary-header {
   display: flex;
   align-items: center;
@@ -827,13 +948,69 @@ ui5-toast {
   gap: 0.875rem;
 }
 
-.excel-result-header {
+.excel-result-hero {
   display: grid;
-  gap: 0.25rem;
-  padding: 0.75rem 0.875rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.875rem;
+  min-width: 0;
+  padding: 0.875rem 1rem;
   border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  border-left: 4px solid #107e3e;
   border-radius: 8px;
-  background: var(--sapList_Background, #fff);
+  background: #f7fbf8;
+}
+
+.excel-result-panel--approval .excel-result-hero {
+  border-left-color: #0a6ed1;
+  background: #f5f9ff;
+}
+
+.excel-result-panel--error .excel-result-hero {
+  border-left-color: #bb0000;
+  background: #fff7f6;
+}
+
+.excel-result-hero-icon {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #d9f2df;
+  color: #107e3e;
+  font-size: 1.5rem;
+}
+
+.excel-result-panel--approval .excel-result-hero-icon {
+  background: #d9ecff;
+  color: #0a6ed1;
+}
+
+.excel-result-panel--error .excel-result-hero-icon {
+  background: #ffe0de;
+  color: #bb0000;
+}
+
+.excel-result-hero-copy {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.excel-result-title {
+  margin: 0;
+  color: var(--sapTextColor, #32363a);
+  font-size: 1.375rem;
+  line-height: 1.75rem;
+}
+
+.excel-result-description {
+  color: var(--sapContent_LabelColor, #556b82);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  overflow-wrap: anywhere;
 }
 
 .excel-result-detail-grid {
@@ -852,8 +1029,7 @@ ui5-toast {
   background: var(--sapNeutralBackground, #f5f6f7);
 }
 
-.excel-result-detail-label,
-.excel-result-count-label {
+.excel-result-detail-label {
   color: var(--sapContent_LabelColor, #6a6d70);
   font-size: 0.75rem;
   font-weight: 700;
@@ -877,31 +1053,6 @@ ui5-toast {
   white-space: normal;
 }
 
-.excel-result-count-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
-  gap: 0.5rem;
-}
-
-.excel-result-count {
-  display: grid;
-  gap: 0.125rem;
-  min-height: 3.25rem;
-  padding: 0.5rem 0.625rem;
-  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
-  border-left: 4px solid;
-  border-radius: 8px;
-  background: var(--sapList_Background, #fff);
-  box-sizing: border-box;
-}
-
-.excel-result-count-value {
-  color: var(--sapTextColor, #32363a);
-  font-size: 1.25rem;
-  font-weight: 800;
-  line-height: 1.4rem;
-}
-
 .excel-result-raw {
   padding: 0.625rem 0.75rem;
   border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
@@ -917,29 +1068,236 @@ ui5-toast {
   border-left: 4px solid #107e3e;
 }
 
-.excel-diff-table-scroll {
+.excel-record-list-shell {
+  width: 100%;
+  min-width: 0;
   border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
-  border-radius: 6px;
+  border-radius: 8px;
+  background: var(--sapList_Background, #fff);
+  box-sizing: border-box;
 }
 
-.excel-diff-table-scroll::-webkit-scrollbar {
+.excel-record-list-shell--compact {
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.excel-record-list-shell--compact::-webkit-scrollbar {
   width: 0.75rem;
-  height: 0.75rem;
 }
 
-.excel-diff-table-scroll::-webkit-scrollbar-track {
+.excel-record-list-shell--compact::-webkit-scrollbar-track {
   background: var(--sapScrollBar_TrackColor, #f5f6f7);
   border-radius: 999px;
 }
 
-.excel-diff-table-scroll::-webkit-scrollbar-thumb {
+.excel-record-list-shell--compact::-webkit-scrollbar-thumb {
   background: #6f879d;
   border: 2px solid var(--sapScrollBar_TrackColor, #f5f6f7);
   border-radius: 999px;
 }
 
-.excel-diff-table-scroll::-webkit-scrollbar-thumb:hover {
+.excel-record-list-shell--compact::-webkit-scrollbar-thumb:hover {
   background: #4f6f89;
+}
+
+.excel-record-list {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.excel-record-group {
+  min-width: 0;
+  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  border-left: 4px solid #8c98a4;
+  border-radius: 8px;
+  background: var(--sapList_Background, #fff);
+  overflow: hidden;
+}
+
+.excel-record-group.excel-diff-row--new {
+  border-left-color: #107e3e;
+  background: #f1fdf6;
+}
+
+.excel-record-group.excel-diff-row--changed {
+  border-left-color: #e09d00;
+  background: #fff4c2;
+}
+
+.excel-record-group.excel-diff-row--warning {
+  border-left-color: #e09d00;
+  background: #fff8d6;
+}
+
+.excel-record-group.excel-diff-row--error,
+.excel-record-group.excel-diff-row--deleted {
+  border-left-color: #bb0000;
+  background: #fff1f0;
+}
+
+.excel-record-group.excel-diff-row--unchanged {
+  background: var(--sapList_Background, #fff);
+}
+
+.excel-record-group-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  min-width: 0;
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid var(--sapList_BorderColor, #edf0f2);
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.excel-record-group-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+  min-width: 0;
+}
+
+.excel-record-group-status,
+.excel-record-group-status ui5-object-status {
+  white-space: nowrap;
+}
+
+.excel-record-group-key {
+  min-width: 0;
+  color: var(--sapTextColor, #32363a);
+  font-size: 0.9375rem;
+  line-height: 1.25rem;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.excel-record-group-count {
+  flex: 0 0 auto;
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  white-space: nowrap;
+}
+
+.excel-record-fields {
+  display: grid;
+  grid-template-columns: minmax(10rem, 0.85fr) minmax(12rem, 1fr) minmax(12rem, 1fr);
+  min-width: 0;
+}
+
+.excel-record-fields--new {
+  grid-template-columns: minmax(12rem, 0.85fr) minmax(14rem, 1.15fr);
+}
+
+.excel-record-fields--with-messages {
+  grid-template-columns: minmax(10rem, 0.8fr) minmax(11rem, 1fr) minmax(11rem, 1fr) minmax(12rem, 1fr);
+}
+
+.excel-record-fields--new.excel-record-fields--with-messages {
+  grid-template-columns: minmax(12rem, 0.75fr) minmax(14rem, 1fr) minmax(12rem, 1fr);
+}
+
+.excel-record-field-cell {
+  min-width: 0;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--sapList_BorderColor, #edf0f2);
+  color: var(--sapTextColor, #32363a);
+  box-sizing: border-box;
+}
+
+.excel-record-field-cell--header {
+  padding-top: 0.45rem;
+  padding-bottom: 0.45rem;
+  background: rgba(245, 246, 247, 0.75);
+  color: var(--sapContent_LabelColor, #6a6d70);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.excel-record-field-text,
+.excel-diff-cell-text {
+  display: block !important;
+  min-width: 0;
+  white-space: pre-wrap !important;
+  overflow-wrap: break-word !important;
+  word-break: normal !important;
+}
+
+.excel-record-field-cell ui5-text,
+.excel-record-field-cell .excel-diff-note {
+  max-width: 100%;
+}
+
+.excel-record-delete {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+  padding: 0.75rem 0.85rem;
+  background: #fff8f8;
+}
+
+.excel-record-delete-label {
+  color: #8b0000;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.excel-record-delete-action-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  color: #a90000;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.excel-record-delete-action-icon {
+  flex: 0 0 auto;
+  color: currentColor;
+}
+
+.excel-record-delete-action-description {
+  color: var(--sapTextColor, #32363a);
+  font-size: 0.875rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.excel-record-delete-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(14rem, 0.38fr);
+  gap: 1rem;
+  min-width: 0;
+}
+
+.excel-record-delete-action {
+  display: grid;
+  align-content: start;
+  align-self: start;
+  height: fit-content;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid #f0c7c7;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.excel-diff-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 8rem;
+  padding: 1rem;
+  color: var(--sapContent_LabelColor, #6a6d70);
+  text-align: center;
+  box-sizing: border-box;
 }
 
 .audit-modern-modal-body::-webkit-scrollbar {
@@ -962,30 +1320,6 @@ ui5-toast {
   background: #4f6f89;
 }
 
-.excel-diff-row--changed {
-  background: #fff4c2;
-  border-left: 4px solid #e09d00;
-}
-
-.excel-diff-row--warning {
-  background: #fff8d6;
-  border-left: 4px solid #e09d00;
-}
-
-.excel-diff-row--error {
-  background: #fff5f5;
-  border-left: 4px solid #bb0000;
-}
-
-.excel-diff-row--deleted {
-  background: #fff1f0;
-  border-left: 4px solid #bb0000;
-}
-
-.excel-diff-row--unchanged {
-  background: var(--sapList_Background, #fff);
-}
-
 .excel-diff-note {
   display: inline-flex;
   align-items: flex-start;
@@ -995,7 +1329,8 @@ ui5-toast {
   border-radius: 4px;
   font-size: 0.8125rem;
   line-height: 1.125rem;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
   white-space: normal;
 }
 
@@ -1056,13 +1391,14 @@ ui5-toast {
   color: var(--sapContent_LabelColor, #556b82);
   font-size: 0.75rem;
   font-weight: 700;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 .excel-record-summary-value {
   color: var(--sapTextColor, #32363a);
   font-size: 0.8125rem;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 @media (max-width: 980px) {
@@ -1079,16 +1415,20 @@ ui5-toast {
   .excel-action-grid {
     grid-template-columns: 1fr 1fr;
   }
+
+  .excel-status-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .excel-record-delete-body {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
   .maintenance-sticky-title {
     grid-template-columns: 1fr;
     padding: 0.625rem 0.75rem;
-  }
-
-  .maintenance-table-description {
-    padding-left: 2.5rem;
   }
 
   .excel-workspace {
@@ -1121,6 +1461,49 @@ ui5-toast {
   .excel-summary-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .excel-status-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .excel-result-hero {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .excel-record-group-header {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .excel-record-fields,
+  .excel-record-fields--new,
+  .excel-record-fields--with-messages,
+  .excel-record-fields--new.excel-record-fields--with-messages {
+    grid-template-columns: 1fr;
+  }
+
+  .excel-record-field-cell--header {
+    display: none;
+  }
+
+  .excel-record-field-cell:not(.excel-record-field-cell--header) {
+    display: grid;
+    grid-template-columns: minmax(6.5rem, 0.35fr) minmax(0, 1fr);
+    gap: 0.75rem;
+    align-items: start;
+  }
+
+  .excel-record-field-cell:not(.excel-record-field-cell--header)::before {
+    content: attr(data-label);
+    color: var(--sapContent_LabelColor, #6a6d70);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .excel-record-delete-body {
+    grid-template-columns: 1fr;
   }
 }
 

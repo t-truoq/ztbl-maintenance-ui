@@ -83,6 +83,9 @@ export interface AuditLogEntry {
   ChangedBy?: string;
   ChangedAt?: string;
   RollbackAuditId?: string;
+  _OperationControl?: {
+    rollback?: boolean | string;
+  };
   _Items?: { value?: AuditItemEntry[] } | AuditItemEntry[];
 }
 

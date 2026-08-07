@@ -25,6 +25,7 @@ import {
   getRecordKey,
   hasAuditItemSummary,
   isRollbackAuditAction,
+  canRollbackAuditEntry,
   isBulkAuditEntry,
   normalizeAuditActionType,
   paginateAuditEntries
@@ -607,7 +608,7 @@ function AuditEntryItem({
   const normalizedField = normalizeDash(fieldName)
   const isUpdate = displayActionType === 'U'
   const showSummaryPanel = hasItemSummary && !singleSummaryItem
-  const canRollbackEntry = canRollback && !isRollbackAuditAction(normalizedEntryAction) && !isRollbackAuditAction(displayActionType)
+  const canRollbackEntry = canRollback && canRollbackAuditEntry(entry) && !isRollbackAuditAction(normalizedEntryAction) && !isRollbackAuditAction(displayActionType)
   const summaryLabel = isRollbackType ? 'Rollback Summary' : 'Bulk Operation Summary'
 
   return (
@@ -687,7 +688,11 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
   const [selectedBulkEntry, setSelectedBulkEntry] = useState<AuditLogEntry | null>(null)
   const [rollbackConfirmEntry, setRollbackConfirmEntry] = useState<AuditLogEntry | null>(null)
   const [rollbackLoading, setRollbackLoading] = useState(false)
-  const [rollbackResultMsg, setRollbackResultMsg] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [rollbackResultMsg, setRollbackResultMsg] = useState<{
+    type: 'success' | 'error'
+    message: string
+    auditId?: string
+  } | null>(null)
 
   const [bulkChildMap, setBulkChildMap] = useState<Record<string, AuditItemEntry[]>>({})
   const auditItemsInFlightRef = useRef<Set<string>>(new Set())
@@ -857,14 +862,21 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
         setRollbackConfirmEntry(null)
         await loadAuditLog()
       } else {
-        setRollbackResultMsg({ type: 'error', message: res.message || 'Rollback failed' })
+        setRollbackResultMsg({
+          type: 'error',
+          message: res.message || 'Rollback failed',
+          auditId: rollbackConfirmEntry.AuditId
+        })
+        setRollbackConfirmEntry(null)
       }
     } catch (err: any) {
       const message = getFriendlyErrorMessage(err)
       setRollbackResultMsg({
         type: 'error',
-        message: `${message} Audit ID: ${rollbackConfirmEntry.AuditId}`
+        message,
+        auditId: rollbackConfirmEntry.AuditId
       })
+      setRollbackConfirmEntry(null)
     } finally {
       setRollbackLoading(false)
     }
@@ -932,10 +944,10 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
         </div>
       </div>
 
-      {rollbackResultMsg && (
+      {rollbackResultMsg?.type === 'success' && (
         <div ref={resultMessageRef} className="audit-result-message">
           <MessageStrip
-            design={rollbackResultMsg.type === 'success' ? 'Positive' : 'Negative'}
+            design="Positive"
             onClose={() => setRollbackResultMsg(null)}
             className="audit-message"
           >
@@ -1067,6 +1079,52 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
                 Action: {actionLabel(rollbackConfirmEntry.ActionType)} | User: {rollbackConfirmEntry.ChangedBy || '-'} | Date: {formatDateTime(rollbackConfirmEntry.ChangedAt)}
               </Text>
             </div>
+          </div>
+        </AuditModernModal>
+      )}
+
+      {rollbackResultMsg?.type === 'error' && (
+        <AuditModernModal
+          open
+          title="Rollback Failed"
+          onClose={() => setRollbackResultMsg(null)}
+          width="min(92vw, 560px)"
+          footer={
+            <Button design="Emphasized" onClick={() => setRollbackResultMsg(null)}>
+              Close
+            </Button>
+          }
+        >
+          <div style={{ padding: '0.5rem 0' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '0.75rem',
+                padding: '1rem',
+                borderRadius: '8px',
+                border: '1px solid #f1aeb5',
+                background: '#fff1f2'
+              }}
+            >
+              <Icon name="error" style={{ color: '#bb0000', fontSize: '1.5rem', flex: '0 0 auto' }} />
+              <div style={{ minWidth: 0 }}>
+                <Text style={{ display: 'block', fontWeight: 700, color: '#8b0000', marginBottom: '0.4rem' }}>
+                  The audit operation could not be rolled back.
+                </Text>
+                <Text style={{ display: 'block', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', color: '#32363a' }}>
+                  {rollbackResultMsg.message}
+                </Text>
+              </div>
+            </div>
+            {rollbackResultMsg.auditId && (
+              <div style={{ marginTop: '0.85rem', padding: '0.75rem 1rem', borderRadius: '6px', background: '#f4f6f8' }}>
+                <Label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.2rem' }}>Audit ID</Label>
+                <Text style={{ display: 'block', fontWeight: 700, overflowWrap: 'anywhere' }}>
+                  {rollbackResultMsg.auditId}
+                </Text>
+              </div>
+            )}
           </div>
         </AuditModernModal>
       )}

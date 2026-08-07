@@ -13,6 +13,35 @@ export function isRollbackAuditAction(actionType?: string): boolean {
   return normalizeAuditActionType(actionType) === 'R'
 }
 
+function isTruthyRollbackStatus(value: unknown): boolean {
+  return value === true || ['true', 'x', '1', 'yes'].includes(String(value ?? '').trim().toLowerCase())
+}
+
+/**
+ * The backend exposes rollback eligibility per audit entry.  RollbackAuditId
+ * is populated after an entry has already been rolled back, while
+ * _OperationControl.rollback is the current eligibility flag.
+ */
+export function canRollbackAuditEntry(entry: AuditLogEntry | AuditItemEntry): boolean {
+  const anyEntry = entry as any
+  const rollbackAuditId = String(anyEntry.RollbackAuditId ?? anyEntry.rollbackAuditId ?? '').trim()
+  if (rollbackAuditId) return false
+
+  const operationControl =
+    anyEntry._OperationControl ??
+    anyEntry.OperationControl ??
+    anyEntry.__OperationControl
+  const rollbackStatus = operationControl?.rollback ?? operationControl?.Rollback
+
+  // Fail closed when the backend supplies the control object but says that
+  // rollback is disabled. This prevents a request that the backend will reject.
+  if (operationControl && !isTruthyRollbackStatus(rollbackStatus)) return false
+
+  // Keep compatibility with older responses that did not include the control
+  // annotation; RollbackAuditId still prevents a second rollback.
+  return true
+}
+
 export function getRawRecordKey(entry: AuditLogEntry | AuditItemEntry): string {
   const anyEntry = entry as any
   return (
