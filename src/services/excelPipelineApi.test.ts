@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   filterDiffForCommit,
+  isLikelyExcelWorkbookStructureError,
   isExcelConfirmFailure,
   isExcelFilenameAllowed,
   normalizeExcelConfirmResult,
@@ -32,6 +33,35 @@ function diffRow(overrides: Partial<ExcelDiffRow>): ExcelDiffRow {
 }
 
 describe('excelPipelineApi diff helpers', () => {
+  it('detects cascading backend errors caused by an invalid workbook shape', () => {
+    expect(isLikelyExcelWorkbookStructureError([
+      diffRow({
+        row_no: 0,
+        status: 'INFO',
+        message: 'Rollback 5 failed: old record snapshot is empty. Parsed Cl. row(s); Unsupported audit action B2 for rollback; Rollback blocked for 5: record no longer exists.'
+      }),
+      diffRow({
+        status: 'ERROR',
+        field_name: '',
+        old_value: '',
+        new_value: '',
+        message: 'Duplicate key'
+      })
+    ])).toBe(true)
+  })
+
+  it('does not classify an ordinary duplicate key as a workbook shape error', () => {
+    expect(isLikelyExcelWorkbookStructureError([
+      diffRow({
+        status: 'ERROR',
+        field_name: '',
+        old_value: '',
+        new_value: '',
+        message: 'Duplicate key'
+      })
+    ])).toBe(false)
+  })
+
   it('allows browser download suffixes for active table Excel files', () => {
     expect(isExcelFilenameAllowed('Z251_SCHEDULE.xlsx', 'Z251_SCHEDULE')).toBe(true)
     expect(isExcelFilenameAllowed('Z251_SCHEDULE (1).xlsx', 'Z251_SCHEDULE')).toBe(true)
@@ -119,7 +149,7 @@ describe('excelPipelineApi diff helpers', () => {
 
     expect(result.deleted_count).toBe(2)
     expect(result.message).toBe(
-      'Row 8: Approval request submitted (ID: 8B95F36A4F271FE19EC0D1524746A2C5). Submitted for approval: created 0, updated 1, errors 0. Waiting for approval in the UI.'
+      'Row 8: Approval request submitted (ID: 8B95F36A4F271FE19EC0D1524746A2C5). Submitted for approval: created 0, updated 1, errors 0. Waiting for ADMIN approval.'
     )
   })
 
@@ -149,7 +179,7 @@ describe('excelPipelineApi diff helpers', () => {
     })
 
     expect(result.message).toBe(
-      'Row 9 skipped: Record is pending approval by DEV-253. Cannot create a new request.; Row 10 skipped: Record is pending approval by DEV-253. Cannot create a new request.; No valid Excel row to submit for approval.; Submitted for approval: created 0, updated/deleted 0, errors 0. Waiting for approval in the UI.'
+      'Row 9 skipped: Record is pending approval by DEV-253. Cannot create a new request.; Row 10 skipped: Record is pending approval by DEV-253. Cannot create a new request.; No valid Excel row to submit for approval.; Submitted for approval: created 0, updated/deleted 0, errors 0. Waiting for ADMIN approval.'
     )
     expect(isExcelConfirmFailure(result)).toBe(true)
   })

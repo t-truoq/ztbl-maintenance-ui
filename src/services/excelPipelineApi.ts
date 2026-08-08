@@ -214,6 +214,26 @@ export function getInfoRows(rows: ExcelDiffRow[]): ExcelDiffRow[] {
   return rows.filter(row => row.row_no === 0 || normalizeStatus(row.status) === 'INFO')
 }
 
+export const EXCEL_WORKBOOK_STRUCTURE_ERROR_MESSAGE =
+  'The uploaded workbook could not be matched to the table structure. It may be missing one or more required columns. Download a fresh template or current data file, keep all columns, and upload again.'
+
+/**
+ * The Excel backend currently emits cascading row errors when the workbook
+ * shape is broken. Detect that response so the UI does not present parser
+ * fallout (for example, fake deletes and duplicate keys) as real row edits.
+ */
+export function isLikelyExcelWorkbookStructureError(rows: ExcelDiffRow[]): boolean {
+  const infoText = getInfoRows(rows)
+    .map(row => String(row.message || ''))
+    .join(' ')
+
+  return (
+    /rollback\s+\d+\s+failed/i.test(infoText) &&
+    /old record snapshot is empty/i.test(infoText) &&
+    /unsupported audit action\s+[A-Z]+\d+\s+for rollback/i.test(infoText)
+  )
+}
+
 export function normalizeExcelDiffRows(rows: ExcelDiffRow[], tableName?: string): ExcelDiffRow[] {
   return rows
     .filter(row => rowBelongsToTable(row, tableName))
@@ -290,7 +310,7 @@ export function translateExcelMessage(message: string): string {
     const created = counts?.[1] ?? '0'
     const updated = counts?.[2] ?? '0'
     const errors = counts?.[3] ?? '0'
-    return `Row ${rowNo}: Approval request submitted (ID: ${approvalId}). Submitted for approval: created ${created}, updated ${updated}, errors ${errors}. Waiting for approval in the UI.`
+    return `Row ${rowNo}: Approval request submitted (ID: ${approvalId}). Submitted for approval: created ${created}, updated ${updated}, errors ${errors}. Waiting for ADMIN approval.`
   }
 
   const segments = text.split(';').map(segment => translateExcelMessageSegment(segment)).filter(Boolean)
@@ -310,7 +330,7 @@ function translateExcelMessageSegment(message: string): string {
   const approvalSummaryMatch = text.match(/C=(\d+),\s*U(?:\/D)?=(\d+),\s*E=(\d+)/i)
   if (/^da gui duyet\b/i.test(normalized) && approvalSummaryMatch) {
     const [, created, updated, errors] = approvalSummaryMatch
-    return `Submitted for approval: created ${created}, updated/deleted ${updated}, errors ${errors}. Waiting for approval in the UI.`
+    return `Submitted for approval: created ${created}, updated/deleted ${updated}, errors ${errors}. Waiting for ADMIN approval.`
   }
 
   const permissionMatch = normalized.match(/^user\s+(.+?)\s+khong\s+co\s+quyen\s+(.+?)\s+tren\s+(.+)$/i)
