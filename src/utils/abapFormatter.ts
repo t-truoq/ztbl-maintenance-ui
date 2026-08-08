@@ -47,6 +47,12 @@ export function fromAbapDate(value: any): string {
   if (/^\d{8}$/.test(s)) {
     return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`
   }
+  if (/^\d{10}$/.test(s)) {
+    return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)} ${s.slice(8, 10)}:00`
+  }
+  if (/^\d{14}$/.test(s)) {
+    return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)} ${s.slice(8, 10)}:${s.slice(10, 12)}:${s.slice(12, 14)}`
+  }
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
   return iso ? `${iso[1]}-${iso[2]}-${iso[3]}` : s.substring(0, 10)
 }

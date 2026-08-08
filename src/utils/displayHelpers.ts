@@ -69,6 +69,21 @@ export function formatTimestampValue(value: any, fieldName = ''): string {
     }
   }
 
+  const shortTsMatch = raw.match(/^(\d{4})(\d{2})(\d{2})(\d{2})$/)
+  if (shortTsMatch && (isTimestampField || raw.length === 10)) {
+    const [, year, month, day, hour] = shortTsMatch
+    const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), 0, 0)
+    if (!Number.isNaN(date.getTime())) {
+      return date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    }
+  }
+
   const isoLikeMatch = raw.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d+))?/)
   if (isoLikeMatch && isTimestampField) {
     const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T')
