@@ -98,8 +98,8 @@ export async function getActiveAdminUsers(): Promise<string[]> {
     try {
       res = await authAdminApi.get('/AuthUsers', {
         params: {
-          '$select': 'Username,RoleType,ActiveFlag,Role,Status',
-          '$filter': "RoleType eq 'ADMIN' or Role eq 'ADMIN'"
+          '$select': 'Username,RoleType,ActiveFlag',
+          '$filter': "RoleType eq 'ADMIN'"
         }
       })
     } catch {
