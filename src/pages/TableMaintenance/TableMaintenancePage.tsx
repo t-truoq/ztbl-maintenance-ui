@@ -156,7 +156,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
       .catch(error => {
         if (!isCancelled) {
           console.warn('Cannot load authorization settings:', error)
-          const isKnownAdmin = ['DEV-253', 'DEV-213', 'ADMIN', 'DEVELOPER'].includes(effectiveUsername.toUpperCase())
+          const isKnownAdmin = ['DEV-253', 'DEV-183', 'DEV-251', 'DEV-213', 'LEARN-10000', 'ADMIN', 'DEVELOPER'].includes(effectiveUsername.toUpperCase())
           setCanRollbackAudit(isKnownAdmin)
           setTablePermission(FULL_TABLE_PERMISSION)
           setPermissionTableName(tableNameForPermission)

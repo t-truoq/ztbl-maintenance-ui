@@ -94,12 +94,18 @@ function permissionFromRow(row: PermissionRow): TablePermissionState {
 
 export async function getActiveAdminUsers(): Promise<string[]> {
   try {
-    const res = await authAdminApi.get('/AuthUsers', {
-      params: {
-        '$select': 'Username,RoleType,ActiveFlag',
-        '$filter': "RoleType eq 'ADMIN'"
-      }
-    })
+    let res: any
+    try {
+      res = await authAdminApi.get('/AuthUsers', {
+        params: {
+          '$select': 'Username,RoleType,ActiveFlag,Role,Status',
+          '$filter': "RoleType eq 'ADMIN' or Role eq 'ADMIN'"
+        }
+      })
+    } catch {
+      // Fallback without $filter if OData backend rejects filter syntax
+      res = await authAdminApi.get('/AuthUsers')
+    }
 
     return readRows(res.data)
       .filter(isAdminAuthUser)
@@ -110,7 +116,7 @@ export async function getActiveAdminUsers(): Promise<string[]> {
   }
 }
 
-const KNOWN_ADMINS = new Set(['DEV-253', 'DEV-213', 'ADMIN', 'DEVELOPER'])
+const KNOWN_ADMINS = new Set(['DEV-253', 'DEV-183', 'DEV-251', 'DEV-213', 'LEARN-10000', 'ADMIN', 'DEVELOPER'])
 
 export async function isCurrentUserInAdminList(username?: string): Promise<boolean> {
   const effectiveUser = username || getCredentials()?.username || ''
