@@ -149,7 +149,7 @@ describe('excelPipelineApi action requests', () => {
     const result = await confirmImport('Z251_SCHEDULE', [diffRow({ status: 'CHANGED' })])
 
     expect(result.message).toContain('Approval request submitted')
-    expect(result.message).toContain('Waiting for approval in the UI.')
+    expect(result.message).toContain('Waiting for ADMIN approval.')
   })
 
   it('retries an action after a CSRF failure', async () => {

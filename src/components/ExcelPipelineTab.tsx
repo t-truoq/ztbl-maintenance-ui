@@ -18,10 +18,12 @@ import {
   downloadExcel,
   fileToBase64,
   filterDiffForCommit,
+  EXCEL_WORKBOOK_STRUCTURE_ERROR_MESSAGE,
   getExcelErrorMessage,
   getInfoRows,
   isExcelConfirmFailure,
   isExcelFilenameAllowed,
+  isLikelyExcelWorkbookStructureError,
   uploadExcel
 } from '../services/excelPipelineApi'
 
@@ -88,11 +90,18 @@ export default function ExcelPipelineTab({
     () => diffRows.filter(row => row.status === 'WARNING'),
     [diffRows]
   )
+  const workbookStructureError = useMemo(
+    () => isLikelyExcelWorkbookStructureError(diffRows),
+    [diffRows]
+  )
   const statusCounts = useMemo(() => buildStatusCounts(visibleRows), [visibleRows])
   const parseSummary = useMemo(
     () => buildParseSummary(infoRows),
     [infoRows]
   )
+  const approvalPending = confirmResult
+    ? isApprovalPendingResult(confirmResult)
+    : false
 
   useEffect(() => {
     setBusyStep('')
@@ -180,7 +189,10 @@ export default function ExcelPipelineTab({
       const warningCount = rows.filter(row => row.status === 'WARNING').length
       const unchangedCount = rows.filter(row => row.status === 'UNCHANGED').length
       setDiffRows(compactRowsForUi(rows))
-      if (visibleRecordCount > 0 && unchangedCount === visibleCount && commitCount === 0 && errorCount === 0) {
+      const hasWorkbookStructureError = isLikelyExcelWorkbookStructureError(rows)
+      if (hasWorkbookStructureError) {
+        setFeedback(null)
+      } else if (visibleRecordCount > 0 && unchangedCount === visibleCount && commitCount === 0 && errorCount === 0) {
         setFeedback({
           text: 'No changes detected. The uploaded file matches the current table data.',
           design: 'Positive'
@@ -192,7 +204,7 @@ export default function ExcelPipelineTab({
         })
       } else if (errorCount > 0) {
         setFeedback({
-          text: `Upload parsed ${visibleRecordCount} record(s) across ${visibleCount} detail row(s). Resolve ${errorCount} error row(s) before importing.`,
+          text: `Upload parsed ${visibleRecordCount} record(s) across ${visibleCount} detail row(s). Resolve ${errorCount} error detail(s) before importing.`,
           design: 'Critical'
         })
       } else {
@@ -294,7 +306,9 @@ export default function ExcelPipelineTab({
           <Text className="tab-panel-subtitle excel-muted excel-subtitle">
             Export table data, upload the edited workbook, review the diff, then confirm the import.
           </Text>
-          {parseSummary && (
+          {workbookStructureError ? (
+            <WorkbookStructureNotice />
+          ) : parseSummary && (
             <ParseDetails details={parseSummary} />
           )}
         </div>
@@ -330,7 +344,12 @@ export default function ExcelPipelineTab({
         <FlowStep index="1" title="Download" text="Get a template or the current table data." active={!selectedFileName} />
         <FlowStep index="2" title="Upload" text="Drop the edited .xlsx file or browse from your device." active={busyStep === 'upload'} />
         <FlowStep index="3" title="Review" text="Check NEW, CHANGED, UNCHANGED, WARNING, and ERROR rows." active={diffRows.length > 0 && !confirmResult} />
-        <FlowStep index="4" title="Confirm" text="Commit NEW, CHANGED, and DELETED records." active={!!confirmResult} />
+        <FlowStep
+          index="4"
+          title={approvalPending ? 'Waiting for ADMIN approval' : 'Confirm'}
+          text={approvalPending ? 'The approval request is waiting for ADMIN approval.' : 'Commit NEW, CHANGED, and DELETED records.'}
+          active={!!confirmResult}
+        />
       </section>
 
       <input
@@ -383,8 +402,8 @@ export default function ExcelPipelineTab({
         <div className="excel-summary-card">
           <div className="excel-summary-header">
             <Text className="excel-label">Current Session</Text>
-            <ObjectStatus state={errorRows.length > 0 ? 'Negative' : commitRows.length > 0 ? 'Information' : 'None'}>
-              {errorRows.length > 0 ? 'Needs attention' : commitRows.length > 0 ? 'Ready to review' : noChangesDetected ? 'No changes' : 'Waiting for upload'}
+            <ObjectStatus state={approvalPending ? 'Information' : errorRows.length > 0 ? 'Negative' : commitRows.length > 0 ? 'Information' : 'None'}>
+              {approvalPending ? 'Waiting for ADMIN approval' : errorRows.length > 0 ? 'Needs attention' : commitRows.length > 0 ? 'Ready to review' : noChangesDetected ? 'No changes' : 'Waiting for upload'}
             </ObjectStatus>
           </div>
           <div className="excel-session-context">
@@ -397,6 +416,11 @@ export default function ExcelPipelineTab({
             commit={commitRecordCount}
             statusCounts={statusCounts}
           />
+          {approvalPending && (
+            <MessageStrip design="Information" hideCloseButton>
+              Waiting for ADMIN approval. The Excel changes will be applied after approval.
+            </MessageStrip>
+          )}
           <Text className="excel-summary-note">Counts are by record; the table below shows field-level details.</Text>
         </div>
       </section>
@@ -424,11 +448,13 @@ export default function ExcelPipelineTab({
         </div>
       )}
 
-      <DiffTable
-        rows={visibleRows}
-        statusState={statusState}
-        rowLimit={MAIN_DIFF_ROW_LIMIT}
-      />
+      {!workbookStructureError && (
+        <DiffTable
+          rows={visibleRows}
+          statusState={statusState}
+          rowLimit={MAIN_DIFF_ROW_LIMIT}
+        />
+      )}
 
       <ModernModal
         open={diffDialogOpen}
@@ -474,6 +500,12 @@ export default function ExcelPipelineTab({
               </Text>
             </FlexBox>
 
+            {busyStep === 'confirm' && (
+              <MessageStrip design="Information" hideCloseButton>
+                Confirming the Excel import. If this table requires approval, the request will remain waiting for ADMIN approval.
+              </MessageStrip>
+            )}
+
             <StatusSummary
               total={visibleRecordCount}
               commit={commitRecordCount}
@@ -499,12 +531,16 @@ export default function ExcelPipelineTab({
               </MessageStrip>
             )}
 
-            <DiffTable
-              rows={visibleRows}
-              statusState={statusState}
-              rowLimit={PREVIEW_DIFF_ROW_LIMIT}
-              compact
-            />
+            {workbookStructureError ? (
+              <WorkbookStructureNotice compact />
+            ) : (
+              <DiffTable
+                rows={visibleRows}
+                statusState={statusState}
+                rowLimit={PREVIEW_DIFF_ROW_LIMIT}
+                compact
+              />
+            )}
           </FlexBox>
         )}
       </ModernModal>
@@ -563,14 +599,19 @@ function formatFileSize(bytes: number): string {
   return `${bytes} bytes`
 }
 
+function isApprovalPendingResult(result: ExcelConfirmResult): boolean {
+  if (isExcelConfirmFailure(result)) return false
+  return parseImportResultMessage(result.message || '').pendingApproval
+}
+
 function buildConfirmFeedbackText(result: ExcelConfirmResult): string {
   const hasErrors = isExcelConfirmFailure(result)
-  const approvalId = parseImportResultMessage(result.message || '').approvalId
+  const pendingApproval = isApprovalPendingResult(result)
   if (hasErrors) {
     return 'Import failed. Review the result details.'
   }
-  if (approvalId) {
-    return 'Import submitted for approval. Review the approval request details.'
+  if (pendingApproval) {
+    return 'Import submitted for approval. Waiting for ADMIN approval.'
   }
   return `Import completed. Inserted: ${result.inserted_count ?? 0}, updated: ${result.updated_count ?? 0}, deleted: ${result.deleted_count ?? 0}, skipped: ${result.skipped_count ?? 0}.`
 }
@@ -611,6 +652,19 @@ function ParseDetails({
   )
 }
 
+function WorkbookStructureNotice({ compact = false }: { compact?: boolean }) {
+  return (
+    <div style={{ padding: compact ? '0 1rem 1rem' : undefined }}>
+      <MessageStrip design="Negative" hideCloseButton>
+        <strong>Workbook structure is invalid.</strong> {EXCEL_WORKBOOK_STRUCTURE_ERROR_MESSAGE}
+      </MessageStrip>
+      <Text className="excel-summary-note" style={{ display: 'block', marginTop: '8px' }}>
+        The backend returned cascading row errors, so the detailed diff is hidden. No import was submitted.
+      </Text>
+    </div>
+  )
+}
+
 function buildParseSummary(infoRows: ExcelDiffRow[]): string {
   const messages = infoRows
     .map(row => row.message)
@@ -623,20 +677,20 @@ function buildParseSummary(infoRows: ExcelDiffRow[]): string {
 function ExcelImportResultSummary({ result }: { result: ExcelConfirmResult | null }) {
   const parsed = parseImportResultMessage(result?.message || '')
   const hasErrors = isExcelConfirmFailure(result)
-  const tone = hasErrors ? 'error' : parsed.approvalId ? 'approval' : 'success'
+  const tone = hasErrors ? 'error' : parsed.pendingApproval ? 'approval' : 'success'
   const statusText = hasErrors
     ? 'Import failed'
-    : parsed.approvalId
-      ? 'Approval required'
+    : parsed.pendingApproval
+      ? 'Waiting for ADMIN approval'
       : 'Import completed'
   const statusDescription = parsed.description || (
     hasErrors
       ? 'The import finished with errors. Review the details and try again.'
-      : parsed.approvalId
-        ? 'Your changes were submitted successfully and are waiting for approval.'
+      : parsed.pendingApproval
+      ? 'Your changes were submitted successfully and are waiting for ADMIN approval.'
         : 'Your changes were imported successfully.'
   )
-  const iconName = hasErrors ? 'message-error' : parsed.approvalId ? 'message-information' : 'message-success'
+  const iconName = hasErrors ? 'message-error' : parsed.pendingApproval ? 'message-information' : 'message-success'
 
   return (
     <div className={`excel-result-panel excel-result-panel--${tone}`}>
@@ -686,6 +740,7 @@ function parseImportResultMessage(message: string): {
   title: string
   description: string
   approvalId: string
+  pendingApproval: boolean
   rowNo: string
   waitingText: string
   fallback: string
@@ -693,13 +748,15 @@ function parseImportResultMessage(message: string): {
   const text = String(message || '').trim()
   const rowNo = text.match(/^Row\s+(\d+):/i)?.[1] || ''
   const approvalId = text.match(/Approval request submitted\s*\(ID:\s*([^)]+)\)/i)?.[1] || ''
-  const waitingText = /Waiting for approval in the UI/i.test(text) ? 'Waiting for approval in the UI.' : ''
+  const pendingApproval = Boolean(approvalId) || /(?:waiting for approval|submitted for approval|request submitted for approval)/i.test(text)
+  const waitingText = pendingApproval ? 'Waiting for ADMIN approval.' : ''
 
-  if (approvalId) {
+  if (pendingApproval) {
     return {
       title: 'Approval request submitted',
-      description: 'Your Excel import was submitted successfully and is now waiting for approval.',
+      description: 'Your Excel import was submitted successfully and is now waiting for ADMIN approval.',
       approvalId,
+      pendingApproval,
       rowNo,
       waitingText,
       fallback: ''
@@ -711,6 +768,7 @@ function parseImportResultMessage(message: string): {
       title: 'Import failed',
       description: 'No valid Excel rows were submitted. Review skipped rows and approval locks.',
       approvalId: '',
+      pendingApproval,
       rowNo,
       waitingText: '',
       fallback: text
@@ -721,6 +779,7 @@ function parseImportResultMessage(message: string): {
     title: text || 'Import completed',
     description: '',
     approvalId: '',
+    pendingApproval,
     rowNo,
     waitingText,
     fallback: ''
