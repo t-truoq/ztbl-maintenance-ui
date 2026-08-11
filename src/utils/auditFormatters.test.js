@@ -46,7 +46,6 @@ describe('auditFormatters', () => {
     expect(changedAt).toContain('07')
     expect(changedAt).toContain('23')
     expect(changedAt).toContain('59:30')
-    expect(changedAt).toContain('.934')
     expect(parts.some(part => part.key === 'LOCAL_LAST_CHANGED_AT')).toBe(false)
     expect(parts.find(part => part.key === 'LAST_CHANGED_BY')?.value).toBe('DEV-253')
   })

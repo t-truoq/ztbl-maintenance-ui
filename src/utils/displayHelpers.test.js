@@ -12,7 +12,6 @@ describe('displayHelpers timestamp formatting', () => {
     expect(value).toContain('07')
     expect(value).toContain('23')
     expect(value).toContain('59:30')
-    expect(value).toContain('.934')
   })
 
   it('hides zero placeholder timestamps', () => {

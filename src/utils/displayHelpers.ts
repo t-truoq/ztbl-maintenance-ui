@@ -56,7 +56,7 @@ export function formatTimestampValue(value: any, fieldName = ''): string {
       Number(second)
     )
     if (!Number.isNaN(date.getTime())) {
-      const dateText = date.toLocaleString(undefined, {
+      return date.toLocaleString(undefined, {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -64,8 +64,6 @@ export function formatTimestampValue(value: any, fieldName = ''): string {
         minute: '2-digit',
         second: '2-digit'
       })
-      const millis = fraction ? `.${fraction.slice(0, 3).padEnd(3, '0')}` : ''
-      return millis ? dateText.replace(/(:\d{2})(\s?[AP]M)?$/i, `$1${millis}$2`) : dateText
     }
   }
 
