@@ -377,6 +377,10 @@ export interface TableContext {
 export async function loadTableContext(configUuid: string, tableName: string, maxRows = 100): Promise<TableContext> {
   const fieldMetaResult = await loadFieldMetaForTable(configUuid, tableName)
   const tableData = await getTableData(configUuid, tableName, maxRows)
+  const tableDataError = tableData?.error_msg || tableData?.ErrorMsg || tableData?.ERROR_MSG || ''
+  if (tableDataError) {
+    throw new Error(String(tableDataError))
+  }
   let fieldMeta = fieldMetaResult
 
   if (!fieldMeta.length && tableData.field_list) {
@@ -492,6 +496,11 @@ export async function getTableData(configUuid: string, tableName: string, maxRow
     },
     { params: { 'sap-client': SAP_CLIENT } }
   )
+  const body = res.data?.value || res.data
+  const errorMsg = body?.error_msg ?? body?.ErrorMsg ?? body?.ERROR_MSG ?? ''
+  if (errorMsg) {
+    throw new Error(String(errorMsg))
+  }
   return res.data
 }
 
