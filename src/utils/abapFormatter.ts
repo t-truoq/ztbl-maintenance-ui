@@ -53,8 +53,13 @@ export function fromAbapDate(value: any): string {
   if (/^\d{14}$/.test(s)) {
     return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)} ${s.slice(8, 10)}:${s.slice(10, 12)}:${s.slice(12, 14)}`
   }
+  const fullTsMatch = s.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\.(\d+))?$/)
+  if (fullTsMatch) {
+    const [, y, m, d, hh, mm, ss] = fullTsMatch
+    return `${y}-${m}-${d} ${hh}:${mm}:${ss}`
+  }
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
-  return iso ? `${iso[1]}-${iso[2]}-${iso[3]}` : s.substring(0, 10)
+  return iso ? `${iso[1]}-${iso[2]}-${iso[3]}` : s
 }
 
 /** @param {unknown} value */

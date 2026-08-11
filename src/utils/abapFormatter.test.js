@@ -36,6 +36,10 @@ describe('fromAbapDate', () => {
     expect(fromAbapDate('20260521')).toBe('2026-05-21')
   })
 
+  it('converts full timestamp YYYYMMDDHHMMSS.fraction to ISO format', () => {
+    expect(fromAbapDate('20260620125645.5721260')).toBe('2026-06-20 12:56:45')
+  })
+
   it('returns empty for sentinel dates', () => {
     expect(fromAbapDate('00000000')).toBe('')
   })

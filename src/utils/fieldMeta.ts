@@ -278,11 +278,21 @@ export function parseTableData(dataJson: string, meta: FieldMeta[]): TableRowDat
       switch (field.fe_type) {
         case 'date': {
           const s = String(val ?? '')
-          parsed[key] = s
-            ? /^\d{4}-\d{2}-\d{2}/.test(s)
-              ? s.substring(0, 10)
-              : abapToIso(s)
-            : ''
+          const isTs =
+            key.toUpperCase().includes('CHANGED_AT') ||
+            key.toUpperCase().includes('CHANGE_AT') ||
+            key.toUpperCase().includes('CREATED_AT') ||
+            key.toUpperCase().includes('TIMESTAMP') ||
+            field.FieldType === 'TIMESTAMP'
+          if (!s) {
+            parsed[key] = ''
+          } else if (isTs) {
+            parsed[key] = s
+          } else if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+            parsed[key] = s.substring(0, 10)
+          } else {
+            parsed[key] = abapToIso(s)
+          }
           break
         }
         case 'boolean':
