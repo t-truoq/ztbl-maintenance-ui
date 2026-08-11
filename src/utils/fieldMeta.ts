@@ -327,20 +327,43 @@ export function normalizeUuidFromBe(value: any): string {
  * @returns {string}
  */
 /** SAP system-managed fields that must never be sent in any payload */
-const SAP_CLIENT_FIELDS = new Set(['CLIENT', 'MANDT'])
+const SAP_SYSTEM_FIELDS = new Set([
+  'CLIENT',
+  'MANDT',
+  'CREATED_BY',
+  'CREATED_AT',
+  'CREATED_ON',
+  'CHANGED_BY',
+  'CHANGED_AT',
+  'CHANGED_ON',
+  'LAST_CHANGED_BY',
+  'LAST_CHANGED_AT',
+  'LOCAL_LAST_CHANGED_AT',
+  'ERNAM',
+  'ERDAT',
+  'ERZET',
+  'AENAM',
+  'AEDAT',
+  'AEZET',
+  'LAEDA'
+])
 
 export function formatPayload(formData: Record<string, any>, meta: FieldMeta[], isCreate: boolean): string {
   const payload: Record<string, any> = {}
 
   for (const field of meta) {
     if (field.is_hidden) continue
-    // CLIENT/MANDT is always managed by SAP — never send it in any payload
-    if (SAP_CLIENT_FIELDS.has((field.field_name || '').toUpperCase())) continue
+    const keyName = (field.field_name || field.FieldName || '').toUpperCase()
+    
+    // CLIENT/MANDT & system audit fields are managed by SAP ABAP backend — never send in payload
+    if (
+      SAP_SYSTEM_FIELDS.has(keyName) ||
+      /^(CREATED|CHANGED|LAST_CHANGED|LOCAL_LAST_CHANGED)_(BY|AT|ON|DATE|TIME)$/i.test(keyName)
+    ) {
+      continue
+    }
 
-    const key = field.field_name
-    // CLIENT / MANDT is auto-managed by the ABAP compiler — never send it
-    if (key.toUpperCase() === 'CLIENT' || key.toUpperCase() === 'MANDT') continue
-
+    const key = field.field_name || field.FieldName
     const raw = formData[key]
 
     switch (field.fe_type) {

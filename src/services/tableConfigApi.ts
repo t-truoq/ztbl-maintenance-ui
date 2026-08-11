@@ -561,12 +561,41 @@ export async function getRepositoryInfo(configUuid: string, signal?: AbortSignal
   }
 }
 
+const SYSTEM_AUDIT_FIELDS = new Set([
+  'CLIENT',
+  'MANDT',
+  'CREATED_BY',
+  'CREATED_AT',
+  'CREATED_ON',
+  'CHANGED_BY',
+  'CHANGED_AT',
+  'CHANGED_ON',
+  'LAST_CHANGED_BY',
+  'LAST_CHANGED_AT',
+  'LOCAL_LAST_CHANGED_AT',
+  'ERNAM',
+  'ERDAT',
+  'ERZET',
+  'AENAM',
+  'AEDAT',
+  'AEZET',
+  'LAEDA'
+])
+
+function isSystemOrClientField(keyName: string): boolean {
+  const name = keyName.toUpperCase()
+  if (SYSTEM_AUDIT_FIELDS.has(name)) return true
+  if (/^(CREATED|CHANGED|LAST_CHANGED|LOCAL_LAST_CHANGED)_(BY|AT|ON|DATE|TIME)$/i.test(name)) {
+    return true
+  }
+  return false
+}
+
 function stripClientFields(record: any): any {
   if (!record || typeof record !== 'object' || Array.isArray(record)) return record
   const cleaned = { ...record }
   for (const key of Object.keys(cleaned)) {
-    const normalized = key.toUpperCase()
-    if (normalized === 'CLIENT' || normalized === 'MANDT') {
+    if (isSystemOrClientField(key)) {
       delete cleaned[key]
     }
   }
