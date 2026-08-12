@@ -66,14 +66,14 @@ export default function ApprovalSuccessDialog({
               }}
             />
             <FlexBox direction="Column" gap="4px">
-              <Label style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>
+              <Label style={{ fontWeight: 600, fontSize: '0.8125rem' }}>
                 Approval Request ID
               </Label>
               <Text
                 style={{
                   fontFamily: 'monospace',
-                  fontSize: '1.2rem',
-                  fontWeight: 'bold',
+                  fontSize: '1rem',
+                  fontWeight: 600,
                   color: 'var(--sapContent_LabelColor, #133b5c)',
                 }}
               >

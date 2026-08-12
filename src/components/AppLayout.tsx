@@ -144,7 +144,7 @@ export default function AppLayout({
                 />
                 <Label
                   style={{
-                    fontWeight: 'bold',
+                    fontWeight: 600,
                     flex: 1,
                     minWidth: 0,
                     overflow: 'visible',

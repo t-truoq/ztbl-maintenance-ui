@@ -353,25 +353,25 @@ export default function RepositoryInfoTab({ configUuid, tableName }: RepositoryI
           >
             <div>
               <Label>Relationships</Label>
-              <Text style={{ display: 'block', fontSize: '1.25rem', fontWeight: 700 }}>
+              <Text style={{ display: 'block', fontSize: '1.125rem', fontWeight: 600 }}>
                 {info.foreignKeys.filter(row => !repoNotice(row)).length}
               </Text>
             </div>
             <div>
               <Label>Repository Objects</Label>
-              <Text style={{ display: 'block', fontSize: '1.25rem', fontWeight: 700 }}>
+              <Text style={{ display: 'block', fontSize: '1.125rem', fontWeight: 600 }}>
                 {info.cdsViews.filter(row => !repoNotice(row)).length}
               </Text>
             </div>
             <div>
               <Label>Search Helps</Label>
-              <Text style={{ display: 'block', fontSize: '1.25rem', fontWeight: 700 }}>
+              <Text style={{ display: 'block', fontSize: '1.125rem', fontWeight: 600 }}>
                 {info.searchHelps.filter(row => !repoNotice(row)).length}
               </Text>
             </div>
             <div>
               <Label>Function Modules</Label>
-              <Text style={{ display: 'block', fontSize: '1.25rem', fontWeight: 700 }}>
+              <Text style={{ display: 'block', fontSize: '1.125rem', fontWeight: 600 }}>
                 {info.functionModules.filter(row => !repoNotice(row)).length}
               </Text>
             </div>

@@ -80,7 +80,7 @@ export default function WelcomeDashboard({
         </div>
         <div style={{ textAlign: 'right', minWidth: '180px' }}>
           <Label style={{ color: '#a3b7dc', display: 'block' }}>System Context</Label>
-          <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: '1.1rem' }}>
+          <Text style={{ color: '#fff', fontWeight: 600, fontSize: '1rem' }}>
             DEV · Client 324
           </Text>
           <Text style={{ color: '#a3b7dc', fontSize: '0.85rem', display: 'block', marginTop: '4px' }}>
@@ -100,7 +100,7 @@ export default function WelcomeDashboard({
         }}
       >
         <FlexBox direction="Column" gap="8px">
-          <Label style={{ fontSize: '0.95rem', fontWeight: 'bold' }} showColon>
+          <Label style={{ fontSize: '0.875rem', fontWeight: 600 }} showColon>
             Select Z-Table to Maintain
           </Label>
           <FlexBox gap="12px" alignItems="Center" wrap="Wrap">
