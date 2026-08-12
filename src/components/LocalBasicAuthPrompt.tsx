@@ -55,7 +55,7 @@ export default function LocalBasicAuthPrompt({ origin, onLogin }: LocalBasicAuth
         boxShadow: '0 12px 30px rgba(0, 0, 0, 0.45)',
         boxSizing: 'border-box'
       }}>
-        <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 12 }}>
+        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>
           Sign in
         </div>
         <div style={{ fontSize: 13, marginBottom: 18, color: '#fff' }}>

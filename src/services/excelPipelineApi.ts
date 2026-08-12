@@ -169,11 +169,15 @@ export async function downloadExcel(
 
 export async function uploadExcel(
   tableName: string,
+  fileName: string,
+  fileFormat: string,
   fileBase64: string
 ): Promise<ExcelDiffRow[]> {
   const result = await postExcelAction<any>(actionUrl('uploadExcel'), {
     id: STUB_ID,
     table_name: tableName,
+    file_name: fileName,
+    file_format: fileFormat,
     file_base64: fileBase64
   })
 
@@ -273,7 +277,7 @@ export function isExcelConfirmFailure(result: ExcelConfirmResult | null | undefi
 export function normalizeExcelFileName(fileName: string): string {
   return String(fileName || '')
     .trim()
-    .replace(/\.xlsx$/i, '')
+    .replace(/\.(xlsx|csv|tsv|jsonl|ndjson|json)$/i, '')
     .replace(/\s*\(\d+\)$/i, '')
     .replace(/_TEMPLATE$/i, '')
     .trim()
@@ -281,8 +285,18 @@ export function normalizeExcelFileName(fileName: string): string {
 }
 
 export function isExcelFilenameAllowed(fileName: string, tableName: string): boolean {
-  return /\.xlsx$/i.test(String(fileName || '').trim()) &&
+  return !!getExcelFileFormat(fileName) &&
     normalizeExcelFileName(fileName) === normalizeTableName(tableName)
+}
+
+export function getExcelFileFormat(fileName: string): string | null {
+  const extension = String(fileName || '').trim().match(/\.([^.]+)$/)?.[1]?.toLowerCase()
+  if (extension === 'xlsx') return 'XLSX'
+  if (extension === 'csv') return 'CSV'
+  if (extension === 'tsv') return 'TSV'
+  if (extension === 'json') return 'JSON'
+  if (extension === 'jsonl' || extension === 'ndjson') return 'JSONL'
+  return null
 }
 
 function rowBelongsToTable(row: ExcelDiffRow, tableName?: string): boolean {

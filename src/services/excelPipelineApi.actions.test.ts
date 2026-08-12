@@ -89,13 +89,15 @@ describe('excelPipelineApi action requests', () => {
       }
     })
 
-    await expect(uploadExcel('Z251_SCHEDULE', 'BASE64')).resolves.toEqual([
+    await expect(uploadExcel('Z251_SCHEDULE', 'Z251_SCHEDULE.xlsx', 'XLSX', 'BASE64')).resolves.toEqual([
       diffRow({ status: 'NEW', table_name: 'Z251_SCHEDULE' })
     ])
 
     expect(mockPost.mock.calls[0][1]).toEqual({
       id: 'X',
       table_name: 'Z251_SCHEDULE',
+      file_name: 'Z251_SCHEDULE.xlsx',
+      file_format: 'XLSX',
       file_base64: 'BASE64'
     })
   })

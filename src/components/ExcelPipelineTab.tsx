@@ -20,6 +20,7 @@ import {
   filterDiffForCommit,
   EXCEL_WORKBOOK_STRUCTURE_ERROR_MESSAGE,
   getExcelErrorMessage,
+  getExcelFileFormat,
   getInfoRows,
   isExcelConfirmFailure,
   isExcelFilenameAllowed,
@@ -161,8 +162,13 @@ export default function ExcelPipelineTab({
     try {
       await waitForBrowserPaint()
 
+      const fileFormat = getExcelFileFormat(file.name)
+      if (!fileFormat) {
+        throw new Error('Unsupported file extension. Please upload .xlsx, .csv, .tsv, .json, .jsonl, or .ndjson.')
+      }
+
       if (!isExcelFilenameAllowed(file.name, tableName)) {
-        throw new Error(`Please select ${tableName}.xlsx, ${tableName}_TEMPLATE.xlsx, or a browser-numbered copy.`)
+        throw new Error(`Please select a supported ${tableName} import file.`)
       }
 
       if (file.size > MAX_UPLOAD_FILE_BYTES) {
@@ -178,7 +184,7 @@ export default function ExcelPipelineTab({
         base64Length: base64.length
       })
 
-      const rows = await uploadExcel(tableName, base64)
+      const rows = await uploadExcel(tableName, file.name, fileFormat, base64)
       const commitRows = filterDiffForCommit(rows, tableName)
       const visibleRows = rows.filter(row => !(row.row_no === 0 || row.status === 'INFO'))
       const commitCount = commitRows.length
@@ -818,6 +824,7 @@ function ModernModal({
 
   const modal = (
     <div
+      className="excel-modern-modal-backdrop"
       role="presentation"
       onMouseDown={event => {
         if (closeOnBackdrop && event.target === event.currentTarget) {
@@ -840,6 +847,7 @@ function ModernModal({
       }}
     >
       <section
+        className="excel-modern-modal"
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -879,6 +887,7 @@ function ModernModal({
         </header>
 
         <div
+          className="excel-modern-modal-body"
           style={{
             padding: '16px 18px',
             overflowY: 'auto',
@@ -893,6 +902,7 @@ function ModernModal({
 
         {footer && (
           <footer
+            className="excel-modern-modal-footer"
             style={{
               display: 'flex',
               justifyContent: 'flex-end',
@@ -1003,39 +1013,187 @@ function DiffTable({
   rowLimit?: number
   compact?: boolean
 }) {
-  const displayedRows = rowLimit && rows.length > rowLimit
-    ? rows.slice(0, rowLimit)
-    : rows
-  const groups = buildDiffRecordGroups(displayedRows)
+  const changedRows = rows.filter(row => isActionableDiffStatus(row.status))
+  const changedGroups = buildDiffRecordGroups(changedRows)
+  const displayedGroups = rowLimit && changedGroups.length > rowLimit
+    ? changedGroups.slice(0, rowLimit)
+    : changedGroups
+  const fieldColumns = getDiffFieldColumns(displayedGroups)
+  const listShellRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (listShellRef.current) listShellRef.current.scrollLeft = 0
+  }, [compact, displayedGroups.length, fieldColumns.length])
 
   return (
     <div
+      ref={listShellRef}
       className={`excel-record-list-shell${compact ? ' excel-record-list-shell--compact' : ''}`}
       style={{
         maxHeight: compact ? 'min(54vh, 560px)' : undefined,
-        padding: compact ? 0 : '0 1rem 1rem',
+        padding: compact ? 0 : '0 0 1rem',
         scrollbarGutter: compact ? 'stable' : undefined
       }}
     >
-      {rowLimit && rows.length > rowLimit && (
+      {rowLimit && changedGroups.length > rowLimit && (
         <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '8px' }}>
-          Showing the first {displayedRows.length} of {rows.length} field details. Import counts and confirmation still use all records.
+          Showing the first {displayedGroups.length} of {changedGroups.length} changed records. Import counts and confirmation still use all records.
         </MessageStrip>
       )}
 
-      {rows.length === 0 ? (
+      {displayedGroups.length === 0 ? (
         <div className="excel-diff-empty-state">
-          <Text>No Excel diff uploaded yet.</Text>
+          <Text>No changed Excel rows to display.</Text>
         </div>
       ) : (
-        <div className="excel-record-list">
-          {groups.map(group => (
-            <DiffRecordGroupView key={recordIdentity(group.rows[0])} group={group} statusState={statusState} />
-          ))}
+        <div className="excel-diff-table" role="table" aria-label="Excel changed records">
+          <div
+            className="excel-diff-table-row excel-diff-table-row--header"
+            role="row"
+            style={{ gridTemplateColumns: diffTableGridTemplate(fieldColumns.length) }}
+          >
+            <div className="excel-diff-table-cell excel-diff-table-cell--flag" role="columnheader">Action</div>
+            <div className="excel-diff-table-cell" role="columnheader">Record</div>
+            <div className="excel-diff-table-cell" role="columnheader">Excel row</div>
+            {fieldColumns.map(field => (
+              <div className="excel-diff-table-cell" role="columnheader" key={field}>{field}</div>
+            ))}
+            <div className="excel-diff-table-cell" role="columnheader">Message</div>
+          </div>
+          {displayedGroups.map(group => {
+            const status = normalizeDiffStatus(group.status)
+            const statusClass = diffRowClass(status)
+            const rowKey = recordIdentity(group.rows[0])
+
+            return (
+              <div
+                className={`excel-diff-table-row ${statusClass}`}
+                role="row"
+                key={rowKey}
+                style={{ gridTemplateColumns: diffTableGridTemplate(fieldColumns.length) }}
+              >
+                <div className="excel-diff-table-cell excel-diff-table-cell--flag" role="cell" data-label="Action">
+                  <Icon name="flag" className="excel-diff-flag-icon" />
+                  <ObjectStatus state={statusState(status)}>{formatGroupAction(group)}</ObjectStatus>
+                </div>
+                <div className="excel-diff-table-cell excel-diff-table-cell--record" role="cell" data-label="Record">
+                  <Text>{formatDiffRecordKey(group.recordKey)}</Text>
+                </div>
+                <div className="excel-diff-table-cell excel-diff-table-cell--record" role="cell" data-label="Excel row">
+                  {Array.from(new Set(group.rows.map(row => row.row_no))).join(', ')}
+                </div>
+                {fieldColumns.map(field => (
+                  <DiffSpreadsheetFieldCell key={`${rowKey}-${field}`} group={group} field={field} />
+                ))}
+                <div className="excel-diff-table-cell" role="cell" data-label="Message">
+                  <DiffSpreadsheetMessage group={group} />
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
   )
+}
+
+function isActionableDiffStatus(status: string): boolean {
+  return ['NEW', 'CHANGED', 'DELETE', 'DELETED', 'ERROR'].includes(normalizeDiffStatus(status))
+}
+
+function diffTableGridTemplate(fieldCount: number): string {
+  return `minmax(8rem, 0.8fr) minmax(8rem, 0.9fr) minmax(7.5rem, 0.75fr) repeat(${fieldCount}, minmax(8.5rem, 1fr)) minmax(12rem, 1.3fr)`
+}
+
+function getDiffFieldColumns(groups: DiffRecordGroup[]): string[] {
+  const fields: string[] = []
+  groups.forEach(group => {
+    group.rows.forEach(row => {
+      const field = getDiffFieldLabel(row)
+      if (field !== '-' && field.toUpperCase() !== 'ACTION' && !fields.includes(field)) fields.push(field)
+    })
+    if (isDeleteDiffStatus(group.status)) {
+      const deletedRecord = parseDiffRecordValue(group.rows[0]?.old_value)
+      Object.keys(deletedRecord || {}).forEach(field => {
+        if (!fields.includes(field)) fields.push(field)
+      })
+    }
+  })
+  return fields
+}
+
+function formatGroupAction(group: DiffRecordGroup): string {
+  const actionRow = group.rows.find(row => String(row.field_name || '').trim().toUpperCase() === 'ACTION')
+  const rawAction = String(actionRow?.new_value || actionRow?.old_value || '').trim().toUpperCase()
+  if (rawAction === 'U' || rawAction === 'UPDATE') return 'Update'
+  if (rawAction === 'C' || rawAction === 'CREATE') return 'Create'
+  if (rawAction === 'D' || rawAction === 'DELETE') return 'Delete'
+  if (normalizeDiffStatus(group.status) === 'CHANGED') return 'Changes'
+  if (isDeleteDiffStatus(group.status)) return 'Delete'
+  if (normalizeDiffStatus(group.status) === 'NEW') return 'Create'
+  return 'Ignore'
+}
+
+function DiffSpreadsheetFieldCell({ group, field }: { group: DiffRecordGroup; field: string }) {
+  const row = group.rows.find(item => getDiffFieldLabel(item) === field)
+  const deletedRecord = isDeleteDiffStatus(group.status)
+    ? parseDiffRecordValue(group.rows[0]?.old_value)
+    : null
+
+  if (deletedRecord && Object.prototype.hasOwnProperty.call(deletedRecord, field)) {
+    const deletedValue = field === 'ACTION' && isDeleteDiffStatus(group.status) && !String(deletedRecord[field] ?? '').trim()
+      ? 'D'
+      : deletedRecord[field]
+    return (
+      <div className="excel-diff-table-cell" role="cell" data-label={field}>
+        <Text className="excel-diff-cell-text">{formatSpreadsheetFieldValue(field, deletedValue)}</Text>
+      </div>
+    )
+  }
+
+  if (!row) {
+    const value = field === 'ACTION' && isDeleteDiffStatus(group.status)
+      ? formatExcelAction('D')
+      : '-'
+    return <div className="excel-diff-table-cell" role="cell" data-label={field}>{value}</div>
+  }
+
+  const status = normalizeDiffStatus(row.status)
+  const value = status === 'NEW'
+    ? formatSpreadsheetFieldValue(field, row.new_value)
+    : status === 'CHANGED'
+      ? `${formatSpreadsheetFieldValue(field, row.old_value)} → ${formatSpreadsheetFieldValue(field, row.new_value)}`
+      : formatSpreadsheetFieldValue(field, row.new_value || row.old_value)
+
+  return (
+    <div className="excel-diff-table-cell" role="cell" data-label={field}>
+      <Text className="excel-diff-cell-text">{value || '-'}</Text>
+    </div>
+  )
+}
+
+function formatSpreadsheetFieldValue(field: string, value: unknown): string {
+  if (String(field || '').trim().toUpperCase() === 'ACTION') {
+    return formatExcelAction(value)
+  }
+  return String(value ?? '').trim() || '-'
+}
+
+function formatExcelAction(value: unknown): string {
+  const normalized = String(value ?? '').trim().toUpperCase()
+  if (normalized === 'C' || normalized === 'CREATE') return 'Create'
+  if (normalized === 'U' || normalized === 'UPDATE') return 'Update'
+  if (normalized === 'D' || normalized === 'DELETE') return 'Delete'
+  return 'Ignore'
+}
+
+function DiffSpreadsheetMessage({ group }: { group: DiffRecordGroup }) {
+  const messages = Array.from(new Set(
+    group.rows.map(row => String(row.message || '').trim()).filter(Boolean)
+  ))
+  if (isDeleteDiffStatus(group.status)) messages.unshift('Record will be deleted')
+
+  return <Text className="excel-diff-cell-text">{messages.join('; ') || '-'}</Text>
 }
 
 function buildDiffRecordGroups(rows: ExcelDiffRow[]): DiffRecordGroup[] {
