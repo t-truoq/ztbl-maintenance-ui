@@ -17,7 +17,7 @@ import {
   normalizeFieldMetaRow,
   buildFieldMetaFromFieldList
 } from '../utils/fieldMeta'
-import { TableConfig, FieldMeta, AuditLogEntry, AuditItemEntry, TableRowData, AiFieldDescription } from '../types'
+import { TableConfig, FieldMeta, AuditLogEntry, AuditItemEntry, TableRowData, AiFieldDescription, PendingApprovalRecord } from '../types'
 import { isYesFlag } from '../utils/tableHelpers'
 import { normalizeAiDescriptions } from '../utils/aiDescriptions'
 
@@ -154,6 +154,60 @@ export async function getTables(): Promise<TableConfig[]> {
       ConfigUuid: normalizeConfigUuid(row.ConfigUuid)
     }])).values()
   )
+}
+
+/**
+ * Loads only the non-sensitive fields needed to mark rows that are currently
+ * unavailable while an ADMIN approval is pending.
+ */
+export async function getPendingApprovalRecords(tableName: string): Promise<PendingApprovalRecord[]> {
+  const escapedTableName = String(tableName || '').replace(/'/g, "''")
+  if (!escapedTableName) return []
+
+  const res = await api.get('/ApprovalItem', {
+    params: {
+      'sap-client': SAP_CLIENT,
+      '$filter': `TableName eq '${escapedTableName}'`,
+      '$select': 'TableName,RecordKey,Status,ActionType'
+    },
+    headers: {
+      'Cache-Control': 'no-cache',
+      Pragma: 'no-cache'
+    }
+  })
+
+  const rows = Array.isArray(res.data?.value) ? res.data.value : []
+  return rows
+    .map((row: any) => ({
+      TableName: String(row.TableName ?? ''),
+      RecordKey: String(row.RecordKey ?? ''),
+      Status: String(row.Status ?? ''),
+      ActionType: String(row.ActionType ?? '')
+    }))
+    .filter(row => isPendingApprovalStatus(row.Status))
+}
+
+export function isPendingApprovalStatus(status: unknown): boolean {
+  const normalized = String(status ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_')
+  if (!normalized) return false
+
+  const finalStatuses = new Set([
+    'APPROVED', 'REJECTED', 'CANCELLED', 'CANCELED', 'COMPLETED', 'DONE', 'CLOSED',
+    'A', 'R'
+  ])
+  return !finalStatuses.has(normalized)
+}
+
+export function sanitizeApprovalLockMessage(message: unknown): string {
+  return String(message ?? '')
+    .replace(
+      /Record\s+đang\s+chờ\s+duyệt\s+bởi\s+[^.]+\.\s*Không\s+thể\s+tạo\s+request\s+mới\.?/gi,
+      'Record is waiting for ADMIN approval. Cannot create a new request.'
+    )
+    .replace(
+      /Record\s+is\s+pending\s+approval\s+by\s+[^.]+\.\s*Cannot\s+create\s+a\s+new\s+request\.?/gi,
+      'Record is waiting for ADMIN approval. Cannot create a new request.'
+    )
 }
 
 function extractActionResponseBody(data: any): any {
@@ -625,7 +679,7 @@ export function getActionMessage(response: any): string {
 
   if (typeof raw !== 'string') return ''
 
-  return raw
+  return sanitizeApprovalLockMessage(raw)
     .replace(/\{"([^"]+)":\s*"([^"]+)"\}/g, '($1: $2)')
     .replace(/\{"([^"]+)":\s*(\d+)\}/g, '($1: $2)')
 }
@@ -640,7 +694,7 @@ export function parseBulkActionResults(response: any): BulkActionResult[] {
     return parsed.map(item => ({
       record_index: Number(readActionField(item, 'record_index') ?? 0),
       success: readActionField(item, 'success') === true || readActionField(item, 'success') === 'X',
-      message: String(readActionField(item, 'message') ?? ''),
+      message: sanitizeApprovalLockMessage(readActionField(item, 'message')),
     }))
   } catch {
     return []

@@ -322,6 +322,28 @@ ui5-filter-bar {
   min-width: 0;
 }
 
+.table-pending-notice {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 1.75rem;
+  padding: 0.25rem 0.625rem;
+  box-sizing: border-box;
+  border: 1px solid var(--sapCriticalColor, #e09d00);
+  border-radius: 0.375rem;
+  background: var(--sapWarningBackground, #fff8d6);
+  color: var(--sapTextColor, #32363a);
+  font-size: 0.8125rem;
+}
+
+.table-pending-notice-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex: 0 0 0.875rem;
+  color: var(--sapCriticalColor, #e09d00);
+}
+
 .table-data-permission-note {
   color: var(--sapCriticalTextColor, #8d5f00);
 }
@@ -472,6 +494,7 @@ body {
 }
 
 .dynamic-table-selection-cell {
+  position: relative;
   background: inherit;
 }
 
@@ -507,6 +530,22 @@ body {
 .dynamic-table-data-row--new {
   background: var(--sapSuccessBackground, #edf8f0);
   box-shadow: inset 3px 0 0 var(--sapPositiveColor, #107e3e);
+}
+
+.dynamic-table-data-row--pending,
+.dynamic-table-data-row--pending:hover {
+  background: var(--sapWarningBackground, #fff8d6);
+  box-shadow: inset 3px 0 0 var(--sapCriticalColor, #e09d00);
+}
+
+.dynamic-table-pending-lock {
+  position: absolute;
+  top: 0.1875rem;
+  right: 0.1875rem;
+  width: 0.6875rem;
+  height: 0.6875rem;
+  color: var(--sapCriticalColor, #e09d00);
+  pointer-events: none;
 }
 
 .dynamic-table-empty-row {

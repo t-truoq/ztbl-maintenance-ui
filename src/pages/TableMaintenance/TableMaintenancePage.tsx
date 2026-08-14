@@ -87,6 +87,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
     approvalInfo,
     setApprovalInfo,
     activeTableLock,
+    pendingApprovalRecords,
     filteredData,
     // Handlers
     loadTable,
@@ -390,6 +391,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
                 editedData={editedData}
                 inlineErrors={inlineErrors}
                 activeTableLock={activeTableLock}
+                pendingApprovalRecords={pendingApprovalRecords}
                 permissions={{
                   canCreate: canCreateTable,
                   canUpdate: canUpdateTable,
