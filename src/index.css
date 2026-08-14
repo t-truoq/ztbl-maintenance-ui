@@ -322,6 +322,64 @@ ui5-filter-bar {
   min-width: 0;
 }
 
+.table-data-permission-note {
+  color: var(--sapCriticalTextColor, #8d5f00);
+}
+
+.app-loading-state {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  color: var(--sapContent_LabelColor, #6a6d70);
+  box-sizing: border-box;
+}
+
+.app-loading-state--fullscreen {
+  min-height: 100dvh;
+  padding: 2rem;
+  background: var(--sapBackgroundColor, #f4f6f8);
+}
+
+.app-loading-state--panel {
+  min-height: 12rem;
+  padding: 2rem 1rem;
+}
+
+.app-loading-state--inline {
+  min-height: 2.75rem;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+}
+
+.app-loading-state--compact {
+  width: auto;
+  min-height: 2rem;
+  flex-direction: row;
+  gap: 0.5rem;
+  padding: 0;
+}
+
+.app-loading-state--compact .app-loading-state__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.app-loading-state__label {
+  color: inherit;
+}
+
 /* The checkbox has its own selected state; remove UI5's extra focus card around it. */
 .table-data-panel ui5-checkbox {
   --_ui5_checkbox_focus_outline: none !important;
@@ -333,13 +391,6 @@ ui5-filter-bar {
 .table-data-panel .tab-panel-actions ui5-button {
   --_ui5_button_focused_border: none !important;
   --_ui5_button_emphasized_focused_border_before: none !important;
-}
-
-.table-permission-loading {
-  min-height: 8rem;
-  align-items: center;
-  justify-content: center;
-  color: var(--sapContent_LabelColor, #6a6d70);
 }
 
 .table-date-picker {
@@ -387,13 +438,104 @@ body {
 
 .dynamic-table-scroll {
   width: 100%;
-  overflow-x: auto;
+  overflow-x: clip;
   overflow-y: visible;
-  scrollbar-gutter: stable;
+}
+
+.dynamic-table-surface {
+  min-width: 0;
+  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  border-radius: 8px;
+  background: var(--sapList_Background, #fff);
+  box-shadow: 0 1px 2px rgba(34, 53, 72, 0.05);
+}
+
+.dynamic-data-table {
+  width: 100%;
+  background: var(--sapList_Background, #fff);
+}
+
+.dynamic-table-header-row {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  min-height: 2.75rem;
+  background: var(--sapList_HeaderBackground, #f4f6f8);
+  box-shadow: inset 0 -1px 0 var(--sapGroup_BorderColor, #d9d9d9);
+}
+
+.dynamic-table-header-cell {
+  color: var(--sapContent_LabelColor, #556b82);
+  background: var(--sapList_HeaderBackground, #f4f6f8);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.dynamic-table-selection-cell {
+  background: inherit;
+}
+
+.dynamic-table-selection-cell ui5-checkbox {
+  width: 2.75rem;
+  min-width: 2.75rem;
+  margin: 0;
+}
+
+.dynamic-table-header-row .dynamic-table-selection-cell {
+  background: var(--sapList_HeaderBackground, #f4f6f8);
+}
+
+.dynamic-table-data-row {
+  min-height: 3rem;
+  background: var(--sapList_Background, #fff);
+  transition: background-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.dynamic-table-data-row:hover {
+  background: var(--sapList_Hover_Background, #f5faff);
+}
+
+.dynamic-table-data-row--selected {
+  background: var(--sapList_SelectionBackgroundColor, #e5f0fa);
+  box-shadow: inset 3px 0 0 var(--sapSelectedColor, #0a6ed1);
+}
+
+.dynamic-table-data-row--selected:hover {
+  background: var(--sapList_Hover_SelectionBackground, #dcecf9);
+}
+
+.dynamic-table-data-row--new {
+  background: var(--sapSuccessBackground, #edf8f0);
+  box-shadow: inset 3px 0 0 var(--sapPositiveColor, #107e3e);
+}
+
+.dynamic-table-empty-row {
+  grid-template-columns: 1fr !important;
+  width: 100%;
+  min-width: 100%;
+}
+
+.dynamic-table-empty-cell {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 0.35rem;
+  min-height: 11rem;
+  padding: 1.5rem;
+  box-sizing: border-box;
+  color: var(--sapContent_LabelColor, #6a6d70);
+  text-align: center;
+}
+
+.dynamic-table-empty-icon {
+  width: 2rem;
+  height: 2rem;
+  margin-bottom: 0.25rem;
+  color: var(--sapContent_NonInteractiveIconColor, #8396a8);
 }
 
 .dynamic-table-scroll--editing {
-  overflow-x: auto;
+  overflow-x: clip;
   overflow-y: visible;
 }
 
@@ -433,9 +575,9 @@ ui5-dialog ui5-table-row,
 }
 
 .column-resize-bar {
-  width: 2px;
+  width: 1px;
   height: 14px;
-  background-color: #a0aab4;
+  background-color: var(--sapGroup_BorderColor, #a0aab4);
   border-radius: 1px;
   transition: background-color 0.15s ease, width 0.15s ease;
 }
@@ -447,8 +589,23 @@ ui5-dialog ui5-table-row,
 }
 
 .dynamic-table-bottom-spacer {
-  height: max(5rem, env(safe-area-inset-bottom));
+  height: max(1.5rem, env(safe-area-inset-bottom));
   flex: 0 0 auto;
+}
+
+@media (max-width: 760px) {
+  .table-data-panel .tab-panel-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .table-data-panel .tab-panel-actions {
+    justify-content: flex-start;
+  }
+
+  .dynamic-table-empty-cell {
+    min-height: 9rem;
+  }
 }
 
 .ai-field-tooltip-button {
@@ -568,6 +725,267 @@ ui5-dialog ui5-table-row,
 
 .field-schema-message {
   margin-top: -0.25rem;
+}
+
+.field-schema-table-surface {
+  width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+  overflow-y: visible;
+  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  border-radius: 8px;
+  background: var(--sapList_Background, #fff);
+  box-shadow: 0 1px 2px rgba(34, 53, 72, 0.05);
+}
+
+.field-schema-table {
+  width: 100%;
+  background: var(--sapList_Background, #fff);
+}
+
+.field-schema-table ui5-table-header-row,
+.field-schema-table ui5-table-row {
+  display: grid !important;
+  grid-template-columns: 150px 100px 85px 150px 64px 96px 64px 120px 220px minmax(220px, 1fr) !important;
+}
+
+.field-schema-table-header-row {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  min-height: 2.75rem;
+  background: var(--sapList_HeaderBackground, #f4f6f8);
+  box-shadow: inset 0 -1px 0 var(--sapGroup_BorderColor, #d9d9d9);
+}
+
+.field-schema-table-header-cell {
+  min-width: 0 !important;
+  color: var(--sapContent_LabelColor, #556b82);
+  background: var(--sapList_HeaderBackground, #f4f6f8);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.field-schema-data-row {
+  min-height: 3rem;
+  align-items: stretch;
+  background: var(--sapList_Background, #fff);
+  transition: background-color 0.12s ease;
+}
+
+.field-schema-data-row:hover {
+  background: var(--sapList_Hover_Background, #f5faff);
+}
+
+.field-schema-cell {
+  min-width: 0;
+  align-items: center;
+}
+
+.field-schema-cell ui5-text {
+  line-height: 1.35;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.field-schema-cell--technical ui5-text,
+.field-schema-cell--flag ui5-text {
+  white-space: nowrap;
+}
+
+.field-schema-cell--description {
+  align-items: flex-start;
+}
+
+.field-schema-cell--description ui5-text {
+  white-space: normal;
+}
+
+.field-schema-empty-row {
+  grid-template-columns: 1fr !important;
+  width: 100%;
+  min-width: 100%;
+}
+
+.field-schema-empty-cell {
+  display: grid;
+  place-items: center;
+  min-height: 10rem;
+  padding: 1.5rem;
+  box-sizing: border-box;
+  color: var(--sapContent_LabelColor, #6a6d70);
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .field-schema-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .field-schema-header .tab-panel-actions {
+    justify-content: flex-start;
+  }
+}
+
+.dependencies-panel {
+  min-width: 0;
+}
+
+.dependencies-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.125rem;
+}
+
+.dependencies-summary-card {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  border-radius: 8px;
+  background: var(--sapList_Background, #fff);
+  box-shadow: 0 1px 2px rgba(34, 53, 72, 0.05);
+}
+
+.dependencies-summary-value {
+  display: block;
+  color: var(--sapTextColor, #1d2d3e);
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.dependencies-section {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+  margin-top: 1rem;
+}
+
+.dependencies-section-subtitle {
+  display: block;
+  margin-top: -0.25rem;
+  color: var(--sapContent_LabelColor, #6a7075);
+}
+
+.dependencies-table {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  border-radius: 8px;
+  background: var(--sapList_Background, #fff);
+  box-shadow: 0 1px 2px rgba(34, 53, 72, 0.05);
+}
+
+.dependencies-table ui5-table-header-row,
+.dependencies-table ui5-table-row {
+  display: grid !important;
+}
+
+.dependencies-table--foreign-keys ui5-table-header-row,
+.dependencies-table--foreign-keys ui5-table-row {
+  grid-template-columns: 190px 150px 190px 150px minmax(90px, 1fr) !important;
+}
+
+.dependencies-table--repository-objects ui5-table-header-row,
+.dependencies-table--repository-objects ui5-table-row {
+  grid-template-columns: 220px 120px 180px minmax(140px, 1fr) !important;
+}
+
+.dependencies-table--search-helps ui5-table-header-row,
+.dependencies-table--search-helps ui5-table-row {
+  grid-template-columns: 160px 180px 180px minmax(180px, 1fr) !important;
+}
+
+.dependencies-table--function-modules ui5-table-header-row,
+.dependencies-table--function-modules ui5-table-row {
+  grid-template-columns: 240px 180px minmax(100px, 1fr) !important;
+}
+
+.dependencies-table--data-elements ui5-table-header-row,
+.dependencies-table--data-elements ui5-table-row {
+  grid-template-columns: 180px 150px 90px 90px 90px 220px minmax(260px, 1fr) !important;
+}
+
+.dependencies-table ui5-table-header-cell,
+.dependencies-table ui5-table-cell {
+  min-width: 0 !important;
+}
+
+.dependencies-table-header-row {
+  min-height: 2.75rem;
+  background: var(--sapList_HeaderBackground, #f4f6f8);
+  box-shadow: inset 0 -1px 0 var(--sapGroup_BorderColor, #d9d9d9);
+}
+
+.dependencies-table-header-row ui5-table-header-cell {
+  color: var(--sapContent_LabelColor, #556b82);
+  background: var(--sapList_HeaderBackground, #f4f6f8);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dependencies-data-row {
+  min-height: 3rem;
+  background: var(--sapList_Background, #fff);
+  transition: background-color 0.12s ease;
+}
+
+.dependencies-data-row:hover {
+  background: var(--sapList_Hover_Background, #f5faff);
+}
+
+.dependencies-data-row ui5-text {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.dependencies-table ui5-table-row.dependencies-empty-row,
+.dependencies-table ui5-table-row.dependencies-notice-row {
+  grid-template-columns: 1fr !important;
+  width: 100%;
+  min-width: 100%;
+}
+
+.dependencies-empty-cell {
+  display: flex;
+  align-items: center;
+  min-height: 3.5rem;
+  padding-inline: 1rem;
+  box-sizing: border-box;
+  color: var(--sapContent_LabelColor, #6a6d70);
+}
+
+.dependencies-notice-cell {
+  min-width: 0;
+  padding: 0.5rem;
+  box-sizing: border-box;
+}
+
+.dependencies-technical-toggle {
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 900px) {
+  .dependencies-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .dependencies-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dependencies-summary-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Ensure Toast notification wraps text and handles long UUIDs without overflow/clipping */
@@ -957,9 +1375,12 @@ ui5-toast {
   padding: 0 1rem;
 }
 
-.excel-error-banner ui5-message-strip,
-.excel-feedback-banner ui5-message-strip {
+.excel-error-banner ui5-message-strip {
   box-shadow: 0 6px 18px rgba(187, 0, 0, 0.14);
+}
+
+.excel-feedback-banner ui5-message-strip {
+  box-shadow: 0 6px 18px rgba(10, 110, 209, 0.12);
 }
 
 .excel-result-panel {
@@ -1031,6 +1452,10 @@ ui5-toast {
   font-size: 0.8125rem;
   line-height: 1.25rem;
   overflow-wrap: anywhere;
+}
+
+.excel-result-done-button {
+  min-width: 5rem;
 }
 
 .excel-result-detail-grid {
@@ -1146,17 +1571,19 @@ ui5-toast {
 }
 
 .excel-record-list-shell--compact .excel-diff-table {
-  width: max-content;
+  width: 100%;
   min-width: 100%;
   overflow: visible;
 }
 
 .excel-record-list-shell--compact .excel-diff-table-row {
-  min-width: max-content;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .excel-record-list-shell--compact .excel-diff-table-cell {
-  white-space: nowrap;
+  white-space: normal;
   overflow-wrap: normal;
 }
 
@@ -1180,6 +1607,8 @@ ui5-toast {
   position: sticky;
   top: 0;
   z-index: 1;
+  width: 100%;
+  box-sizing: border-box;
   border-left-color: transparent;
   background: #f3f5f6;
   color: var(--sapContent_LabelColor, #556b82);
@@ -1241,6 +1670,8 @@ ui5-toast {
 }
 
 .excel-diff-table-row--header .excel-diff-table-cell {
+  box-sizing: border-box;
+  background: #f3f5f6;
   overflow-wrap: normal;
   white-space: nowrap;
 }
@@ -1768,14 +2199,6 @@ ui5-toast {
   font-weight: 700;
 }
 
-.audit-loading {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 0.75rem;
-  min-height: 9rem;
-}
-
 .audit-message {
   margin-top: 0.25rem;
 }
@@ -2167,7 +2590,7 @@ ui5-toast {
 
 .audit-details-meta {
   display: grid;
-  grid-template-columns: minmax(18rem, 1.6fr) minmax(8rem, 0.7fr) minmax(12rem, 1fr) auto;
+  grid-template-columns: minmax(16rem, 1.5fr) minmax(8rem, 0.7fr) minmax(12rem, 1fr) minmax(7rem, 0.6fr) auto;
   gap: 1rem;
   align-items: center;
   margin-bottom: 0.75rem;
@@ -2261,6 +2684,100 @@ ui5-toast {
 
 .audit-details-notice {
   margin-bottom: 0.75rem;
+}
+
+.audit-unified-detail-table {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid var(--sapGroup_BorderColor, #d9e2ea);
+  border-radius: 0.5rem;
+  background: var(--sapList_Background, #fff);
+  scrollbar-gutter: stable both-edges;
+  -webkit-overflow-scrolling: touch;
+}
+
+.audit-unified-detail-table table {
+  width: max-content;
+  min-width: 100%;
+  border-spacing: 0;
+  border-collapse: separate;
+  table-layout: auto;
+}
+
+.audit-unified-detail-table th,
+.audit-unified-detail-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--sapList_BorderColor, #e5ebf0);
+  color: var(--sapTextColor, #32363a);
+  line-height: 1.25rem;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.audit-unified-detail-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.audit-unified-detail-table tbody tr:hover td {
+  background: var(--sapList_Hover_Background, #f5faff);
+}
+
+.audit-unified-detail-table th:nth-child(1) {
+  min-width: 7rem;
+}
+
+.audit-unified-detail-table th:nth-child(2) {
+  min-width: 16rem;
+}
+
+.audit-unified-detail-table th:nth-child(n + 3) {
+  min-width: 12rem;
+}
+
+.audit-unified-detail-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--sapList_HeaderBackground, #f3f6f8);
+  color: var(--sapContent_LabelColor, #526b82);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.audit-unified-detail-record {
+  font-weight: 600;
+}
+
+.audit-unified-change-values {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.audit-unified-old-value {
+  color: var(--sapContent_LabelColor, #637b91);
+}
+
+.audit-unified-change-arrow {
+  color: var(--sapContent_NonInteractiveIconColor, #758ca3);
+  font-weight: 600;
+}
+
+.audit-unified-new-value {
+  color: var(--sapTextColor, #1d2d3e);
+  font-weight: 600;
+}
+
+.audit-unified-empty-value {
+  color: var(--sapContent_LabelColor, #8c98a4);
+}
+
+.audit-unified-detail-table .audit-action-badge {
+  max-width: 100%;
+  white-space: nowrap;
 }
 
 @media (max-width: 800px) {
@@ -2864,8 +3381,8 @@ ui5-toast {
 }
 
 .audit-overview-table .audit-table-row {
-  grid-template-columns: 10rem minmax(15rem, 1.15fr) 12rem minmax(16rem, 1.6fr) 18rem;
-  min-width: 71rem;
+  grid-template-columns: 7rem minmax(17rem, 1.35fr) 10.5rem minmax(10rem, 0.9fr) 8.5rem 8.5rem;
+  min-width: 61.5rem;
   align-items: stretch;
   background: var(--sapList_Background, #fff);
 }
@@ -2873,9 +3390,10 @@ ui5-toast {
 .audit-overview-table .audit-table-cell {
   display: flex;
   align-items: center;
-  min-height: 4rem;
+  min-height: 3.25rem;
+  padding: 0.5rem 0.75rem;
+  box-sizing: border-box;
   border-right: 0;
-  padding-inline: 1rem;
 }
 
 .audit-overview-table .audit-table-cell:last-child {
@@ -2889,6 +3407,49 @@ ui5-toast {
   text-overflow: ellipsis;
 }
 
+.audit-overview-id {
+  color: var(--sapTextColor, #1d2d3e);
+  font-family: var(--sapFontFamily, "72", Arial, sans-serif);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.audit-overview-id > span {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-summary-overview {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+  padding: 0.3125rem 0.5rem;
+  border: 1px solid var(--sapGroup_BorderColor, #d9e2ea);
+  border-radius: 0.5rem;
+  background: var(--sapNeutralBackground, #f5f7f9);
+  color: var(--sapContent_LabelColor, #526b82);
+  font-size: 0.75rem;
+  font-weight: 600;
+  overflow: hidden;
+}
+
+.audit-summary-overview span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-summary-overview-icon {
+  flex: 0 0 auto;
+  color: var(--sapContent_IconColor, #637b91);
+}
+
 .audit-overview-table .audit-table-cell--action {
   position: sticky;
   left: 0;
@@ -2896,43 +3457,97 @@ ui5-toast {
   background: inherit;
   box-shadow: none;
   overflow: visible;
+  padding-inline: 0.5rem;
 }
 
-.audit-overview-table .audit-table-cell--actions {
+.audit-overview-table .audit-table-cell--details,
+.audit-overview-table .audit-table-cell--rollback {
   position: sticky;
-  right: 0;
   z-index: 2;
-  display: grid;
-  grid-template-columns: 7.5rem 7.5rem;
-  justify-content: end;
+  display: flex;
+  justify-content: center;
   align-items: center;
-  gap: 0.4rem;
   background: inherit;
   box-shadow: none;
+  padding-inline: 0.5rem;
 }
 
-.audit-overview-table .audit-table-cell--actions ui5-button {
-  width: 7.5rem;
-  min-width: 7.5rem;
+.audit-overview-table .audit-table-cell--details {
+  right: 8.5rem;
+}
+
+.audit-overview-table .audit-table-cell--rollback {
+  right: 0;
+}
+
+.audit-overview-table .audit-table-cell--details ui5-button,
+.audit-overview-table .audit-table-cell--rollback ui5-button {
+  max-width: 100%;
   margin: 0;
 }
 
-.audit-overview-table .audit-table-cell--actions .audit-action-button {
-  grid-column: 1;
+.audit-overview-table .audit-action-button {
+  width: 7.5rem;
+  min-width: 7.5rem;
+  font-size: 0.75rem;
 }
 
-.audit-overview-table .audit-table-cell--actions ui5-button:not(.audit-action-button) {
-  grid-column: 2;
+.audit-overview-table .audit-rollback-button {
+  width: 7.5rem;
+  min-width: 7.5rem;
+  --sapButton_Attention_Background: #fff8d6;
+  --sapButton_Attention_BorderColor: #e09d00;
+  --sapButton_Attention_TextColor: #8d5f00;
+}
+
+.audit-rollback-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  max-width: 100%;
+  color: var(--sapContent_LabelColor, #66788a);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.audit-rollback-status ui5-icon {
+  flex: 0 0 auto;
+  font-size: 0.875rem;
 }
 
 .audit-overview-table .audit-table-row--header .audit-table-cell:first-child,
-.audit-overview-table .audit-table-row--header .audit-table-cell:last-child {
+.audit-overview-table .audit-table-row--header .audit-table-cell--details,
+.audit-overview-table .audit-table-row--header .audit-table-cell--rollback {
   z-index: 4;
   background: var(--sapList_HeaderBackground, #f4f6f8);
 }
 
+.audit-overview-table .audit-table-row--header .audit-table-cell--details,
+.audit-overview-table .audit-table-row--header .audit-table-cell--rollback {
+  display: flex;
+  justify-content: center;
+}
+
 .audit-overview-table .audit-table-row--header {
-  border-bottom: 1px solid var(--sapGroup_BorderColor, #d9e0e7);
+  min-height: 2.75rem;
+  border-bottom: 1px solid var(--sapGroup_BorderColor, #d9d9d9);
+  background: var(--sapList_HeaderBackground, #f4f6f8);
+}
+
+.audit-overview-table .audit-table-row--header .audit-table-cell {
+  min-height: 2.75rem;
+  padding-block: 0.4375rem;
+  border-right: 0;
+  background: var(--sapList_HeaderBackground, #f4f6f8);
+  color: var(--sapContent_LabelColor, #556b82);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .audit-overview-table .audit-overview-row {
@@ -2950,6 +3565,33 @@ ui5-toast {
 .audit-overview-table .audit-action-badge {
   max-width: 100%;
   white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .audit-overview-table .audit-table-cell {
+    padding-inline: 0.75rem;
+  }
+
+  .audit-overview-table .audit-table-cell--action,
+  .audit-overview-table .audit-table-cell--details,
+  .audit-overview-table .audit-table-cell--rollback {
+    padding-inline: 0.5rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .audit-overview-table {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .audit-overview-table .audit-table-row--header {
+    display: grid;
+  }
+
+  .audit-overview-table .audit-table-row {
+    min-width: 61.5rem;
+  }
 }
 
 /* Audit overview uses the same one-record-per-row model as the Excel preview. */
@@ -3077,35 +3719,6 @@ ui5-toast {
   z-index: 4;
   background: var(--sapList_HeaderBackground, #f4f6f8);
   box-shadow: 1px 0 0 var(--sapList_BorderColor, #edf0f2);
-}
-
-.audit-record-parts {
-  display: grid;
-  gap: 0.18rem;
-  width: 100%;
-  min-width: 0;
-}
-
-.audit-record-part {
-  display: grid;
-  grid-template-columns: minmax(4.5rem, auto) minmax(0, 1fr);
-  gap: 0.4rem;
-  min-width: 0;
-  line-height: 1.2;
-}
-
-.audit-record-part-label {
-  color: var(--sapContent_LabelColor, #556b82);
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.audit-record-part-value {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--sapTextColor, #32363a);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .audit-table-cell--changed {
@@ -3288,20 +3901,30 @@ body,
 }
 
 .excel-record-list-shell--compact .excel-diff-table {
-  width: max-content;
+  width: 100%;
   min-width: 100%;
 }
 
 .excel-modern-modal-backdrop {
-  max-width: 100vw;
-  overflow: hidden;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  width: 100dvw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  padding: 1.25rem;
+  box-sizing: border-box;
+  overflow: auto;
 }
 
 .excel-modern-modal {
-  width: min(96vw, 1180px) !important;
-  max-width: calc(100vw - 2rem) !important;
-  max-height: calc(100dvh - 2rem) !important;
+  width: var(--excel-modal-width, min(96dvw, 1180px)) !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
   min-width: 0 !important;
+  box-sizing: border-box !important;
+  margin: auto;
 }
 
 .excel-modern-modal-body {
@@ -3337,7 +3960,7 @@ body,
   .excel-modern-modal {
     width: 100% !important;
     max-width: 100% !important;
-    max-height: calc(100dvh - 1rem) !important;
+    max-height: 100% !important;
     border-radius: 0.5rem !important;
   }
 
@@ -3354,7 +3977,7 @@ body,
   }
 
   .excel-diff-table {
-    width: max-content;
+    width: 100%;
     min-width: 100%;
   }
 }

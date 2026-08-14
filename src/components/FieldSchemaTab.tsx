@@ -9,9 +9,9 @@ import {
   Button,
   FlexBox,
   MessageStrip,
-  BusyIndicator,
 } from '@ui5/webcomponents-react'
 import { AiDescriptionMap, FieldMeta } from '../types'
+import AppLoadingState from './AppLoadingState'
 
 interface FieldSchemaTabProps {
   allFields: FieldMeta[]
@@ -50,7 +50,7 @@ export default function FieldSchemaTab({
           </Text>
         </div>
         <FlexBox className="tab-panel-actions" alignItems="Center" gap="0.5rem">
-          {aiLoading && <BusyIndicator active size="S" />}
+          {aiLoading && <AppLoadingState label="Loading AI descriptions..." variant="compact" />}
           <Button
             design="Transparent"
             icon={'sys-help' as any}
@@ -76,45 +76,48 @@ export default function FieldSchemaTab({
         </MessageStrip>
       )}
 
-      <Table
-        headerRow={
-          <TableHeaderRow>
-            <TableHeaderCell minWidth="140px">
+      <div className="field-schema-table-surface">
+        <Table
+          className="field-schema-table"
+          overflowMode="Scroll"
+          headerRow={
+            <TableHeaderRow className="field-schema-table-header-row">
+            <TableHeaderCell className="field-schema-table-header-cell" minWidth="180px">
               <Label>Field</Label>
             </TableHeaderCell>
-            <TableHeaderCell minWidth="100px">
+            <TableHeaderCell className="field-schema-table-header-cell" minWidth="120px">
               <Label>FE type</Label>
             </TableHeaderCell>
-            <TableHeaderCell minWidth="80px">
+            <TableHeaderCell className="field-schema-table-header-cell" minWidth="100px">
               <Label>ABAP</Label>
             </TableHeaderCell>
-            <TableHeaderCell minWidth="180px">
+            <TableHeaderCell className="field-schema-table-header-cell" minWidth="180px">
               <Label>Label</Label>
             </TableHeaderCell>
-            <TableHeaderCell minWidth="80px">
+            <TableHeaderCell className="field-schema-table-header-cell" minWidth="80px">
               <Label>Key</Label>
             </TableHeaderCell>
-            <TableHeaderCell minWidth="100px">
+            <TableHeaderCell className="field-schema-table-header-cell" minWidth="110px">
               <Label>Required</Label>
             </TableHeaderCell>
-            <TableHeaderCell minWidth="80px">
+            <TableHeaderCell className="field-schema-table-header-cell" minWidth="80px">
               <Label>FK</Label>
             </TableHeaderCell>
-            <TableHeaderCell minWidth="120px">
+            <TableHeaderCell className="field-schema-table-header-cell" minWidth="150px">
               <Label>Domain</Label>
             </TableHeaderCell>
-            <TableHeaderCell minWidth="340px">
+            <TableHeaderCell className="field-schema-table-header-cell" minWidth="180px">
               <Label>AI Description</Label>
             </TableHeaderCell>
-            <TableHeaderCell minWidth="340px">
+            <TableHeaderCell className="field-schema-table-header-cell" minWidth="180px">
               <Label>Input Guidance</Label>
             </TableHeaderCell>
           </TableHeaderRow>
-        }
-      >
+          }
+        >
         {allFields.length === 0 ? (
-          <TableRow>
-            <TableCell {...({ colSpan: 10 } as any)}>
+          <TableRow className="field-schema-empty-row">
+            <TableCell className="field-schema-empty-cell" {...({ colSpan: 10 } as any)}>
               <Text>No field metadata loaded.</Text>
             </TableCell>
           </TableRow>
@@ -123,42 +126,43 @@ export default function FieldSchemaTab({
             const name = f.field_name || f.FieldName
             const ai = aiDescriptions[name.toUpperCase()]
             return (
-              <TableRow key={name}>
-                <TableCell>
+              <TableRow className="field-schema-data-row" key={name}>
+                <TableCell className="field-schema-cell field-schema-cell--technical">
                   <Text>{name}</Text>
                 </TableCell>
-                <TableCell>
+                <TableCell className="field-schema-cell field-schema-cell--technical">
                   <Text>{f.fe_type || f.FeType || '-'}</Text>
                 </TableCell>
-                <TableCell>
+                <TableCell className="field-schema-cell field-schema-cell--technical">
                   <Text>{f.abap_type || '-'}</Text>
                 </TableCell>
-                <TableCell>
+                <TableCell className="field-schema-cell">
                   <Text>{f.label || f.LabelText || name}</Text>
                 </TableCell>
-                <TableCell>
+                <TableCell className="field-schema-cell field-schema-cell--flag">
                   <Text>{f.is_key || f.IsKeyField === 'X' ? 'Yes' : ''}</Text>
                 </TableCell>
-                <TableCell>
+                <TableCell className="field-schema-cell field-schema-cell--flag">
                   <Text>{isRequired(f) ? 'Yes' : ''}</Text>
                 </TableCell>
-                <TableCell>
+                <TableCell className="field-schema-cell field-schema-cell--flag">
                   <Text>{isForeignKey(f) ? 'Yes' : ''}</Text>
                 </TableCell>
-                <TableCell>
+                <TableCell className="field-schema-cell field-schema-cell--technical">
                   <Text>{f.domain_name || f.DomainName || ''}</Text>
                 </TableCell>
-                <TableCell>
+                <TableCell className="field-schema-cell field-schema-cell--description">
                   <Text>{ai?.description || ''}</Text>
                 </TableCell>
-                <TableCell>
+                <TableCell className="field-schema-cell field-schema-cell--description">
                   <Text>{ai?.constraints || ''}</Text>
                 </TableCell>
               </TableRow>
             )
           })
         )}
-      </Table>
+        </Table>
+      </div>
     </div>
   )
 }

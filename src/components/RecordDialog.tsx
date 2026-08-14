@@ -8,11 +8,11 @@ import {
   Input,
   DatePicker,
   CheckBox,
-  BusyIndicator,
   Text,
   MessageStrip
 } from '@ui5/webcomponents-react'
 import { formatDateForSap } from '../utils/displayHelpers'
+import AppLoadingState from './AppLoadingState'
 import {
   getFormFields,
   initFormValues,
@@ -503,7 +503,7 @@ export default function RecordDialog({
       }
     >
       {saving && (
-        <BusyIndicator active size="M" style={{ marginBottom: '1rem' }} />
+        <AppLoadingState label="Saving record..." variant="inline" />
       )}
       {validationError && (
         <Text style={{ color: '#bb0000', marginBottom: '0.5rem' }}>{validationError}</Text>

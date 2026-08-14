@@ -1,6 +1,7 @@
-import { Dialog, Bar, Button, Text, BusyIndicator } from '@ui5/webcomponents-react'
+import { Dialog, Bar, Button, Text } from '@ui5/webcomponents-react'
 import { formatDeleteSummary } from '../../utils/recordHelpers'
 import { FieldMeta, TableRowData } from '../../types'
+import AppLoadingState from '../AppLoadingState'
 
 interface DeleteConfirmDialogProps {
   open: boolean
@@ -53,7 +54,7 @@ export default function DeleteConfirmDialog({
         ),
       } as any)}
     >
-      {deleteLoading && <BusyIndicator active size="M" />}
+      {deleteLoading && <AppLoadingState label="Deleting records..." variant="inline" />}
       <Text style={{ whiteSpace: 'pre-line' }}>
         {deleteCount > 1
           ? `Are you sure you want to delete these ${deleteCount} records?`

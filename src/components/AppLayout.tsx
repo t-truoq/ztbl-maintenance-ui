@@ -9,6 +9,7 @@ import {
 } from '@ui5/webcomponents-react'
 import { isDeployedOnSAP } from '../services/apiClient'
 import { TableConfig } from '../types'
+import AppLoadingState from './AppLoadingState'
 
 interface AppLayoutProps {
   tables: TableConfig[];
@@ -23,7 +24,7 @@ interface AppLayoutProps {
 export default function AppLayout({
   tables,
   selectedTable,
-  loading: _loading,
+  loading,
   username: _username,
   onSelectTable,
   onLogout: _onLogout,
@@ -108,9 +109,9 @@ export default function AppLayout({
         }}
       >
         <div className={`app-sidebar${collapsed ? ' app-sidebar--collapsed' : ''}`} style={{
-          width: collapsed ? '64px' : '300px',
-          minWidth: collapsed ? '64px' : '300px',
-          maxWidth: collapsed ? '64px' : '300px',
+          width: collapsed ? '64px' : '272px',
+          minWidth: collapsed ? '64px' : '272px',
+          maxWidth: collapsed ? '64px' : '272px',
           flexShrink: 0,
           borderRight: '1px solid var(--sapContent_BorderColor, #d9d9d9)',
           background: 'var(--sapContent_NavigationBackgroundColor, #ffffff)',
@@ -177,7 +178,9 @@ export default function AppLayout({
             </div>
           )}
 
-          {collapsed ? (
+          {loading ? (
+            <AppLoadingState label="Loading tables..." variant={collapsed ? 'compact' : 'inline'} />
+          ) : collapsed ? (
             <nav className="app-sidebar-icon-list" aria-label="Table navigation">
               {filteredTables.map(t => {
                 const selected = selectedTable?.ConfigUuid === t.ConfigUuid

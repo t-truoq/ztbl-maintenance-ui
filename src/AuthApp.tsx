@@ -8,6 +8,7 @@ import {
   isDeployedOnSAP
 } from './services/apiClient'
 import { clearDomainCache } from './services/domainCache'
+import AppLoadingState from './components/AppLoadingState'
 import { SessionUser } from './types'
 
 function getShellUsername(): string {
@@ -100,28 +101,7 @@ export default function AuthApp() {
 
   // Show loading spinner while probing SSO session
   if (ssoChecking) {
-    return (
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: '100vh',
-        background: '#f4f6f8',
-        flexDirection: 'column',
-        gap: '1rem'
-      }}>
-        <div style={{
-          width: '40px',
-          height: '40px',
-          border: '3px solid #e5e5e5',
-          borderTop: '3px solid #0a6ed1',
-          borderRadius: '50%',
-          animation: 'spin 0.8s linear infinite'
-        }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-        <p style={{ color: '#6a7075', fontSize: '0.9rem' }}>Connecting to SAP system...</p>
-      </div>
-    )
+    return <AppLoadingState label="Connecting to SAP system..." variant="fullscreen" />
   }
 
   if (!auth) {
