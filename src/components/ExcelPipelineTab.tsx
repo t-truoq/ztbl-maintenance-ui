@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  BusyIndicator,
   Button,
   FlexBox,
   Icon,
@@ -27,6 +26,7 @@ import {
   isLikelyExcelWorkbookStructureError,
   uploadExcel
 } from '../services/excelPipelineApi'
+import AppLoadingState from './AppLoadingState'
 
 interface ExcelPipelineTabProps {
   tableName: string
@@ -205,17 +205,22 @@ export default function ExcelPipelineTab({
         })
       } else if (warningCount > 0 && commitCount === 0 && errorCount === 0) {
         setFeedback({
-          text: `Upload parsed ${visibleRecordCount} record(s) across ${visibleCount} detail row(s). ${warningCount} existing exported value warning(s) were ignored because those rows have no changes.`,
+          text: `Upload checked ${formatCount(visibleRecordCount, 'record')} across ${formatCount(visibleCount, 'detail row')}. ${formatCount(warningCount, 'warning')} from unchanged exported values can be ignored.`,
           design: 'Critical'
         })
       } else if (errorCount > 0) {
         setFeedback({
-          text: `Upload parsed ${visibleRecordCount} record(s) across ${visibleCount} detail row(s). Resolve ${errorCount} error detail(s) before importing.`,
+          text: `Upload checked ${formatCount(visibleRecordCount, 'record')} across ${formatCount(visibleCount, 'detail row')}. Resolve ${formatCount(errorCount, 'error')} before importing.`,
           design: 'Critical'
         })
       } else {
+        const importReadiness = commitRecordCount === visibleRecordCount
+          ? commitRecordCount === 1
+            ? 'The record is ready to import.'
+            : `All ${formatCount(commitRecordCount, 'record')} are ready to import.`
+          : `${formatCount(commitRecordCount, 'record')} of ${visibleRecordCount} are ready to import.`
         setFeedback({
-          text: `Upload parsed ${visibleRecordCount} record(s) across ${visibleCount} detail row(s). ${commitRecordCount} record(s) can be imported.`,
+          text: `Upload ready: ${formatCount(visibleRecordCount, 'record')} across ${formatCount(visibleCount, 'detail row')}. ${importReadiness}`,
           design: 'Information'
         })
       }
@@ -300,7 +305,7 @@ export default function ExcelPipelineTab({
 
   const busy = !!busyStep
   const canReview = visibleRows.length > 0 && !busy && !confirmResult
-  const canConfirm = canUpload && commitRows.length > 0 && errorRows.length === 0 && !busy && !confirmResult
+  const canConfirm = canUpload && commitRows.length > 0 && !busy && !confirmResult
   const noChangesDetected = visibleRows.length > 0 && commitRows.length === 0 && errorRows.length === 0
   const confirmLabel = noChangesDetected ? 'Nothing to Import' : `Confirm Import (${commitRecordCount})`
 
@@ -348,7 +353,7 @@ export default function ExcelPipelineTab({
 
       <section className="excel-flow">
         <FlowStep index="1" title="Download" text="Get a template or the current table data." active={!selectedFileName} />
-        <FlowStep index="2" title="Upload" text="Drop the edited .xlsx file or browse from your device." active={busyStep === 'upload'} />
+        <FlowStep index="2" title="Upload" text="Drop an edited XLSX, CSV, TSV, JSON, JSONL, or NDJSON file." active={busyStep === 'upload'} />
         <FlowStep index="3" title="Review" text="Check NEW, CHANGED, UNCHANGED, WARNING, and ERROR rows." active={diffRows.length > 0 && !confirmResult} />
         <FlowStep
           index="4"
@@ -361,7 +366,7 @@ export default function ExcelPipelineTab({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        accept=".xlsx,.csv,.tsv,.json,.jsonl,.ndjson,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/json,text/tab-separated-values"
         onChange={handleFileChange}
         style={{ display: 'none' }}
       />
@@ -432,10 +437,7 @@ export default function ExcelPipelineTab({
       </section>
 
       {busy && (
-        <FlexBox alignItems="Center" gap="8px" style={{ padding: '0 1rem' }}>
-          <BusyIndicator active size="S" />
-          <Text>{busyLabel(busyStep)}</Text>
-        </FlexBox>
+        <AppLoadingState label={busyLabel(busyStep)} variant="inline" />
       )}
 
       {error && (
@@ -464,13 +466,17 @@ export default function ExcelPipelineTab({
 
       <ModernModal
         open={diffDialogOpen}
-        title={confirmResult ? 'Excel Import Result' : 'Excel Diff Preview'}
+        title={confirmResult ? 'Excel Import' : 'Excel Diff Preview'}
         onClose={() => setDiffDialogOpen(false)}
         closeOnBackdrop={!busy}
-        width={confirmResult ? 'min(92vw, 620px)' : 'min(96vw, 1180px)'}
+        width={confirmResult ? 'min(92vw, 460px)' : 'min(96vw, 1180px)'}
         footer={
           confirmResult ? (
-            <Button design="Emphasized" icon={'accept' as any} onClick={() => setDiffDialogOpen(false)}>
+            <Button
+              className="excel-result-done-button"
+              design="Emphasized"
+              onClick={() => setDiffDialogOpen(false)}
+            >
               Done
             </Button>
           ) : (
@@ -545,6 +551,7 @@ export default function ExcelPipelineTab({
                 statusState={statusState}
                 rowLimit={PREVIEW_DIFF_ROW_LIMIT}
                 compact
+                includeAllStatuses
               />
             )}
           </FlexBox>
@@ -603,6 +610,10 @@ function formatFileSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
   if (bytes >= 1024) return `${Math.ceil(bytes / 1024)} KB`
   return `${bytes} bytes`
+}
+
+function formatCount(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`
 }
 
 function isApprovalPendingResult(result: ExcelConfirmResult): boolean {
@@ -697,6 +708,7 @@ function ExcelImportResultSummary({ result }: { result: ExcelConfirmResult | nul
         : 'Your changes were imported successfully.'
   )
   const iconName = hasErrors ? 'message-error' : parsed.pendingApproval ? 'message-information' : 'message-success'
+  const showDescription = hasErrors || parsed.pendingApproval
 
   return (
     <div className={`excel-result-panel excel-result-panel--${tone}`}>
@@ -706,7 +718,9 @@ function ExcelImportResultSummary({ result }: { result: ExcelConfirmResult | nul
         </div>
         <div className="excel-result-hero-copy">
           <Title level="H3" className="excel-result-title">{statusText}</Title>
-          <Text className="excel-result-description">{statusDescription}</Text>
+          {showDescription && (
+            <Text className="excel-result-description">{statusDescription}</Text>
+          )}
         </div>
       </div>
 
@@ -854,6 +868,7 @@ function ModernModal({
         onMouseDown={event => event.stopPropagation()}
         style={{
           width,
+          ['--excel-modal-width' as any]: width,
           maxHeight: 'calc(100vh - 48px)',
           display: 'flex',
           flexDirection: 'column',
@@ -936,7 +951,7 @@ function StatusSummary({
   const items = [
     { label: 'Total records', value: total, accent: '#5b738b' },
     { label: 'New', value: statusCounts.NEW, accent: '#107e3e' },
-    { label: 'Changed', value: statusCounts.CHANGED, accent: '#e09d00' },
+    { label: 'Updated', value: statusCounts.CHANGED, accent: '#e09d00' },
     { label: 'Deleted', value: (statusCounts.DELETE ?? 0) + (statusCounts.DELETED ?? 0), accent: '#bb0000' },
     { label: 'Commit records', value: commit, accent: '#0a6ed1' }
   ]
@@ -1006,14 +1021,19 @@ function DiffTable({
   rows,
   statusState,
   rowLimit,
-  compact = false
+  compact = false,
+  includeAllStatuses = false
 }: {
   rows: ExcelDiffRow[]
   statusState: (status: string) => 'Positive' | 'Critical' | 'Negative' | 'Information' | 'None'
   rowLimit?: number
   compact?: boolean
+  includeAllStatuses?: boolean
 }) {
-  const changedRows = rows.filter(row => isActionableDiffStatus(row.status))
+  const changedRows = rows.filter(row => includeAllStatuses
+    ? ['NEW', 'CHANGED', 'DELETE', 'DELETED', 'UNCHANGED', 'WARNING', 'ERROR'].includes(normalizeDiffStatus(row.status))
+    : isActionableDiffStatus(row.status)
+  )
   const changedGroups = buildDiffRecordGroups(changedRows)
   const displayedGroups = rowLimit && changedGroups.length > rowLimit
     ? changedGroups.slice(0, rowLimit)
@@ -1022,7 +1042,18 @@ function DiffTable({
   const listShellRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    if (listShellRef.current) listShellRef.current.scrollLeft = 0
+    const shell = listShellRef.current
+    if (!shell) return undefined
+
+    const resetHorizontalScroll = () => {
+      shell.scrollLeft = 0
+    }
+
+    resetHorizontalScroll()
+    const resizeObserver = new ResizeObserver(resetHorizontalScroll)
+    resizeObserver.observe(shell)
+
+    return () => resizeObserver.disconnect()
   }, [compact, displayedGroups.length, fieldColumns.length])
 
   return (
@@ -1037,16 +1068,16 @@ function DiffTable({
     >
       {rowLimit && changedGroups.length > rowLimit && (
         <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '8px' }}>
-          Showing the first {displayedGroups.length} of {changedGroups.length} changed records. Import counts and confirmation still use all records.
+          Showing the first {displayedGroups.length} of {changedGroups.length} review records. Import counts and confirmation still use all records.
         </MessageStrip>
       )}
 
       {displayedGroups.length === 0 ? (
         <div className="excel-diff-empty-state">
-          <Text>No changed Excel rows to display.</Text>
+          <Text>No Excel review rows to display.</Text>
         </div>
       ) : (
-        <div className="excel-diff-table" role="table" aria-label="Excel changed records">
+        <div className="excel-diff-table" role="table" aria-label="Excel review records">
           <div
             className="excel-diff-table-row excel-diff-table-row--header"
             role="row"
@@ -1128,7 +1159,7 @@ function formatGroupAction(group: DiffRecordGroup): string {
   if (rawAction === 'U' || rawAction === 'UPDATE') return 'Update'
   if (rawAction === 'C' || rawAction === 'CREATE') return 'Create'
   if (rawAction === 'D' || rawAction === 'DELETE') return 'Delete'
-  if (normalizeDiffStatus(group.status) === 'CHANGED') return 'Changes'
+  if (normalizeDiffStatus(group.status) === 'CHANGED') return 'Update'
   if (isDeleteDiffStatus(group.status)) return 'Delete'
   if (normalizeDiffStatus(group.status) === 'NEW') return 'Create'
   return 'Ignore'
@@ -1414,7 +1445,7 @@ function DiffMessage({ row }: { row: ExcelDiffRow }) {
   const normalized = normalizeDiffStatus(row.status)
   const text = isDeleteDiffStatus(row.status)
     ? 'Record will be deleted'
-    : row.message || (normalized === 'CHANGED' ? 'Value changed' : '-')
+    : row.message || (normalized === 'CHANGED' ? 'Value updated' : '-')
   const showNote = normalized === 'CHANGED' || normalized === 'WARNING' || normalized === 'ERROR' || isDeleteDiffStatus(row.status)
 
   if (!showNote) return <Text>{text}</Text>

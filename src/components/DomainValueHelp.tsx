@@ -13,13 +13,13 @@ import {
   TableRow,
   TableCell,
   Label,
-  Text,
-  BusyIndicator
+  Text
 } from '@ui5/webcomponents-react'
 import { getDomainValues } from '../services/tableConfigApi'
 import { getSapErrorMessage } from '../services/apiClient'
 import { getDomainKey } from '../utils/recordHelpers'
 import { FieldMeta } from '../types'
+import AppLoadingState from './AppLoadingState'
 
 
 interface DomainValueHelpProps {
@@ -174,7 +174,7 @@ export default function DomainValueHelp({
           onInput={(e: any) => setHelpSearch(e.target.value)}
           style={{ width: '100%', marginBottom: '0.75rem' }}
         />
-        {loading && <BusyIndicator active size="M" />}
+        {loading && <AppLoadingState label="Loading domain values..." />}
         {!loading && (
           <Table
             className="value-help-table"

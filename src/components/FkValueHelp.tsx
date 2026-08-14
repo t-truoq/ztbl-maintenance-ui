@@ -19,6 +19,7 @@ import { getFkValues } from '../services/tableConfigApi'
 import { getSapErrorMessage } from '../services/apiClient'
 import { FieldMeta } from '../types'
 import { FkValueOption } from '../services/fkValueCache'
+import AppLoadingState from './AppLoadingState'
 
 interface FkValueHelpProps {
   configUuid: string;
@@ -199,39 +200,43 @@ export default function FkValueHelp({
           onInput={(e: any) => setHelpSearch(e.target.value)}
           style={{ width: '100%', marginBottom: '0.75rem' }}
         />
-        <Table
-          className="value-help-table"
-          style={{ width: '100%', maxHeight: '360px' }}
-          headerRow={
-            <TableHeaderRow>
-              <TableHeaderCell width="240px" minWidth="240px"><Label>Value</Label></TableHeaderCell>
-              <TableHeaderCell width="1fr" minWidth="240px"><Label>Description</Label></TableHeaderCell>
-            </TableHeaderRow>
-          }
-        >
-          {filteredOptions.length === 0 ? (
-            <TableRow>
-              <TableCell {...({ colSpan: 2 } as any)}>
-                <Text>{loading ? 'Loading parent values...' : 'No parent values found'}</Text>
-              </TableCell>
-            </TableRow>
-          ) : (
-            filteredOptions.map(option => (
-              <TableRow
-                key={option.value}
-                onClick={() => selectValue(option)}
-                style={{ cursor: 'pointer' }}
-              >
-                <TableCell>
-                  <Text>{option.value}</Text>
-                </TableCell>
-                <TableCell>
-                  <Text>{option.label || option.value}</Text>
+        {loading ? (
+          <AppLoadingState label="Loading parent values..." />
+        ) : (
+          <Table
+            className="value-help-table"
+            style={{ width: '100%', maxHeight: '360px' }}
+            headerRow={
+              <TableHeaderRow>
+                <TableHeaderCell width="240px" minWidth="240px"><Label>Value</Label></TableHeaderCell>
+                <TableHeaderCell width="1fr" minWidth="240px"><Label>Description</Label></TableHeaderCell>
+              </TableHeaderRow>
+            }
+          >
+            {filteredOptions.length === 0 ? (
+              <TableRow>
+                <TableCell {...({ colSpan: 2 } as any)}>
+                  <Text>No parent values found</Text>
                 </TableCell>
               </TableRow>
-            ))
-          )}
-        </Table>
+            ) : (
+              filteredOptions.map(option => (
+                <TableRow
+                  key={option.value}
+                  onClick={() => selectValue(option)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <TableCell>
+                    <Text>{option.value}</Text>
+                  </TableCell>
+                  <TableCell>
+                    <Text>{option.label || option.value}</Text>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </Table>
+        )}
       </Dialog>
     </>
   )

@@ -6,7 +6,6 @@ import {
   Title,
   Text,
   Button,
-  BusyIndicator,
   Input,
   MessageStrip,
   TabContainer,
@@ -31,6 +30,7 @@ import DeleteConfirmDialog from '../../components/dialogs/DeleteConfirmDialog'
 import OptimisticLockDialog from '../../components/dialogs/OptimisticLockDialog'
 import FKErrorDialog from '../../components/dialogs/FKErrorDialog'
 import ApprovalSuccessDialog from '../../components/dialogs/ApprovalSuccessDialog'
+import AppLoadingState from '../../components/AppLoadingState'
 import { getAiDescription } from '../../services/tableConfigApi'
 import { getCredentials } from '../../services/apiClient'
 import {
@@ -186,9 +186,8 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
     </div>
   )
   const permissionPendingPanel = (
-    <div className="tab-panel-form table-permission-loading">
-      <BusyIndicator active size="M" />
-      <Text>Loading table access...</Text>
+    <div className="tab-panel-form">
+      <AppLoadingState label="Loading table access..." />
     </div>
   )
   const tableAccessPanel = isAccessDenied ? accessDeniedPanel : permissionPendingPanel
