@@ -16,10 +16,10 @@ import {
 import CellEditControl from './CellEditControl'
 import { formatHeaderLabel } from '../utils/tableHelpers'
 import { formatCellValue } from '../utils/displayHelpers'
-import { buildRecordKeyString } from '../utils/recordHelpers'
+import { buildRecordKeyString, normalizeRecordKeyString } from '../utils/recordHelpers'
 import AppLoadingState from './AppLoadingState'
 
-import { AiDescriptionMap, FieldMeta, TableConfig, TableRowData } from '../types'
+import { AiDescriptionMap, FieldMeta, PendingApprovalRecord, TableConfig, TableRowData } from '../types'
 
 interface DynamicDataTableProps {
   selectedTable: TableConfig
@@ -30,6 +30,7 @@ interface DynamicDataTableProps {
   editedData: TableRowData[]
   inlineErrors: Record<number, Record<string, string>>
   activeTableLock: { lockedBy: string } | null
+  pendingApprovalRecords?: PendingApprovalRecord[]
   onCellChange: (rowIndex: number, fieldName: string, newValue: any) => void
   onAddRow: () => void
   onRemoveNewRow: (rowIndex: number) => void
@@ -58,6 +59,7 @@ export default function DynamicDataTable({
   editedData,
   inlineErrors,
   activeTableLock,
+  pendingApprovalRecords = [],
   onCellChange,
   onAddRow,
   onRemoveNewRow,
@@ -196,20 +198,33 @@ export default function DynamicDataTable({
     }
   }
 
-  const filteredRowKeys = useMemo(
-    () => sortedData.map((row, index) => getRowKey(row, index)),
-    [sortedData, fields]
+  const pendingRecordKeySet = useMemo(() => new Set(
+    pendingApprovalRecords
+      .filter(record => String(record.ActionType || '').trim().toUpperCase() !== 'C')
+      .map(record => normalizeRecordKeyString(record.RecordKey))
+      .filter(Boolean)
+  ), [pendingApprovalRecords])
+
+  const isRowPending = (row: TableRowData, fallbackIndex: number) =>
+    pendingRecordKeySet.has(normalizeRecordKeyString(getRowKey(row, fallbackIndex)))
+
+  const selectableRowKeys = useMemo(
+    () => sortedData
+      .map((row, index) => ({ row, index, key: getRowKey(row, index) }))
+      .filter(({ row, index }) => !isRowPending(row, index))
+      .map(({ key }) => key),
+    [sortedData, fields, pendingRecordKeySet]
   )
 
   useEffect(() => {
     if (isEditingTable) return
     setSelectedRowKeys(prev => {
       if (prev.size === 0) return prev
-      const visible = new Set(filteredRowKeys)
+      const visible = new Set(selectableRowKeys)
       const next = new Set([...prev].filter(key => visible.has(key)))
       return next.size === prev.size ? prev : next
     })
-  }, [filteredRowKeys, isEditingTable])
+  }, [selectableRowKeys, isEditingTable])
 
   useEffect(() => {
     setSortField('')
@@ -240,7 +255,7 @@ export default function DynamicDataTable({
   const selectedRows = sortedData.filter((row, index) => selectedRowKeys.has(getRowKey(row, index)))
   const hasNewRows = isEditingTable && editedData.some(row => row._isNew)
   const allVisibleRowsSelected =
-    filteredRowKeys.length > 0 && filteredRowKeys.every(key => selectedRowKeys.has(key))
+    selectableRowKeys.length > 0 && selectableRowKeys.every(key => selectedRowKeys.has(key))
   const createDenied = !permissions.canCreate
   const updateDenied = !permissions.canUpdate
   const deleteDenied = !permissions.canDelete
@@ -257,7 +272,7 @@ export default function DynamicDataTable({
   const toggleAllVisibleRows = (checked: boolean) => {
     setSelectedRowKeys(prev => {
       const next = new Set(prev)
-      filteredRowKeys.forEach(key => {
+      selectableRowKeys.forEach(key => {
         if (checked) next.add(key)
         else next.delete(key)
       })
@@ -394,6 +409,14 @@ export default function DynamicDataTable({
               ? 'Review the selected records, then save or discard your changes.'
               : 'Select records to edit or delete. Sort and resize columns directly from the header.'}
           </Text>
+          {pendingRecordKeySet.size > 0 && (
+            <div className="table-pending-notice" role="status">
+              <Icon name={'pending' as any} className="table-pending-notice-icon" />
+              <Text>
+                {pendingRecordKeySet.size} {pendingRecordKeySet.size === 1 ? 'record is' : 'records are'} waiting for ADMIN approval.
+              </Text>
+            </div>
+          )}
           {(createDenied || updateDenied || deleteDenied) && (
             <Text className="tab-panel-subtitle table-data-permission-note">
               Some actions are disabled because you do not have the required permission.
@@ -490,7 +513,7 @@ export default function DynamicDataTable({
               <TableHeaderCell className="dynamic-table-selection-cell" minWidth={`${selectionColumnWidth}px`} style={selectionCellStyle}>
                 <CheckBox
                   checked={allVisibleRowsSelected}
-                  disabled={filteredRowKeys.length === 0 || isEditingTable}
+                  disabled={selectableRowKeys.length === 0 || isEditingTable}
                   onChange={(e: any) => toggleAllVisibleRows(e.target.checked)}
                 />
               </TableHeaderCell>
@@ -690,13 +713,16 @@ export default function DynamicDataTable({
             </TableRow>
           ) : (
             /* ── Read-only rows ───────────────────────────────────────── */
-            sortedData.map((row, i) => (
+            sortedData.map((row, i) => {
+              const pendingApproval = isRowPending(row, i)
+              return (
               <TableRow
-                className={`dynamic-table-data-row${selectedRowKeys.has(getRowKey(row, i)) ? ' dynamic-table-data-row--selected' : ''}`}
+                className={`dynamic-table-data-row${selectedRowKeys.has(getRowKey(row, i)) ? ' dynamic-table-data-row--selected' : ''}${pendingApproval ? ' dynamic-table-data-row--pending' : ''}`}
                 key={i}
-                interactive={!activeTableLock}
+                interactive={!activeTableLock && !pendingApproval}
+                title={pendingApproval ? 'This record is waiting for ADMIN approval.' : undefined}
                 onClick={() => {
-                  if (activeTableLock) return
+                  if (activeTableLock || pendingApproval) return
                   toggleRowSelection(getRowKey(row, i), !selectedRowKeys.has(getRowKey(row, i)))
                 }}
                 style={{
@@ -711,12 +737,19 @@ export default function DynamicDataTable({
                 >
                   <CheckBox
                     checked={selectedRowKeys.has(getRowKey(row, i))}
-                    disabled={!!activeTableLock}
+                    disabled={!!activeTableLock || pendingApproval}
                     onChange={(e: any) => {
                       e.stopPropagation()
                       toggleRowSelection(getRowKey(row, i), e.target.checked)
                     }}
                   />
+                  {pendingApproval && (
+                    <Icon
+                      name={'locked' as any}
+                      className="dynamic-table-pending-lock"
+                      title="Waiting for ADMIN approval"
+                    />
+                  )}
                 </TableCell>
                 {fieldsWithWidths.map(({ field: f, minColWidth }) => {
                   const name = f.field_name || f.FieldName
@@ -760,7 +793,8 @@ export default function DynamicDataTable({
                   )
                 })}
               </TableRow>
-            ))
+              )
+            })
           )}
         </Table>
       </div>}

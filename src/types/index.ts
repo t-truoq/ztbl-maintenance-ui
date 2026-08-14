@@ -61,6 +61,14 @@ export interface TableConfig {
   IsActiveEntity?: boolean;
 }
 
+/** Minimal approval state exposed to the maintenance table for row-level locking. */
+export interface PendingApprovalRecord {
+  TableName: string;
+  RecordKey: string;
+  Status: string;
+  ActionType: string;
+}
+
 export interface AuditItemEntry {
   AuditId?: string;
   ItemNo?: number;

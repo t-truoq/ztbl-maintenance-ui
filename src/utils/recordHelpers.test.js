@@ -14,6 +14,7 @@ import {
   isSystemGeneratedField,
   mergeRecordForConcurrentEdit,
   normalizeFieldValue,
+  normalizeRecordKeyString,
   resolveEtagForUpdate,
   validateMandatory
 } from './recordHelpers'
@@ -56,6 +57,15 @@ describe('recordHelpers field classification', () => {
 })
 
 describe('recordHelpers payloads', () => {
+  it('normalizes backend and row record-key JSON for comparison', () => {
+    expect(normalizeRecordKeyString('{ "course_id": "C001", "ENTITY_ID": "8b95f36a-4f27-1fd1-a29c-e46323606499" }')).toBe(
+      '{"COURSE_ID":"C001","ENTITY_ID":"8B95F36A4F271FD1A29CE46323606499"}'
+    )
+    expect(normalizeRecordKeyString('{"ENTITY_ID":"8B95F36A4F271FD1A29CE46323606499","COURSE_ID":"C001"}')).toBe(
+      '{"COURSE_ID":"C001","ENTITY_ID":"8B95F36A4F271FD1A29CE46323606499"}'
+    )
+  })
+
   it('normalizes field values by frontend type', () => {
     expect(normalizeFieldValue(field({ fe_type: 'boolean' }), true)).toBe('X')
     expect(normalizeFieldValue(field({ fe_type: 'boolean' }), false)).toBe('')

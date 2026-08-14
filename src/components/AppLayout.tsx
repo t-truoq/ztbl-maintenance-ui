@@ -178,7 +178,7 @@ export default function AppLayout({
             </div>
           )}
 
-          {loading ? (
+          {loading && tables.length === 0 ? (
             <AppLoadingState label="Loading tables..." variant={collapsed ? 'compact' : 'inline'} />
           ) : collapsed ? (
             <nav className="app-sidebar-icon-list" aria-label="Table navigation">

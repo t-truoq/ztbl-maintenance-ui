@@ -15,7 +15,8 @@ import {
   normalizeConfigUuid,
   isOptimisticLockError,
   isFKReferenceError,
-  parseFKErrorMessage
+  parseFKErrorMessage,
+  getPendingApprovalRecords
 } from '../../../services/tableConfigApi'
 import { clearDomainCache } from '../../../services/domainCache'
 import {
@@ -40,7 +41,7 @@ import {
   getActiveTableLock,
   touchTableLock
 } from '../../../utils/tableLockService'
-import { FieldMeta, TableConfig, TableRowData } from '../../../types'
+import { FieldMeta, PendingApprovalRecord, TableConfig, TableRowData } from '../../../types'
 
 export interface TableMaintenancePageProps {
   selectedTable: TableConfig | null
@@ -62,6 +63,7 @@ export function useTableMaintenance({
   const [tableDataJson, setTableDataJson] = useState('')
   const [etagMap, setEtagMap] = useState<Record<string, { field: string; value: string }>>({})
   const [editSessionEtag, setEditSessionEtag] = useState<any>(null)
+  const [pendingApprovalRecords, setPendingApprovalRecords] = useState<PendingApprovalRecord[]>([])
 
   // ─── UI state ─────────────────────────────────────────────────────────────
   const [dataLoading, setDataLoading] = useState(false)
@@ -167,6 +169,7 @@ export function useTableMaintenance({
     setData([])
     setTableDataJson('')
     setEtagMap({})
+    setPendingApprovalRecords([])
     clearDomainCache()
     setSearchQuery('')
     setFilterValues({})
@@ -232,6 +235,29 @@ export function useTableMaintenance({
     }
   }, [selectedTable?.ConfigUuid])
 
+  // Keep row-level approval state current for users who leave the table open.
+  useEffect(() => {
+    if (!selectedTable || !isYesFlag(selectedTable.ApprovalRequired)) return undefined
+
+    let cancelled = false
+    const normalizedUuid = normalizeConfigUuid(selectedTable.ConfigUuid)
+    const refreshPendingState = async () => {
+      const records = await fetchPendingApprovalState(selectedTable)
+      if (!cancelled && records && records.length > 0 && latestActiveTableUuidRef.current === normalizedUuid) {
+        setPendingApprovalRecords(records)
+      }
+    }
+
+    const interval = window.setInterval(refreshPendingState, 30000)
+    window.addEventListener('focus', refreshPendingState)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+      window.removeEventListener('focus', refreshPendingState)
+    }
+  }, [selectedTable?.ConfigUuid, selectedTable?.ApprovalRequired])
+
   // Auto-clear success message
   useEffect(() => {
     if (!successMsg) return
@@ -241,8 +267,19 @@ export function useTableMaintenance({
 
   // ─── Data loading ─────────────────────────────────────────────────────────
 
+  async function fetchPendingApprovalState(table: TableConfig): Promise<PendingApprovalRecord[] | null> {
+    if (!isYesFlag(table.ApprovalRequired)) return []
+    try {
+      return await getPendingApprovalRecords(table.TableName)
+    } catch (error: any) {
+      console.warn('Cannot load pending approval state:', error?.message || error)
+      return null
+    }
+  }
+
   async function loadTable(table: TableConfig) {
     const normalizedUuid = normalizeConfigUuid(table.ConfigUuid)
+    const isChangingTable = latestActiveTableUuidRef.current !== normalizedUuid
     latestActiveTableUuidRef.current = normalizedUuid
 
     setAllFields([])
@@ -250,6 +287,7 @@ export function useTableMaintenance({
     setData([])
     setTableDataJson('')
     setEtagMap({})
+    if (isChangingTable) setPendingApprovalRecords([])
     setSearchQuery('')
     setFilterValues({})
     setAppliedSearchQuery('')
@@ -263,10 +301,11 @@ export function useTableMaintenance({
       setError('')
       setSuccessMsg('')
 
-      const { fieldMeta, tableData, rows } = await loadTableContext(
-        normalizedUuid,
-        table.TableName
-      )
+      const [tableContext, pendingRecords] = await Promise.all([
+        loadTableContext(normalizedUuid, table.TableName),
+        fetchPendingApprovalState(table)
+      ])
+      const { fieldMeta, tableData, rows } = tableContext
 
       if (latestActiveTableUuidRef.current !== normalizedUuid) return
 
@@ -277,6 +316,11 @@ export function useTableMaintenance({
       setData(rows)
       setTableDataJson(dataJson)
       setEtagMap(dataJson ? buildEtagMap(dataJson, fieldMeta, rows) : {})
+      if (pendingRecords && pendingRecords.length > 0) {
+        setPendingApprovalRecords(pendingRecords)
+      } else if (isChangingTable) {
+        setPendingApprovalRecords([])
+      }
     } catch (e: any) {
       if (latestActiveTableUuidRef.current === normalizedUuid) {
         showError(getFriendlyErrorMessage(e))
@@ -457,6 +501,7 @@ export function useTableMaintenance({
     if (!selectedTable) return
     setError('')
     setSuccessMsg('')
+    let approvalConflictRows: TableRowData[] = []
 
     // Validation
     const validationErrors: string[] = []
@@ -509,6 +554,7 @@ export function useTableMaintenance({
           return row[name] !== originalRow[name]
         })
       })
+      approvalConflictRows = modifiedRows
 
       if (newRows.length === 0 && modifiedRows.length === 0) {
         showSuccess('No changes to save')
@@ -597,7 +643,28 @@ export function useTableMaintenance({
       await loadTable(selectedTable)
       await onRefreshTableList()
     } catch (e: any) {
-      showError(getFriendlyErrorMessage(e))
+      const message = getFriendlyErrorMessage(e)
+      if (/waiting for ADMIN approval|pending approval|đang chờ duyệt/i.test(message)) {
+        setError('')
+        setIsEditingTable(false)
+        setEditedData([])
+        setInlineErrors({})
+        releaseTableLockIfHeld()
+
+        const fetchedPending = await fetchPendingApprovalState(selectedTable)
+        if (fetchedPending && fetchedPending.length > 0) {
+          setPendingApprovalRecords(fetchedPending)
+        } else {
+          setPendingApprovalRecords(approvalConflictRows.map(row => ({
+            TableName: selectedTable.TableName,
+            RecordKey: buildRecordKeyString(allFields, row),
+            Status: 'PENDING',
+            ActionType: 'U'
+          })))
+        }
+        return
+      }
+      showError(message)
     } finally {
       setDataLoading(false)
     }
@@ -939,6 +1006,7 @@ export function useTableMaintenance({
     approvalInfo,
     setApprovalInfo,
     activeTableLock,
+    pendingApprovalRecords,
     filteredData,
     // Handlers
     loadTable,

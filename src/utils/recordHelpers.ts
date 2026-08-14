@@ -328,6 +328,35 @@ export function buildRecordKeyString(allFields: FieldMeta[], row: TableRowData):
   return JSON.stringify(buildKeyRecord(allFields, row))
 }
 
+function normalizeComparableKeyValue(value: any): any {
+  if (Array.isArray(value)) return value.map(normalizeComparableKeyValue)
+  if (value && typeof value === 'object') {
+    return Object.keys(value)
+      .sort((a, b) => a.localeCompare(b))
+      .reduce<Record<string, any>>((result, key) => {
+        result[key.toUpperCase()] = normalizeComparableKeyValue(value[key])
+        return result
+      }, {})
+  }
+  if (typeof value !== 'string') return value
+
+  const trimmed = value.trim()
+  const compactUuid = trimmed.replace(/-/g, '')
+  return /^[0-9A-F]{32}$/i.test(compactUuid) ? compactUuid.toUpperCase() : trimmed
+}
+
+/** Canonicalizes backend RecordKey JSON and row keys before comparing them. */
+export function normalizeRecordKeyString(recordKey: unknown): string {
+  const raw = String(recordKey ?? '').trim()
+  if (!raw) return ''
+
+  try {
+    return JSON.stringify(normalizeComparableKeyValue(JSON.parse(raw)))
+  } catch {
+    return raw
+  }
+}
+
 export function buildEtagMap(dataJson: string, allFields: FieldMeta[], rows: TableRowData[]): Record<string, { field: string; value: string }> {
   if (!dataJson || !allFields?.length || !rows?.length) return {}
 
