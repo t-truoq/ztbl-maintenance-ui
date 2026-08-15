@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   filterDiffForCommit,
+  getExcelFileFormat,
   isLikelyExcelWorkbookStructureError,
   isExcelConfirmFailure,
   isExcelFilenameAllowed,
@@ -67,6 +68,16 @@ describe('excelPipelineApi diff helpers', () => {
     expect(isExcelFilenameAllowed('Z251_SCHEDULE (1).xlsx', 'Z251_SCHEDULE')).toBe(true)
     expect(isExcelFilenameAllowed('Z251_SCHEDULE (12).xlsx', 'Z251_SCHEDULE')).toBe(true)
     expect(isExcelFilenameAllowed(' z251_schedule (2).XLSX ', 'Z251_SCHEDULE')).toBe(true)
+  })
+
+  it('maps supported upload extensions to backend file formats', () => {
+    expect(getExcelFileFormat('data.xlsx')).toBe('XLSX')
+    expect(getExcelFileFormat('data.csv')).toBe('CSV')
+    expect(getExcelFileFormat('data.tsv')).toBe('TSV')
+    expect(getExcelFileFormat('data.json')).toBe('JSON')
+    expect(getExcelFileFormat('data.jsonl')).toBe('JSONL')
+    expect(getExcelFileFormat('data.ndjson')).toBe('JSONL')
+    expect(getExcelFileFormat('data.xls')).toBeNull()
   })
 
   it('allows exported template workbooks for the active table', () => {

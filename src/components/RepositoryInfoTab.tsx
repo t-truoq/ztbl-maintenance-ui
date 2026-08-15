@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  BusyIndicator,
   Button,
   Label,
   MessageStrip,
@@ -15,6 +14,7 @@ import {
 import { getRepositoryInfo } from '../services/tableConfigApi'
 import type { RepositoryInfo } from '../services/tableConfigApi'
 import { getFriendlyErrorMessage } from '../services/apiClient'
+import AppLoadingState from './AppLoadingState'
 
 interface RepositoryInfoTabProps {
   configUuid: string;
@@ -31,8 +31,8 @@ function valueOf(row: any, ...keys: string[]): string {
 
 function EmptyRow({ colSpan, text }: { colSpan: number; text: string }) {
   return (
-    <TableRow>
-      <TableCell {...({ colSpan } as any)}>
+    <TableRow className="dependencies-empty-row">
+      <TableCell className="dependencies-empty-cell" {...({ colSpan } as any)}>
         <Text>{text}</Text>
       </TableCell>
     </TableRow>
@@ -41,8 +41,8 @@ function EmptyRow({ colSpan, text }: { colSpan: number; text: string }) {
 
 function NoticeRow({ colSpan, text }: { colSpan: number; text: string }) {
   return (
-    <TableRow>
-      <TableCell {...({ colSpan } as any)}>
+    <TableRow className="dependencies-notice-row">
+      <TableCell className="dependencies-notice-cell" {...({ colSpan } as any)}>
         <MessageStrip design="Information" hideCloseButton>
           {text}
         </MessageStrip>
@@ -57,10 +57,10 @@ function repoNotice(row: any): string {
 
 function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: any }) {
   return (
-    <section style={{ marginTop: '1.25rem' }}>
+    <section className="dependencies-section">
       <Title level="H5">{title}</Title>
       {subtitle && (
-        <Text style={{ color: '#6a7075', display: 'block', margin: '0.25rem 0 0.75rem' }}>
+        <Text className="dependencies-section-subtitle">
           {subtitle}
         </Text>
       )}
@@ -72,8 +72,10 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
 function ForeignKeysTable({ rows }: { rows: any[] }) {
   return (
     <Table
+      className="dependencies-table dependencies-table--foreign-keys"
+      overflowMode="Scroll"
       headerRow={
-        <TableHeaderRow>
+        <TableHeaderRow className="dependencies-table-header-row">
           <TableHeaderCell minWidth="150px"><Label>Referenced By</Label></TableHeaderCell>
           <TableHeaderCell minWidth="140px"><Label>Field</Label></TableHeaderCell>
           <TableHeaderCell minWidth="150px"><Label>Check Table</Label></TableHeaderCell>
@@ -89,7 +91,7 @@ function ForeignKeysTable({ rows }: { rows: any[] }) {
           repoNotice(row) ? (
             <NoticeRow key={`notice-${index}`} colSpan={5} text={repoNotice(row)} />
           ) : (
-            <TableRow key={`${valueOf(row, 'tabname', 'TABNAME')}-${valueOf(row, 'fieldname', 'FIELDNAME')}-${index}`}>
+            <TableRow className="dependencies-data-row" key={`${valueOf(row, 'tabname', 'TABNAME')}-${valueOf(row, 'fieldname', 'FIELDNAME')}-${index}`}>
               <TableCell><Text>{valueOf(row, 'tabname', 'TABNAME')}</Text></TableCell>
               <TableCell><Text>{valueOf(row, 'fieldname', 'FIELDNAME')}</Text></TableCell>
               <TableCell><Text>{valueOf(row, 'checktable', 'CHECKTABLE')}</Text></TableCell>
@@ -106,8 +108,10 @@ function ForeignKeysTable({ rows }: { rows: any[] }) {
 function DataElementsTable({ rows }: { rows: any[] }) {
   return (
     <Table
+      className="dependencies-table dependencies-table--data-elements"
+      overflowMode="Scroll"
       headerRow={
-        <TableHeaderRow>
+        <TableHeaderRow className="dependencies-table-header-row">
           <TableHeaderCell minWidth="140px"><Label>Data Element</Label></TableHeaderCell>
           <TableHeaderCell minWidth="140px"><Label>Domain</Label></TableHeaderCell>
           <TableHeaderCell minWidth="80px"><Label>Type</Label></TableHeaderCell>
@@ -125,7 +129,7 @@ function DataElementsTable({ rows }: { rows: any[] }) {
           repoNotice(row) ? (
             <NoticeRow key={`notice-${index}`} colSpan={7} text={repoNotice(row)} />
           ) : (
-            <TableRow key={`${valueOf(row, 'rollname', 'ROLLNAME')}-${index}`}>
+            <TableRow className="dependencies-data-row" key={`${valueOf(row, 'rollname', 'ROLLNAME')}-${index}`}>
               <TableCell><Text>{valueOf(row, 'rollname', 'ROLLNAME')}</Text></TableCell>
               <TableCell><Text>{valueOf(row, 'domname', 'DOMNAME')}</Text></TableCell>
               <TableCell><Text>{valueOf(row, 'inttype', 'INTTYPE')}</Text></TableCell>
@@ -144,8 +148,10 @@ function DataElementsTable({ rows }: { rows: any[] }) {
 function SearchHelpsTable({ rows }: { rows: any[] }) {
   return (
     <Table
+      className="dependencies-table dependencies-table--search-helps"
+      overflowMode="Scroll"
       headerRow={
-        <TableHeaderRow>
+        <TableHeaderRow className="dependencies-table-header-row">
           <TableHeaderCell minWidth="140px"><Label>Field</Label></TableHeaderCell>
           <TableHeaderCell minWidth="140px"><Label>Data Element</Label></TableHeaderCell>
           <TableHeaderCell minWidth="150px"><Label>Search Help</Label></TableHeaderCell>
@@ -160,7 +166,7 @@ function SearchHelpsTable({ rows }: { rows: any[] }) {
           repoNotice(row) ? (
             <NoticeRow key={`notice-${index}`} colSpan={4} text={repoNotice(row)} />
           ) : (
-            <TableRow key={`${valueOf(row, 'fieldname', 'FIELDNAME')}-${index}`}>
+            <TableRow className="dependencies-data-row" key={`${valueOf(row, 'fieldname', 'FIELDNAME')}-${index}`}>
               <TableCell><Text>{valueOf(row, 'fieldname', 'FIELDNAME')}</Text></TableCell>
               <TableCell><Text>{valueOf(row, 'rollname', 'ROLLNAME')}</Text></TableCell>
               <TableCell><Text>{valueOf(row, 'shlpname', 'SHLPNAME')}</Text></TableCell>
@@ -176,8 +182,10 @@ function SearchHelpsTable({ rows }: { rows: any[] }) {
 function RepositoryObjectsTable({ rows }: { rows: any[] }) {
   return (
     <Table
+      className="dependencies-table dependencies-table--repository-objects"
+      overflowMode="Scroll"
       headerRow={
-        <TableHeaderRow>
+        <TableHeaderRow className="dependencies-table-header-row">
           <TableHeaderCell minWidth="180px"><Label>Object Name</Label></TableHeaderCell>
           <TableHeaderCell minWidth="100px"><Label>Type</Label></TableHeaderCell>
           <TableHeaderCell minWidth="140px"><Label>Package</Label></TableHeaderCell>
@@ -192,7 +200,7 @@ function RepositoryObjectsTable({ rows }: { rows: any[] }) {
           repoNotice(row) ? (
             <NoticeRow key={`notice-${index}`} colSpan={4} text={repoNotice(row)} />
           ) : (
-            <TableRow key={`${valueOf(row, 'obj_name', 'OBJ_NAME')}-${index}`}>
+            <TableRow className="dependencies-data-row" key={`${valueOf(row, 'obj_name', 'OBJ_NAME')}-${index}`}>
               <TableCell><Text>{valueOf(row, 'obj_name', 'OBJ_NAME')}</Text></TableCell>
               <TableCell><Text>{valueOf(row, 'object', 'OBJECT')}</Text></TableCell>
               <TableCell><Text>{valueOf(row, 'devclass', 'DEVCLASS')}</Text></TableCell>
@@ -208,8 +216,10 @@ function RepositoryObjectsTable({ rows }: { rows: any[] }) {
 function FunctionModulesTable({ rows }: { rows: any[] }) {
   return (
     <Table
+      className="dependencies-table dependencies-table--function-modules"
+      overflowMode="Scroll"
       headerRow={
-        <TableHeaderRow>
+        <TableHeaderRow className="dependencies-table-header-row">
           <TableHeaderCell minWidth="180px"><Label>Function Module</Label></TableHeaderCell>
           <TableHeaderCell minWidth="140px"><Label>Function Group</Label></TableHeaderCell>
           <TableHeaderCell minWidth="90px"><Label>Global</Label></TableHeaderCell>
@@ -223,7 +233,7 @@ function FunctionModulesTable({ rows }: { rows: any[] }) {
           repoNotice(row) ? (
             <NoticeRow key={`notice-${index}`} colSpan={3} text={repoNotice(row)} />
           ) : (
-            <TableRow key={`${valueOf(row, 'funcname', 'FUNCNAME')}-${index}`}>
+            <TableRow className="dependencies-data-row" key={`${valueOf(row, 'funcname', 'FUNCNAME')}-${index}`}>
               <TableCell><Text>{valueOf(row, 'funcname', 'FUNCNAME')}</Text></TableCell>
               <TableCell><Text>{valueOf(row, 'fnarea', 'FNAREA', 'area', 'AREA')}</Text></TableCell>
               <TableCell><Text>{valueOf(row, 'global', 'GLOBAL')}</Text></TableCell>
@@ -324,9 +334,7 @@ export default function RepositoryInfoTab({ configUuid, tableName }: RepositoryI
       </div>
 
       {loading && (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
-          <BusyIndicator active size="M" />
-        </div>
+        <AppLoadingState label="Loading dependencies..." />
       )}
 
       {error && (
@@ -343,35 +351,28 @@ export default function RepositoryInfoTab({ configUuid, tableName }: RepositoryI
 
       {!loading && !error && info && (
         <>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-              gap: '0.75rem',
-              marginTop: '1rem'
-            }}
-          >
-            <div>
+          <div className="dependencies-summary-grid">
+            <div className="dependencies-summary-card">
               <Label>Relationships</Label>
-              <Text style={{ display: 'block', fontSize: '1.25rem', fontWeight: 700 }}>
+              <Text className="dependencies-summary-value">
                 {info.foreignKeys.filter(row => !repoNotice(row)).length}
               </Text>
             </div>
-            <div>
+            <div className="dependencies-summary-card">
               <Label>Repository Objects</Label>
-              <Text style={{ display: 'block', fontSize: '1.25rem', fontWeight: 700 }}>
+              <Text className="dependencies-summary-value">
                 {info.cdsViews.filter(row => !repoNotice(row)).length}
               </Text>
             </div>
-            <div>
+            <div className="dependencies-summary-card">
               <Label>Search Helps</Label>
-              <Text style={{ display: 'block', fontSize: '1.25rem', fontWeight: 700 }}>
+              <Text className="dependencies-summary-value">
                 {info.searchHelps.filter(row => !repoNotice(row)).length}
               </Text>
             </div>
-            <div>
+            <div className="dependencies-summary-card">
               <Label>Function Modules</Label>
-              <Text style={{ display: 'block', fontSize: '1.25rem', fontWeight: 700 }}>
+              <Text className="dependencies-summary-value">
                 {info.functionModules.filter(row => !repoNotice(row)).length}
               </Text>
             </div>
@@ -384,7 +385,7 @@ export default function RepositoryInfoTab({ configUuid, tableName }: RepositoryI
             <ForeignKeysTable rows={info.foreignKeys} />
           </Section>
 
-          <div style={{ marginTop: '1.25rem' }}>
+          <div className="dependencies-technical-toggle">
             <Button
               design="Transparent"
               icon={(showTechnicalDetails ? 'slim-arrow-up' : 'slim-arrow-down') as any}

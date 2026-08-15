@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  BusyIndicator,
   Button,
   DatePicker,
   Icon,
@@ -31,6 +30,7 @@ import {
   paginateAuditEntries
 } from '../utils/auditLogHelpers'
 import { AuditLogEntry, AuditItemEntry } from '../types'
+import AppLoadingState from './AppLoadingState'
 
 const ACTION_LABELS: Record<string, string> = {
   C: 'Created',
@@ -339,7 +339,7 @@ function BulkAuditItemsDialog({
         >
           <div>
             <Label style={{ display: 'block', fontSize: '0.75rem' }}>Audit ID</Label>
-            <Text style={{ fontWeight: 700 }}>{auditEntry.AuditId}</Text>
+            <Text style={{ fontWeight: 600 }}>{auditEntry.AuditId}</Text>
           </div>
           <div>
             <Label style={{ display: 'block', fontSize: '0.75rem' }}>Changed By</Label>
@@ -355,10 +355,7 @@ function BulkAuditItemsDialog({
         </div>
 
         {loading && (
-          <div style={{ textAlign: 'center', padding: '2rem' }}>
-            <BusyIndicator active size="M" />
-            <Text style={{ display: 'block', marginTop: '0.5rem' }}>Loading audit items...</Text>
-          </div>
+          <AppLoadingState label="Loading audit items..." />
         )}
 
         {error && (
@@ -378,63 +375,329 @@ function BulkAuditItemsDialog({
           </div>
         )}
 
-        {!loading && !error && items.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {items.map((item, index) => {
-              const itemAction = getAuditItemDisplayActionType(auditEntry, item)
-              const itemDisplayAction = isRollbackSummary
-                ? normalizeAuditActionType(item.ActionType || itemAction)
-                : itemAction
-              const display = getAuditDisplayCells(item, itemDisplayAction)
-              const isUpdate = itemDisplayAction === 'U'
-              return (
+        {!loading && !error && items.length > 0 && (() => {
+          const excel = getBulkExcelRows(items, auditEntry, isRollbackSummary)
+          return (
+            <div className="audit-bulk-excel-wrap">
+              <div className="audit-bulk-excel" role="table" aria-label="Bulk audit spreadsheet">
                 <div
-                  key={item.ItemNo ?? index}
-                  style={{
-                    border: '1px solid var(--sapGroup_BorderColor, #d9e0e7)',
-                    borderRadius: '6px',
-                    padding: '0.75rem 1rem',
-                    background: '#fff'
-                  }}
+                  className="audit-bulk-excel-row audit-bulk-excel-row--header"
+                  role="row"
+                  style={{ gridTemplateColumns: `4rem 8rem 15rem repeat(${Math.max(excel.columns.length, 1)}, minmax(10rem, 1fr))` }}
                 >
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.75rem',
-                      marginBottom: '0.6rem',
-                      paddingBottom: '0.4rem',
-                      borderBottom: '1px solid #edf0f2'
-                    }}
-                  >
-                    <Label style={{ fontWeight: 700 }}>Item #{item.ItemNo ?? index + 1}</Label>
-                    <ActionBadge actionType={itemDisplayAction} />
-                    <div style={{ marginLeft: 'auto' }}>
-                      <Text style={{ fontSize: '0.85rem', color: '#6a7075' }}>
-                        Key: <strong style={{ color: '#32363a' }}>{getRecordKey(item)}</strong>
-                      </Text>
-                    </div>
-                  </div>
-
-                  {isUpdate ? (
-                    <DiffBlock fieldName={display.fieldName} oldValue={display.oldValue} newValue={display.newValue} />
-                  ) : (
-                    <div style={{ display: 'grid', gap: '0.5rem' }}>
-                      {itemDisplayAction !== 'C' && (
-                        <ValueBlock title="Old Value" value={display.oldValue} emptyText="No previous value" />
-                      )}
-                      {itemDisplayAction !== 'D' && (
-                        <ValueBlock title="New Value" value={display.newValue} emptyText="No new value" />
-                      )}
-                    </div>
-                  )}
+                  <div role="columnheader">Item</div>
+                  <div role="columnheader">Action</div>
+                  <div role="columnheader">Record</div>
+                  {excel.columns.map(column => <div role="columnheader" key={column}>{column}</div>)}
                 </div>
-              )
-            })}
-          </div>
-        )}
+                {excel.rows.map((row, index) => (
+                  <div
+                    className="audit-bulk-excel-row"
+                    role="row"
+                    key={`${row.item.ItemNo ?? index}-${index}`}
+                    style={{ gridTemplateColumns: `4rem 8rem 15rem repeat(${Math.max(excel.columns.length, 1)}, minmax(10rem, 1fr))` }}
+                  >
+                    <div role="cell" data-label="Item">#{row.item.ItemNo ?? index + 1}</div>
+                    <div role="cell" data-label="Action"><ActionBadge actionType={row.action} /></div>
+                    <div role="cell" data-label="Record" title={getRecordKey(row.item)}>{getCompactAuditRecordKey(row.item)}</div>
+                    {excel.columns.map(column => (
+                      <div role="cell" data-label={column} className={row.values[column]?.includes(' → ') ? 'audit-excel-change-cell' : ''} key={column}>
+                        {row.values[column] || '-'}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })()}
       </div>
     </AuditModernModal>
+  )
+}
+
+function AuditParsedCell({
+  value,
+  compareValue,
+  side
+}: {
+  value: string
+  compareValue: string
+  side: 'old' | 'new'
+}) {
+  const parts = splitAuditParts(value)
+  const compareParts = partsToMap(splitAuditParts(compareValue))
+  const filteredParts = parts.filter(part => {
+    const otherValue = compareParts.get(part.key) || ''
+    return part.value !== otherValue
+  })
+
+  const hasComparison = String(compareValue || '').trim() !== ''
+  const visibleParts = hasComparison ? filteredParts : parts
+  if (visibleParts.length === 0) return <Text>-</Text>
+
+  return (
+    <div className="audit-parsed-cell">
+      {visibleParts.map((part, index) => (
+        <div className="audit-parsed-cell-row" key={`${part.key}-${index}`}>
+          {part.key && <span className="audit-parsed-cell-key">{part.key}</span>}
+          <span className={`audit-parsed-cell-value audit-parsed-cell-value--${side}`}>{part.value || '-'}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function getAuditChangeRows(
+  display: { fieldName: string; oldValue: string; newValue: string },
+  actionType: string
+): Array<{ field: string; oldValue: string; newValue: string }> {
+  const action = normalizeAuditActionType(actionType)
+  const oldParts = splitAuditParts(display.oldValue)
+  const newParts = splitAuditParts(display.newValue)
+  const oldMap = partsToMap(oldParts)
+  const newMap = partsToMap(newParts)
+  const keys = Array.from(new Set([...oldParts, ...newParts].map(part => part.key)))
+
+  if (keys.length === 1 && !keys[0]) {
+    const oldValue = oldParts[0]?.value || ''
+    const newValue = newParts[0]?.value || ''
+    if (action === 'C') return [{ field: normalizeDash(display.fieldName) || 'Value', oldValue: '', newValue }]
+    if (action === 'D') return [{ field: normalizeDash(display.fieldName) || 'Value', oldValue, newValue: '' }]
+    return oldValue !== newValue
+      ? [{ field: normalizeDash(display.fieldName) || 'Value', oldValue, newValue }]
+      : []
+  }
+
+  return keys
+    .filter(key => oldMap.get(key) !== newMap.get(key))
+    .map(key => ({
+      field: key || normalizeDash(display.fieldName) || 'Value',
+      oldValue: action === 'C' ? '' : oldMap.get(key) || '',
+      newValue: action === 'D' ? '' : newMap.get(key) || ''
+    }))
+}
+
+function getCompactAuditRecordKey(entry: AuditLogEntry | AuditItemEntry): string {
+  const fullKey = getRecordKey(entry)
+  if (fullKey.length <= 28) return fullKey
+
+  const rawKey = getRawRecordKey(entry)
+  try {
+    const parsed = JSON.parse(rawKey)
+    const firstEntry = Object.entries(parsed || {})[0]
+    if (firstEntry) return `${firstEntry[0]}: ${String(firstEntry[1])}`
+  } catch {
+    // Keep the raw display key when it is not JSON.
+  }
+  return `${fullKey.slice(0, 25)}…`
+}
+
+function getAuditOverview(
+  entry: AuditLogEntry,
+  allEntries: AuditLogEntry[],
+  cachedItems?: AuditItemEntry[]
+) {
+  const hasSummary = hasAuditItemSummary(entry)
+  const childItems = hasSummary
+    ? cachedItems ?? findBulkChildren(entry, allEntries)
+    : []
+  const singleItem = childItems.length === 1 ? childItems[0] : null
+  const source = singleItem || entry
+  const action = singleItem
+    ? getAuditItemDisplayActionType(entry, singleItem)
+    : hasSummary
+    ? getBulkActionType(entry, childItems)
+    : normalizeAuditActionType(entry.ActionType)
+
+  if (hasSummary && !singleItem) {
+    const itemCount = childItems.length > 0 ? childItems.length : extractAuditItemCount(entry)
+    const changedFieldCount = childItems.reduce((total, item) => {
+      const itemAction = getAuditItemDisplayActionType(entry, item)
+      return total + getAuditChangeRows(getAuditDisplayCells(item, itemAction), itemAction).length
+    }, 0)
+    const recordSummary = itemCount === null
+      ? 'Bulk operation'
+      : `${itemCount} ${itemCount === 1 ? 'record' : 'records'}`
+    return {
+      source,
+      action,
+      summary: changedFieldCount > 0
+        ? `${recordSummary} · ${changedFieldCount} ${changedFieldCount === 1 ? 'field' : 'fields'}`
+        : recordSummary
+    }
+  }
+
+  const changes = getAuditChangeRows(getAuditDisplayCells(source, action), action)
+  return {
+    source,
+    action,
+    summary: changes.length === 0
+      ? 'No field changes'
+      : `${changes.length} ${changes.length === 1 ? 'field' : 'fields'}`
+  }
+}
+
+function getBulkExcelRows(items: AuditItemEntry[], auditEntry: AuditLogEntry, isRollbackSummary: boolean) {
+  const rows = items.map(item => {
+    const fallbackAction = getAuditItemDisplayActionType(auditEntry, item)
+    const action = isRollbackSummary
+      ? normalizeAuditActionType(item.ActionType || fallbackAction)
+      : fallbackAction
+    const display = getAuditDisplayCells(item, action)
+    const oldMap = partsToMap(splitAuditParts(display.oldValue))
+    const newMap = partsToMap(splitAuditParts(display.newValue))
+    const keys = Array.from(new Set([...oldMap.keys(), ...newMap.keys()].filter(Boolean)))
+    const values: Record<string, string> = {}
+
+    if (keys.length === 0) {
+      const field = normalizeDash(display.fieldName) || 'Value'
+      const oldValue = splitAuditParts(display.oldValue)[0]?.value || display.oldValue || ''
+      const newValue = splitAuditParts(display.newValue)[0]?.value || display.newValue || ''
+      values[field] = action === 'C' ? newValue : action === 'D' ? oldValue : `${oldValue || '-'} → ${newValue || '-'}`
+    } else {
+      keys.forEach(key => {
+        const oldValue = oldMap.get(key) || ''
+        const newValue = newMap.get(key) || ''
+        values[key] = action === 'C' ? newValue : action === 'D' ? oldValue : `${oldValue || '-'} → ${newValue || '-'}`
+      })
+    }
+
+    return { item, action, values }
+  })
+
+  return { rows, columns: Array.from(new Set(rows.flatMap(row => Object.keys(row.values)))) }
+}
+
+type AuditSpreadsheetRow = {
+  id: string
+  parent: AuditLogEntry
+  source: AuditLogEntry | AuditItemEntry
+  action: string
+  record: string
+  values: Record<string, string>
+  changedFields: Set<string>
+  isSummary: boolean
+  isFirstInOperation: boolean
+}
+
+function getAuditSpreadsheetValues(source: AuditLogEntry | AuditItemEntry, actionType: string) {
+  const action = normalizeAuditActionType(actionType)
+  const display = getAuditDisplayCells(source, action)
+  const oldParts = splitAuditParts(display.oldValue)
+  const newParts = splitAuditParts(display.newValue)
+  const oldMap = partsToMap(oldParts)
+  const newMap = partsToMap(newParts)
+  const keys = Array.from(new Set([...oldMap.keys(), ...newMap.keys()].filter(Boolean)))
+  const values: Record<string, string> = {}
+  const changedFields = new Set<string>()
+
+  if (keys.length === 0) {
+    const field = normalizeDash(display.fieldName) || 'VALUE'
+    const oldValue = oldParts[0]?.value || display.oldValue || ''
+    const newValue = newParts[0]?.value || display.newValue || ''
+    values[field] = action === 'D' ? oldValue : newValue || oldValue
+    if (action === 'C' || action === 'D' || oldValue !== newValue) changedFields.add(field)
+    return { values, changedFields }
+  }
+
+  keys.forEach(field => {
+    const oldValue = oldMap.get(field) || ''
+    const newValue = newMap.get(field) || ''
+    values[field] = action === 'D' ? oldValue : newValue || oldValue
+    if (action === 'C' || action === 'D' || oldValue !== newValue) changedFields.add(field)
+  })
+
+  return { values, changedFields }
+}
+
+function getAuditSpreadsheetRows(
+  pageEntries: AuditLogEntry[],
+  allEntries: AuditLogEntry[],
+  childMap: Record<string, AuditItemEntry[]>
+): AuditSpreadsheetRow[] {
+  return pageEntries.flatMap(entry => {
+    const hasSummary = hasAuditItemSummary(entry)
+    const cachedItems = childMap[entry.AuditId]
+    const childItems = hasSummary
+      ? cachedItems ?? findBulkChildren(entry, allEntries)
+      : []
+
+    if (childItems.length > 0) {
+      return childItems.map((item, index) => {
+        const action = getAuditItemDisplayActionType(entry, item)
+        const { values, changedFields } = getAuditSpreadsheetValues(item, action)
+        return {
+          id: `${entry.AuditId}-${item.ItemNo ?? index}`,
+          parent: entry,
+          source: item,
+          action,
+          record: getRecordKey(item),
+          values,
+          changedFields,
+          isSummary: false,
+          isFirstInOperation: index === 0
+        }
+      })
+    }
+
+    const action = hasSummary
+      ? getBulkActionType(entry, childItems)
+      : normalizeAuditActionType(entry.ActionType)
+    const { values, changedFields } = getAuditSpreadsheetValues(entry, action)
+
+    if (hasSummary && Object.keys(values).length === 0) {
+      values.SUMMARY = extractBulkCount(entry)
+    }
+
+    return [{
+      id: entry.AuditId,
+      parent: entry,
+      source: entry,
+      action,
+      record: hasSummary ? 'BULK' : getRecordKey(entry),
+      values,
+      changedFields,
+      isSummary: hasSummary,
+      isFirstInOperation: true
+    }]
+  })
+}
+
+function AuditHoverPreview({
+  display,
+  actionType,
+  itemCount,
+  changesOverride
+}: {
+  display: { fieldName: string; oldValue: string; newValue: string }
+  actionType: string
+  itemCount?: number
+  changesOverride?: Array<{ field: string; oldValue: string; newValue: string }>
+}) {
+  const changes = changesOverride || getAuditChangeRows(display, actionType)
+
+  return (
+    <div className="audit-hover-preview" role="tooltip">
+      <div className="audit-hover-preview-title">
+        <span>Changed fields</span>
+        <span>{changes.length} field(s){itemCount !== undefined ? ` · ${itemCount} item(s)` : ''}</span>
+      </div>
+      {changes.length === 0 ? (
+        <div className="audit-hover-preview-empty">No changed fields detected.</div>
+      ) : (
+        <div className="audit-hover-preview-table">
+          {changes.map((change, index) => (
+            <div className="audit-hover-preview-row" key={`${change.field}-${index}`}>
+              <div className="audit-hover-preview-field">{change.field}</div>
+              <div className="audit-hover-preview-old">{change.oldValue || '-'}</div>
+              <div className="audit-hover-preview-arrow">→</div>
+              <div className="audit-hover-preview-new">{change.newValue || '-'}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -571,17 +834,19 @@ function AuditEntryItem({
   entry,
   allEntries,
   cachedChildItems,
-  onViewBulkItems,
+  onViewDetails,
   onRollback,
   canRollback
 }: {
   entry: AuditLogEntry
   allEntries: AuditLogEntry[]
   cachedChildItems?: AuditItemEntry[]
-  onViewBulkItems: (entry: AuditLogEntry) => void
+  onViewDetails: (entry: AuditLogEntry) => void
   onRollback: (entry: AuditLogEntry) => void
   canRollback: boolean
 }) {
+  const [isHovered, setIsHovered] = useState(false)
+  const [previewPlacement, setPreviewPlacement] = useState<'above' | 'below'>('below')
   const normalizedEntryAction = normalizeAuditActionType(entry.ActionType)
   const hasItemSummary = hasAuditItemSummary(entry)
 
@@ -604,72 +869,269 @@ function AuditEntryItem({
     : hasItemSummary
     ? getBulkActionType(entry, childItems)
     : normalizedEntryAction
-  const { fieldName, oldValue, newValue } = getAuditDisplayCells(displaySource, displayActionType)
+  const { fieldName } = getAuditDisplayCells(displaySource, displayActionType)
   const normalizedField = normalizeDash(fieldName)
-  const isUpdate = displayActionType === 'U'
   const showSummaryPanel = hasItemSummary && !singleSummaryItem
   const canRollbackEntry = canRollback && canRollbackAuditEntry(entry) && !isRollbackAuditAction(normalizedEntryAction) && !isRollbackAuditAction(displayActionType)
   const summaryLabel = isRollbackType ? 'Rollback Summary' : 'Bulk Operation Summary'
+  const previewDisplay = getAuditDisplayCells(displaySource, displayActionType)
+  const previewChanges = showSummaryPanel
+    ? childItems.flatMap(item => {
+      const itemAction = getAuditItemDisplayActionType(entry, item)
+      const record = getCompactAuditRecordKey(item)
+      return getAuditChangeRows(getAuditDisplayCells(item, itemAction), itemAction).map(change => ({
+        ...change,
+        field: `#${item.ItemNo ?? '-'} · ${record} · ${change.field}`
+      }))
+    })
+    : undefined
 
   return (
-    <article className="audit-entry">
-      <div className="audit-entry-marker" aria-hidden="true" />
-      <div className="audit-entry-surface">
-        <div className="audit-entry-header">
+    <div
+      className={`audit-row-hover-target audit-row-hover-target--${previewPlacement}`}
+      role={hasItemSummary ? 'button' : undefined}
+      tabIndex={hasItemSummary ? 0 : undefined}
+      title={hasItemSummary ? 'Click to view all changed fields' : undefined}
+      onClick={() => hasItemSummary && onViewDetails(entry)}
+      onKeyDown={event => {
+        if (hasItemSummary && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault()
+          onViewDetails(entry)
+        }
+      }}
+      onMouseEnter={event => {
+        const bounds = event.currentTarget.getBoundingClientRect()
+        setPreviewPlacement(bounds.bottom > window.innerHeight - 360 ? 'above' : 'below')
+        setIsHovered(true)
+      }}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <div className="audit-table-row" role="row">
+        <div className="audit-table-cell audit-table-cell--action" role="cell" data-label="Action">
           <ActionBadge actionType={displayActionType} />
-          <div className="audit-entry-meta">
-            <span>{entry.ChangedBy || '-'}</span>
-            <span>{formatDateTime(entry.ChangedAt)}</span>
-            <span className={showSummaryPanel ? 'audit-record-key audit-record-key-strong' : 'audit-record-key'}>
-              {getRecordKey(displaySource)}
-            </span>
-            {normalizedField && !showSummaryPanel && <span>{normalizedField}</span>}
-          </div>
-          {canRollbackEntry && (
-            <div className="audit-entry-actions">
-              <Button
-                design="Attention"
-                icon={'undo' as any}
-                onClick={() => onRollback(entry)}
-              >
-                Rollback
-              </Button>
-            </div>
-          )}
         </div>
-
-        <div className="audit-entry-content">
-          {showSummaryPanel ? (
-            <div className="audit-bulk-summary">
-              <div>
-                <Label>{summaryLabel}</Label>
-                <Text className="audit-bulk-count">
-                  {childItems.length > 0 ? formatItemCount(childItems.length) : extractBulkCount(entry)}
-                </Text>
-              </div>
-              <Button
-                design="Transparent"
-                icon={'navigation-right-arrow' as any}
-                onClick={() => onViewBulkItems(entry)}
-              >
-                View list
-              </Button>
-            </div>
-          ) : isUpdate ? (
-            <DiffBlock fieldName={fieldName} oldValue={oldValue} newValue={newValue} />
-          ) : (
-            <div className="audit-value-stack">
-              {displayActionType !== 'C' && (
-                <ValueBlock title="Old Value" value={oldValue} emptyText="No previous value" />
-              )}
-              {displayActionType !== 'D' && (
-                <ValueBlock title="New Value" value={newValue} emptyText="No new value" />
-              )}
-            </div>
+        <div className="audit-table-cell" role="cell" data-label="Changed by">{entry.ChangedBy || '-'}</div>
+        <div className="audit-table-cell audit-table-cell--date" role="cell" data-label="Changed at">{formatDateTime(entry.ChangedAt)}</div>
+        <div className="audit-table-cell audit-table-cell--key" role="cell" data-label="Record">{getRecordKey(displaySource)}</div>
+        <div className="audit-table-cell" role="cell" data-label="Field">{showSummaryPanel ? summaryLabel : normalizedField || '-'}</div>
+        <div className="audit-table-cell audit-table-cell--actions" role="cell" data-label="Actions">
+          <span className="audit-hover-hint">{hasItemSummary ? 'Hover to preview · Click for details' : 'Hover to preview'}</span>
+          {canRollbackEntry && (
+            <Button
+              design="Attention"
+              icon={'undo' as any}
+              onClick={event => {
+                event.stopPropagation()
+                onRollback(entry)
+              }}
+            >
+              Rollback
+            </Button>
           )}
         </div>
       </div>
-    </article>
+      {isHovered && (
+        <AuditHoverPreview
+          display={previewDisplay}
+          actionType={displayActionType}
+          itemCount={showSummaryPanel ? childItems.length : undefined}
+          changesOverride={previewChanges}
+        />
+      )}
+    </div>
+  )
+}
+
+function AuditDetailsDialog({
+  entry,
+  allEntries,
+  cachedChildItems,
+  onItemsLoaded,
+  onClose
+}: {
+  entry: AuditLogEntry | null
+  allEntries: AuditLogEntry[]
+  cachedChildItems?: AuditItemEntry[]
+  onItemsLoaded?: (auditId: string, items: AuditItemEntry[]) => void
+  onClose: () => void
+}) {
+  const hasItemSummary = !!entry && hasAuditItemSummary(entry)
+  const [items, setItems] = useState<AuditItemEntry[]>(cachedChildItems || [])
+  const [loading, setLoading] = useState(hasItemSummary && cachedChildItems === undefined)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!entry || !hasAuditItemSummary(entry)) {
+      setItems([])
+      setLoading(false)
+      setError('')
+      return
+    }
+
+    let cancelled = false
+    if (cachedChildItems !== undefined) {
+      setItems(cachedChildItems)
+      setLoading(false)
+      setError('')
+      return
+    }
+
+    const matchedItems = findBulkChildren(entry, allEntries)
+    if (matchedItems.length > 0) {
+      setItems(matchedItems)
+      setLoading(false)
+      setError('')
+      onItemsLoaded?.(entry.AuditId, matchedItems)
+      return
+    }
+
+    setLoading(true)
+    setError('')
+    getAuditItems(entry.AuditId)
+      .then(result => {
+        if (cancelled) return
+        const loadedItems = result || []
+        setItems(loadedItems)
+        onItemsLoaded?.(entry.AuditId, loadedItems)
+      })
+      .catch(loadError => {
+        if (!cancelled) setError(getFriendlyErrorMessage(loadError))
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [entry, allEntries, cachedChildItems, onItemsLoaded])
+
+  if (!entry) return null
+
+  const normalizedAction = normalizeAuditActionType(entry.ActionType)
+  const parentIsRollback = isRollbackAuditAction(normalizedAction)
+  const detailSources: Array<AuditLogEntry | AuditItemEntry> = hasItemSummary && items.length > 0
+    ? items
+    : [entry]
+  const detailRows = detailSources.flatMap((source, sourceIndex) => {
+    const isItem = source !== entry
+    const action = isItem
+      ? parentIsRollback ? 'R' : getAuditItemDisplayActionType(entry, source as AuditItemEntry)
+      : normalizedAction
+    const display = getAuditDisplayCells(source, action)
+    const changes = getAuditChangeRows(display, action)
+    const normalizedChanges = changes.length > 0 ? changes : [{
+      field: display.fieldName || '-',
+      oldValue: display.oldValue || '',
+      newValue: display.newValue || ''
+    }]
+
+    return normalizedChanges.map((change, changeIndex) => ({
+      key: `${(source as AuditItemEntry).ItemNo ?? sourceIndex + 1}-${change.field}-${changeIndex}`,
+      itemNo: (source as AuditItemEntry).ItemNo ?? sourceIndex + 1,
+      action,
+      record: getRecordKey(source),
+      field: change.field,
+      oldValue: change.oldValue,
+      newValue: change.newValue
+    }))
+  })
+  const detailFields = Array.from(new Set(detailRows.map(row => row.field)))
+  const detailGroups = Array.from(detailRows.reduce((groups, row) => {
+    const groupKey = row.record || `item-${row.itemNo}`
+    const existing = groups.get(groupKey) || {
+      key: groupKey,
+      action: row.action,
+      record: row.record,
+      changes: new Map<string, { oldValue: string; newValue: string }>()
+    }
+    existing.changes.set(row.field, { oldValue: row.oldValue, newValue: row.newValue })
+    groups.set(groupKey, existing)
+    return groups
+  }, new Map<string, {
+    key: string
+    action: string
+    record: string
+    changes: Map<string, { oldValue: string; newValue: string }>
+  }>()).values())
+  const displayActionType = hasItemSummary ? getBulkActionType(entry, items) : normalizedAction
+
+  return (
+    <AuditModernModal
+      open
+      title="Audit details"
+      onClose={onClose}
+      width="min(96vw, 1120px)"
+      footer={<Button design="Emphasized" onClick={onClose}>Close</Button>}
+    >
+      <div className="audit-details-meta">
+        <div className="audit-details-meta-item audit-details-meta-item--id">
+          <Label>Audit ID</Label>
+          <Text title={entry.AuditId}>{entry.AuditId}</Text>
+        </div>
+        <div className="audit-details-meta-item">
+          <Label>Changed by</Label>
+          <Text>{entry.ChangedBy || '-'}</Text>
+        </div>
+        <div className="audit-details-meta-item">
+          <Label>Changed at</Label>
+          <Text>{formatDateTime(entry.ChangedAt)}</Text>
+        </div>
+        <div className="audit-details-meta-item">
+          <Label>Details</Label>
+          <Text>{detailGroups.length} {detailGroups.length === 1 ? 'record' : 'records'} · {detailFields.length} {detailFields.length === 1 ? 'field' : 'fields'}</Text>
+        </div>
+        <div className="audit-details-meta-action">
+          <ActionBadge actionType={displayActionType} />
+        </div>
+      </div>
+
+      {loading && <AppLoadingState label="Loading audit details..." />}
+
+      {error && (
+        <MessageStrip design="Negative" hideCloseButton className="audit-details-notice">
+          {error}
+        </MessageStrip>
+      )}
+
+      {!loading && !error && (
+        <div className="audit-unified-detail-table">
+          <table aria-label="Audit detail changes">
+            <thead>
+              <tr>
+                <th>Action</th>
+                <th>Record</th>
+                {detailFields.map(field => <th key={field}>{field}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {detailGroups.map(group => (
+                <tr key={group.key}>
+                  <td><ActionBadge actionType={group.action} /></td>
+                  <td className="audit-unified-detail-record" title={group.record}>{group.record || '-'}</td>
+                  {detailFields.map(field => {
+                    const change = group.changes.get(field)
+                    return (
+                      <td key={field} className="audit-unified-change-cell">
+                        {change ? (
+                          <div className="audit-unified-change-values">
+                            <span className="audit-unified-old-value">{change.oldValue || '-'}</span>
+                            <span className="audit-unified-change-arrow" aria-hidden="true">→</span>
+                            <span className="audit-unified-new-value">{change.newValue || '-'}</span>
+                          </div>
+                        ) : (
+                          <span className="audit-unified-empty-value">—</span>
+                        )}
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </AuditModernModal>
   )
 }
 
@@ -685,7 +1147,9 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
   const [pageIndex, setPageIndex] = useState(0)
   const [pageSize, setPageSize] = useState(10)
 
-  const [selectedBulkEntry, setSelectedBulkEntry] = useState<AuditLogEntry | null>(null)
+  const [selectedDetail, setSelectedDetail] = useState<{
+    entry: AuditLogEntry
+  } | null>(null)
   const [rollbackConfirmEntry, setRollbackConfirmEntry] = useState<AuditLogEntry | null>(null)
   const [rollbackLoading, setRollbackLoading] = useState(false)
   const [rollbackResultMsg, setRollbackResultMsg] = useState<{
@@ -773,6 +1237,7 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
       const rawRecordKey = getRawRecordKey(entry)
       const bulkCount = extractBulkCount(entry)
       return (
+        includesText(entry.AuditId, query) ||
         includesText(entry.ChangedBy, query) ||
         includesText(entry.FieldName, query) ||
         includesText(display.fieldName, query) ||
@@ -795,6 +1260,14 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
   } = useMemo(
     () => paginateAuditEntries(filteredEntries, pageIndex, pageSize),
     [filteredEntries, pageIndex, pageSize]
+  )
+
+  const overviewRows = useMemo(
+    () => pagedEntries.map(entry => ({
+      entry,
+      ...getAuditOverview(entry, entries, bulkChildMap[entry.AuditId])
+    })),
+    [pagedEntries, entries, bulkChildMap]
   )
 
   useEffect(() => {
@@ -887,7 +1360,7 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
       <div className="tab-panel-header audit-toolbar">
         <div className="tab-panel-title-block audit-title-block">
           <Title level="H4" className="tab-panel-title">Audit Trail</Title>
-          <Text className="tab-panel-subtitle audit-muted">Latest changes are listed first. Updates show only the changed field values.</Text>
+          <Text className="tab-panel-subtitle audit-muted">Review the audit summary here, then select View details to inspect field-level changes.</Text>
         </div>
         <div className="tab-panel-actions audit-actions">
           <Text className="audit-count">{filteredEntries.length} audit record(s)</Text>
@@ -901,7 +1374,7 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
         <div className="audit-filter-field audit-filter-search">
           <Label>Search</Label>
           <Input
-            placeholder="User, field, value, record key..."
+            placeholder="Audit ID, user, field, value, record key..."
             value={searchQuery}
             icon={<Icon name="search" />}
             onInput={(event: any) => setSearchQuery(event.target.value)}
@@ -957,10 +1430,7 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
       )}
 
       {loading && (
-        <div className="audit-loading">
-          <BusyIndicator active size="M" />
-          <Text>Loading audit records...</Text>
-        </div>
+        <AppLoadingState label="Loading audit records..." />
       )}
 
       {error && (
@@ -977,18 +1447,99 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
 
       {!loading && !error && filteredEntries.length > 0 && (
         <section className="audit-list-wrap">
-          <div className="audit-list">
-            {pagedEntries.map(entry => (
-              <AuditEntryItem
-                key={entry.AuditId}
-                entry={entry}
-                allEntries={entries}
-                cachedChildItems={bulkChildMap[entry.AuditId]}
-                onViewBulkItems={setSelectedBulkEntry}
-                onRollback={setRollbackConfirmEntry}
-                canRollback={canRollback}
-              />
-            ))}
+          <div className="audit-table audit-overview-table" role="table" aria-label="Audit records">
+            <div className="audit-table-row audit-table-row--header" role="row">
+              <div className="audit-table-cell" role="columnheader">Action</div>
+              <div className="audit-table-cell" role="columnheader">Audit ID</div>
+              <div className="audit-table-cell" role="columnheader">Changed</div>
+              <div className="audit-table-cell" role="columnheader">Summary</div>
+              <div className="audit-table-cell audit-table-cell--details" role="columnheader">Details</div>
+              <div className="audit-table-cell audit-table-cell--rollback" role="columnheader">Rollback</div>
+            </div>
+            {overviewRows.map(row => {
+              const { entry, action, summary } = row
+              const canRollbackRow = canRollback &&
+                canRollbackAuditEntry(entry) &&
+                !isRollbackAuditAction(entry.ActionType) &&
+                !isRollbackAuditAction(action)
+              const rollbackAuditId = String((entry as any).RollbackAuditId ?? (entry as any).rollbackAuditId ?? '').trim()
+              const isRollbackRow = isRollbackAuditAction(entry.ActionType) || isRollbackAuditAction(action)
+              const rollbackUnavailableLabel = rollbackAuditId || isRollbackRow ? 'Rolled back' : 'Not available'
+              const rollbackUnavailableTitle = rollbackAuditId
+                ? `Already rolled back by audit ${rollbackAuditId}`
+                : isRollbackRow
+                  ? 'This entry records a rollback and cannot be rolled back again.'
+                  : canRollback
+                    ? 'Rollback is not available for this audit entry.'
+                    : 'You do not have permission to rollback this audit entry.'
+              const rowAction = normalizeAuditActionType(action).toLowerCase()
+
+              return (
+                <div
+                  className={`audit-table-row audit-overview-row audit-overview-row--${rowAction}`}
+                  role="row"
+                  key={entry.AuditId}
+                >
+                  <div className="audit-table-cell audit-table-cell--action" role="cell" data-label="Action">
+                    <ActionBadge
+                      actionType={action}
+                      label={normalizeAuditActionType(action) === 'B' ? 'Bulk' : undefined}
+                    />
+                  </div>
+                  <div
+                    className="audit-table-cell audit-table-cell--key audit-overview-id"
+                    role="cell"
+                    data-label="Audit ID"
+                    title={entry.AuditId}
+                  >
+                    <span>{entry.AuditId || '-'}</span>
+                  </div>
+                  <div className="audit-table-cell audit-table-cell--changed" role="cell" data-label="Changed">
+                    <span>{entry.ChangedBy || '-'}</span>
+                    <span>{formatDateTime(entry.ChangedAt)}</span>
+                  </div>
+                  <div className="audit-table-cell audit-overview-summary" role="cell" data-label="Summary" title={summary}>
+                    <div className="audit-summary-overview">
+                      <Icon name="inspect" className="audit-summary-overview-icon" />
+                      <span>{summary}</span>
+                    </div>
+                  </div>
+                  <div className="audit-table-cell audit-table-cell--details" role="cell" data-label="Details">
+                    <Button
+                      design="Transparent"
+                      icon={'inspect' as any}
+                      className="audit-action-button"
+                      accessibleName="View audit details"
+                      title="View details"
+                      onClick={() => {
+                        setSelectedDetail({ entry })
+                      }}
+                    >
+                      View details
+                    </Button>
+                  </div>
+                  <div className="audit-table-cell audit-table-cell--rollback" role="cell" data-label="Rollback">
+                    {canRollbackRow ? (
+                      <Button
+                        design="Attention"
+                        icon={'undo' as any}
+                        className="audit-rollback-button"
+                        accessibleName="Rollback audit operation"
+                        title="Rollback"
+                        onClick={() => setRollbackConfirmEntry(entry)}
+                      >
+                        Rollback
+                      </Button>
+                    ) : (
+                      <span className="audit-rollback-status" title={rollbackUnavailableTitle}>
+                        <Icon name={rollbackAuditId || isRollbackRow ? 'complete' : 'decline'} />
+                        <span>{rollbackUnavailableLabel}</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
           <div className="audit-pagination-bar">
             <Text className="audit-count">
@@ -1028,13 +1579,13 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
         </section>
       )}
 
-      {selectedBulkEntry && (
-        <BulkAuditItemsDialog
-          auditEntry={selectedBulkEntry}
+      {selectedDetail && (
+        <AuditDetailsDialog
+          entry={selectedDetail.entry}
           allEntries={entries}
-          initialChildItems={bulkChildMap[selectedBulkEntry.AuditId]}
+          cachedChildItems={bulkChildMap[selectedDetail.entry.AuditId]}
           onItemsLoaded={handleChildItemsLoaded}
-          onClose={() => setSelectedBulkEntry(null)}
+          onClose={() => setSelectedDetail(null)}
         />
       )}
 
@@ -1072,7 +1623,7 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
               Are you sure you want to rollback this audit operation?
             </Text>
             <div style={{ background: '#fff3e0', padding: '0.75rem', borderRadius: '6px', border: '1px solid #ffe0b2' }}>
-              <Text style={{ display: 'block', fontWeight: 700, color: '#e65100' }}>
+              <Text style={{ display: 'block', fontWeight: 600, color: '#e65100' }}>
                 Audit ID: {rollbackConfirmEntry.AuditId}
               </Text>
               <Text style={{ display: 'block', fontSize: '0.85rem', color: '#6a7075' }}>
@@ -1109,7 +1660,7 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
             >
               <Icon name="error" style={{ color: '#bb0000', fontSize: '1.5rem', flex: '0 0 auto' }} />
               <div style={{ minWidth: 0 }}>
-                <Text style={{ display: 'block', fontWeight: 700, color: '#8b0000', marginBottom: '0.4rem' }}>
+                <Text style={{ display: 'block', fontWeight: 600, color: '#8b0000', marginBottom: '0.4rem' }}>
                   The audit operation could not be rolled back.
                 </Text>
                 <Text style={{ display: 'block', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', color: '#32363a' }}>
@@ -1120,7 +1671,7 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
             {rollbackResultMsg.auditId && (
               <div style={{ marginTop: '0.85rem', padding: '0.75rem 1rem', borderRadius: '6px', background: '#f4f6f8' }}>
                 <Label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.2rem' }}>Audit ID</Label>
-                <Text style={{ display: 'block', fontWeight: 700, overflowWrap: 'anywhere' }}>
+                <Text style={{ display: 'block', fontWeight: 600, overflowWrap: 'anywhere' }}>
                   {rollbackResultMsg.auditId}
                 </Text>
               </div>

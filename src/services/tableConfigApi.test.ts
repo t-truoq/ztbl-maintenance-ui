@@ -31,7 +31,9 @@ import {
   deleteRecord,
   formatActionErrorMessage,
   getActionMessage,
+  getPendingApprovalRecords,
   getTables,
+  isPendingApprovalStatus,
   isFKReferenceError,
   isOptimisticLockError,
   loadTableContext,
@@ -39,6 +41,7 @@ import {
   parseBulkActionResults,
   parseFKErrorMessage,
   parseTableDataJson,
+  sanitizeApprovalLockMessage,
   updateRecord
 } from './tableConfigApi'
 
@@ -122,6 +125,53 @@ describe('tableConfigApi table loading', () => {
         IsActiveEntity: true
       }
     ])
+  })
+
+  it('loads only minimal pending approval fields for a table', async () => {
+    mockGet.mockResolvedValueOnce({
+      data: {
+        value: [{
+          AprvlId: 'PRIVATE-ID',
+          TableName: 'Z253_CAT',
+          RecordKey: '{"CATEGORY_ID":"PC09"}',
+          Status: 'PENDING',
+          ActionType: 'U',
+          SubmittedBy: 'DEV-253',
+          OldData: '{"STATUS":"A"}',
+          NewData: '{"STATUS":"I"}'
+        }]
+      }
+    })
+
+    await expect(getPendingApprovalRecords('Z253_CAT')).resolves.toEqual([{
+      TableName: 'Z253_CAT',
+      RecordKey: '{"CATEGORY_ID":"PC09"}',
+      Status: 'PENDING',
+      ActionType: 'U'
+    }])
+
+    expect(mockGet).toHaveBeenCalledWith('/ApprovalItem', expect.objectContaining({
+      params: expect.objectContaining({
+        '$filter': "TableName eq 'Z253_CAT'",
+        '$select': 'TableName,RecordKey,Status,ActionType'
+      })
+    }))
+  })
+
+  it('recognizes active approval statuses without assuming one backend code', () => {
+    expect(isPendingApprovalStatus('PENDING')).toBe(true)
+    expect(isPendingApprovalStatus('WAITING')).toBe(true)
+    expect(isPendingApprovalStatus('SUBMITTED')).toBe(true)
+    expect(isPendingApprovalStatus('APPROVED')).toBe(false)
+    expect(isPendingApprovalStatus('REJECTED')).toBe(false)
+  })
+
+  it('removes the submitting account from approval lock messages', () => {
+    expect(sanitizeApprovalLockMessage(
+      'Skipped row 000001: Record đang chờ duyệt bởi DEV-213. Không thể tạo request mới.'
+    )).toBe(
+      'Skipped row 000001: Record is waiting for ADMIN approval. Cannot create a new request.'
+    )
   })
 
   it('loads table context with metadata and parsed rows', async () => {

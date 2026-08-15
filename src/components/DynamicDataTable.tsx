@@ -5,7 +5,6 @@ import {
   TableHeaderCell,
   TableRow,
   TableCell,
-  BusyIndicator,
   Text,
   Button,
   CheckBox,
@@ -17,9 +16,10 @@ import {
 import CellEditControl from './CellEditControl'
 import { formatHeaderLabel } from '../utils/tableHelpers'
 import { formatCellValue } from '../utils/displayHelpers'
-import { buildRecordKeyString } from '../utils/recordHelpers'
+import { buildRecordKeyString, normalizeRecordKeyString } from '../utils/recordHelpers'
+import AppLoadingState from './AppLoadingState'
 
-import { AiDescriptionMap, FieldMeta, TableConfig, TableRowData } from '../types'
+import { AiDescriptionMap, FieldMeta, PendingApprovalRecord, TableConfig, TableRowData } from '../types'
 
 interface DynamicDataTableProps {
   selectedTable: TableConfig
@@ -30,6 +30,7 @@ interface DynamicDataTableProps {
   editedData: TableRowData[]
   inlineErrors: Record<number, Record<string, string>>
   activeTableLock: { lockedBy: string } | null
+  pendingApprovalRecords?: PendingApprovalRecord[]
   onCellChange: (rowIndex: number, fieldName: string, newValue: any) => void
   onAddRow: () => void
   onRemoveNewRow: (rowIndex: number) => void
@@ -58,6 +59,7 @@ export default function DynamicDataTable({
   editedData,
   inlineErrors,
   activeTableLock,
+  pendingApprovalRecords = [],
   onCellChange,
   onAddRow,
   onRemoveNewRow,
@@ -180,8 +182,8 @@ export default function DynamicDataTable({
     const isDomain = feType === 'domain' || feType === 'fk_select'
     const hasKeyIcon = f.is_key || f.IsKeyField === 'X'
     const defaultWidth = Math.max(
-      isDate ? 260 : isDomain ? 200 : 150,
-      headerLabel.length * 10 + 80 + (hasKeyIcon ? 18 : 0)
+      isDate ? 210 : isDomain ? 200 : 180,
+      headerLabel.length * 9 + 104 + (hasKeyIcon ? 18 : 0)
     )
     const minColWidth = columnWidths[technicalName] || defaultWidth
     return { field: f, minColWidth, headerLabel, technicalName }
@@ -196,20 +198,33 @@ export default function DynamicDataTable({
     }
   }
 
-  const filteredRowKeys = useMemo(
-    () => sortedData.map((row, index) => getRowKey(row, index)),
-    [sortedData, fields]
+  const pendingRecordKeySet = useMemo(() => new Set(
+    pendingApprovalRecords
+      .filter(record => String(record.ActionType || '').trim().toUpperCase() !== 'C')
+      .map(record => normalizeRecordKeyString(record.RecordKey))
+      .filter(Boolean)
+  ), [pendingApprovalRecords])
+
+  const isRowPending = (row: TableRowData, fallbackIndex: number) =>
+    pendingRecordKeySet.has(normalizeRecordKeyString(getRowKey(row, fallbackIndex)))
+
+  const selectableRowKeys = useMemo(
+    () => sortedData
+      .map((row, index) => ({ row, index, key: getRowKey(row, index) }))
+      .filter(({ row, index }) => !isRowPending(row, index))
+      .map(({ key }) => key),
+    [sortedData, fields, pendingRecordKeySet]
   )
 
   useEffect(() => {
     if (isEditingTable) return
     setSelectedRowKeys(prev => {
       if (prev.size === 0) return prev
-      const visible = new Set(filteredRowKeys)
+      const visible = new Set(selectableRowKeys)
       const next = new Set([...prev].filter(key => visible.has(key)))
       return next.size === prev.size ? prev : next
     })
-  }, [filteredRowKeys, isEditingTable])
+  }, [selectableRowKeys, isEditingTable])
 
   useEffect(() => {
     setSortField('')
@@ -240,7 +255,7 @@ export default function DynamicDataTable({
   const selectedRows = sortedData.filter((row, index) => selectedRowKeys.has(getRowKey(row, index)))
   const hasNewRows = isEditingTable && editedData.some(row => row._isNew)
   const allVisibleRowsSelected =
-    filteredRowKeys.length > 0 && filteredRowKeys.every(key => selectedRowKeys.has(key))
+    selectableRowKeys.length > 0 && selectableRowKeys.every(key => selectedRowKeys.has(key))
   const createDenied = !permissions.canCreate
   const updateDenied = !permissions.canUpdate
   const deleteDenied = !permissions.canDelete
@@ -257,7 +272,7 @@ export default function DynamicDataTable({
   const toggleAllVisibleRows = (checked: boolean) => {
     setSelectedRowKeys(prev => {
       const next = new Set(prev)
-      filteredRowKeys.forEach(key => {
+      selectableRowKeys.forEach(key => {
         if (checked) next.add(key)
         else next.delete(key)
       })
@@ -362,21 +377,24 @@ export default function DynamicDataTable({
     onCancelInlineEdits()
   }
 
-  const selectionColumnWidth = 72
-  const totalTableWidth = fieldsWithWidths.reduce(
-    (sum, item) => sum + item.minColWidth,
-    selectionColumnWidth + (hasNewRows ? 100 : 0)
-  )
+  const selectionColumnWidth = 44
   const columnsStyle =
-    `${selectionColumnWidth}px ${fieldsWithWidths.map(item => `${item.minColWidth}px`).join(' ')}${hasNewRows ? ' 100px' : ''}`
+    `${selectionColumnWidth}px ${fieldsWithWidths
+      .map((item, index) => (
+        index === fieldsWithWidths.length - 1
+          ? `minmax(${item.minColWidth}px, 1fr)`
+          : `${item.minColWidth}px`
+      ))
+      .join(' ')}${hasNewRows ? ' 100px' : ''}`
   const tableColumnCount = fields.length + 1 + (hasNewRows ? 1 : 0)
   const selectionCellStyle = {
     minWidth: `${selectionColumnWidth}px`,
     boxSizing: 'border-box',
     display: 'flex',
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingInline: '12px',
-    overflow: 'visible',
+    paddingInline: 0,
+    overflow: 'hidden',
   } as const
 
   return (
@@ -384,10 +402,23 @@ export default function DynamicDataTable({
       <div className="tab-panel-header">
         <div className="tab-panel-title-block">
           <Title level="H4" className="tab-panel-title">
-            Records ({isEditingTable ? editedData.length : filteredData.length})
+            Records ({dataLoading ? '...' : isEditingTable ? editedData.length : filteredData.length})
           </Title>
+          <Text className="tab-panel-subtitle">
+            {isEditingTable
+              ? 'Review the selected records, then save or discard your changes.'
+              : 'Select records to edit or delete. Sort and resize columns directly from the header.'}
+          </Text>
+          {pendingRecordKeySet.size > 0 && (
+            <div className="table-pending-notice" role="status">
+              <Icon name={'pending' as any} className="table-pending-notice-icon" />
+              <Text>
+                {pendingRecordKeySet.size} {pendingRecordKeySet.size === 1 ? 'record is' : 'records are'} waiting for ADMIN approval.
+              </Text>
+            </div>
+          )}
           {(createDenied || updateDenied || deleteDenied) && (
-            <Text className="tab-panel-subtitle">
+            <Text className="tab-panel-subtitle table-data-permission-note">
               Some actions are disabled because you do not have the required permission.
             </Text>
           )}
@@ -414,8 +445,17 @@ export default function DynamicDataTable({
             <>
             <Button
               design="Emphasized"
+              icon={'add' as any}
+              disabled={dataLoading || createDenied || !!activeTableLock}
+              onClick={startCreatingNewRow}
+              accessibleName={createDenied ? 'You do not have permission to create records.' : undefined}
+            >
+              Create
+            </Button>
+            <Button
+              design="Default"
               icon={'edit' as any}
-              disabled={updateDenied || !!activeTableLock || selectedRowCount === 0}
+              disabled={dataLoading || updateDenied || !!activeTableLock || selectedRowCount === 0}
               onClick={startEditingSelectedRows}
               accessibleName={updateDenied ? 'You do not have permission to update this record.' : undefined}
             >
@@ -424,20 +464,11 @@ export default function DynamicDataTable({
             <Button
               design="Transparent"
               icon={'delete' as any}
-              disabled={deleteDenied || !!activeTableLock || selectedRowCount === 0}
+              disabled={dataLoading || deleteDenied || !!activeTableLock || selectedRowCount === 0}
               onClick={deleteSelectedRow}
               accessibleName={deleteDenied ? 'You do not have permission to delete this record.' : undefined}
             >
               {selectedRowCount > 1 ? `Delete (${selectedRowCount})` : 'Delete'}
-            </Button>
-            <Button
-              design="Transparent"
-              icon={'add' as any}
-              disabled={createDenied || !!activeTableLock}
-              onClick={startCreatingNewRow}
-              accessibleName={createDenied ? 'You do not have permission to create records.' : undefined}
-            >
-              Create
             </Button>
             <Button
               design="Transparent"
@@ -454,36 +485,35 @@ export default function DynamicDataTable({
 
       {/* ── Loading indicator ─────────────────────────────────────────── */}
       {dataLoading && (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '0.5rem' }}>
-          <BusyIndicator active size="S" />
-        </div>
+        <AppLoadingState label="Loading table data..." />
       )}
 
       {/* ── Scrollable Table Wrapper: Đồng bộ CSS Grid với các ô table ── */}
-      <div
-        className={`dynamic-table-scroll${isEditingTable ? ' dynamic-table-scroll--editing' : ''}`}
+      {!dataLoading && <div
+        className={`dynamic-table-scroll dynamic-table-surface${isEditingTable ? ' dynamic-table-scroll--editing' : ''}`}
         style={{ ['--dynamic-table-grid-columns' as any]: columnsStyle }}
         onScroll={() => setActiveAiTooltip(null)}
       >
         <Table
+          className="dynamic-data-table"
           overflowMode="Scroll"
           style={{
-            minWidth: `${totalTableWidth}px`,
-            width: `${totalTableWidth}px`,
+            width: '100%',
             gridTemplateColumns: columnsStyle,
             ['--ui5-table-grid-columns' as any]: columnsStyle
           }}
           headerRow={
             <TableHeaderRow
+              className="dynamic-table-header-row"
               style={{
                 gridTemplateColumns: columnsStyle,
                 ['--ui5-table-grid-columns' as any]: columnsStyle
               }}
             >
-              <TableHeaderCell minWidth={`${selectionColumnWidth}px`} style={selectionCellStyle}>
+              <TableHeaderCell className="dynamic-table-selection-cell" minWidth={`${selectionColumnWidth}px`} style={selectionCellStyle}>
                 <CheckBox
                   checked={allVisibleRowsSelected}
-                  disabled={filteredRowKeys.length === 0 || isEditingTable}
+                  disabled={selectableRowKeys.length === 0 || isEditingTable}
                   onChange={(e: any) => toggleAllVisibleRows(e.target.checked)}
                 />
               </TableHeaderCell>
@@ -495,8 +525,8 @@ export default function DynamicDataTable({
                 const isSorted = sortField === technicalName
                 return (
                   <TableHeaderCell
+                    className="dynamic-table-header-cell"
                     key={technicalName}
-                    width={`${minColWidth}px`}
                     minWidth={`${minColWidth}px`}
                     style={{ minWidth: `${minColWidth}px` }}
                   >
@@ -515,9 +545,8 @@ export default function DynamicDataTable({
                       <Label
                         style={{
                           whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          minWidth: 0,
+                          overflow: 'visible',
+                          flexShrink: 0,
                           cursor: isEditingTable ? 'default' : 'pointer',
                           fontWeight: isSorted ? 'bold' : undefined,
                           color: isSorted ? '#0070f2' : undefined
@@ -583,21 +612,24 @@ export default function DynamicDataTable({
           {/* ========================================================================= */}
           {isEditingTable ? (
             editedData.length === 0 ? (
-              <TableRow>
-                <TableCell {...({ colSpan: tableColumnCount } as any)}>
-                  <Text>No data available</Text>
+              <TableRow className="dynamic-table-empty-row" style={{ gridTemplateColumns: '1fr' }}>
+                <TableCell className="dynamic-table-empty-cell" {...({ colSpan: tableColumnCount } as any)}>
+                  <Icon name={'table-view' as any} className="dynamic-table-empty-icon" />
+                  <Title level="H5">No records yet</Title>
+                  <Text>Create a record to start maintaining this table.</Text>
                 </TableCell>
               </TableRow>
             ) : (
               editedData.map((row, i) => (
                 <TableRow
+                  className={`dynamic-table-data-row${row._isNew ? ' dynamic-table-data-row--new' : ''}`}
                   key={i}
                   style={{
                     gridTemplateColumns: columnsStyle,
                     ['--ui5-table-grid-columns' as any]: columnsStyle
                   }}
                 >
-                  <TableCell style={selectionCellStyle}>
+                  <TableCell className="dynamic-table-selection-cell" style={selectionCellStyle}>
                     <CheckBox checked={row._isNew || selectedRowKeys.has(getRowKey(row, i))} disabled />
                   </TableCell>
                   {/* Duyệt mảng fields để sinh các ô chỉnh sửa/hiển thị tương ứng */}
@@ -609,10 +641,8 @@ export default function DynamicDataTable({
                     return (
                       <TableCell
                         key={name}
-                        width={`${minColWidth}px`}
                         minWidth={`${minColWidth}px`}
                         style={{
-                          width: `${minColWidth}px`,
                           minWidth: `${minColWidth}px`,
                           overflow: feType === 'date' || feType === 'fk_select' ? 'visible' : undefined,
                         }}
@@ -633,10 +663,11 @@ export default function DynamicDataTable({
                               title={String(row[name] ?? '')}
                               style={{
                                 color: '#32363a',
-                                overflow: 'hidden',
+                                overflow: singleLine ? 'hidden' : 'visible',
                                 textOverflow: singleLine ? 'ellipsis' : undefined,
                                 whiteSpace: singleLine ? 'nowrap' : 'normal',
-                                overflowWrap: singleLine ? undefined : 'anywhere',
+                                overflowWrap: 'normal',
+                                wordBreak: 'normal',
                                 minWidth: 0,
                               }}
                             >
@@ -673,19 +704,25 @@ export default function DynamicDataTable({
             )
           ) : sortedData.length === 0 ? (
             /* ── Read-only empty state ────────────────────────────────── */
-            <TableRow>
-              <TableCell {...({ colSpan: tableColumnCount } as any)}>
-                <Text>No data available</Text>
+            <TableRow className="dynamic-table-empty-row" style={{ gridTemplateColumns: '1fr' }}>
+              <TableCell className="dynamic-table-empty-cell" {...({ colSpan: tableColumnCount } as any)}>
+                <Icon name={'table-view' as any} className="dynamic-table-empty-icon" />
+                <Title level="H5">No records found</Title>
+                <Text>Adjust the filters or create a new record.</Text>
               </TableCell>
             </TableRow>
           ) : (
             /* ── Read-only rows ───────────────────────────────────────── */
-            sortedData.map((row, i) => (
+            sortedData.map((row, i) => {
+              const pendingApproval = isRowPending(row, i)
+              return (
               <TableRow
+                className={`dynamic-table-data-row${selectedRowKeys.has(getRowKey(row, i)) ? ' dynamic-table-data-row--selected' : ''}${pendingApproval ? ' dynamic-table-data-row--pending' : ''}`}
                 key={i}
-                interactive={!activeTableLock}
+                interactive={!activeTableLock && !pendingApproval}
+                title={pendingApproval ? 'This record is waiting for ADMIN approval.' : undefined}
                 onClick={() => {
-                  if (activeTableLock) return
+                  if (activeTableLock || pendingApproval) return
                   toggleRowSelection(getRowKey(row, i), !selectedRowKeys.has(getRowKey(row, i)))
                 }}
                 style={{
@@ -694,17 +731,25 @@ export default function DynamicDataTable({
                 }}
               >
                 <TableCell
+                  className="dynamic-table-selection-cell"
                   style={selectionCellStyle}
                   onClick={(e: any) => e.stopPropagation()}
                 >
                   <CheckBox
                     checked={selectedRowKeys.has(getRowKey(row, i))}
-                    disabled={!!activeTableLock}
+                    disabled={!!activeTableLock || pendingApproval}
                     onChange={(e: any) => {
                       e.stopPropagation()
                       toggleRowSelection(getRowKey(row, i), e.target.checked)
                     }}
                   />
+                  {pendingApproval && (
+                    <Icon
+                      name={'locked' as any}
+                      className="dynamic-table-pending-lock"
+                      title="Waiting for ADMIN approval"
+                    />
+                  )}
                 </TableCell>
                 {fieldsWithWidths.map(({ field: f, minColWidth }) => {
                   const name = f.field_name || f.FieldName
@@ -714,10 +759,8 @@ export default function DynamicDataTable({
                   return (
                     <TableCell
                       key={name}
-                      width={`${minColWidth}px`}
                       minWidth={`${minColWidth}px`}
                       style={{
-                        width: `${minColWidth}px`,
                         minWidth: `${minColWidth}px`,
                       }}
                     >
@@ -726,10 +769,11 @@ export default function DynamicDataTable({
                           title={String(val ?? '')}
                           style={{
                             color: '#32363a',
-                            overflow: 'hidden',
+                            overflow: singleLine ? 'hidden' : 'visible',
                             textOverflow: singleLine ? 'ellipsis' : undefined,
                             whiteSpace: singleLine ? 'nowrap' : 'normal',
-                            overflowWrap: singleLine ? undefined : 'anywhere',
+                            overflowWrap: 'normal',
+                            wordBreak: 'normal',
                             minWidth: 0,
                           }}
                         >
@@ -749,10 +793,11 @@ export default function DynamicDataTable({
                   )
                 })}
               </TableRow>
-            ))
+              )
+            })
           )}
         </Table>
-      </div>
+      </div>}
       {activeAiTooltip && (
         <div
           className="ai-field-popover"
