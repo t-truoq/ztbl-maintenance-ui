@@ -4,9 +4,43 @@ const TECHNICAL_KEY_FIELDS = new Set(['CLIENT', 'MANDT', '__SNAPSHOT__', '__BATC
 
 export function normalizeAuditActionType(actionType?: string): string {
   const normalized = String(actionType || '').trim().toUpperCase()
-  if (normalized === 'ROLLBACK') return 'R'
-  if (normalized === 'BULK') return 'B'
+  const token = normalized.split(/\s+/)[0]
+
+  if (normalized.includes(',')) return 'B'
+  if (normalized === 'ROLLED BACK') return 'R'
+  if (normalized === 'BULK CRUD OPERATION') return 'B'
+  if (['C', 'CREATE', 'CREATED', '01'].includes(token)) return 'C'
+  if (['U', 'UPDATE', 'UPDATED', '02'].includes(token)) return 'U'
+  if (['D', 'DELETE', 'DELETED', '03'].includes(token)) return 'D'
+  if (['R', 'ROLLBACK'].includes(token)) return 'R'
+  if (['B', 'BULK'].includes(token)) return 'B'
   return normalized
+}
+
+const AUDIT_OPERATION_LABELS: Record<string, string> = {
+  C: 'Create',
+  U: 'Update',
+  D: 'Delete',
+  R: 'Rollback',
+  B: 'Bulk'
+}
+
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  C: 'Created',
+  U: 'Updated',
+  D: 'Deleted',
+  R: 'Rolled back',
+  B: 'Bulk'
+}
+
+export function getAuditOperationLabel(actionType?: string): string {
+  const action = normalizeAuditActionType(actionType)
+  return AUDIT_OPERATION_LABELS[action] || action || 'Unknown'
+}
+
+export function getAuditActionLabel(actionType?: string): string {
+  const action = normalizeAuditActionType(actionType)
+  return AUDIT_ACTION_LABELS[action] || action || 'Unknown'
 }
 
 export function isRollbackAuditAction(actionType?: string): boolean {
@@ -145,11 +179,17 @@ export function getAuditItemDisplayActionType(
   item: AuditItemEntry,
   allEntries: AuditLogEntry[] = []
 ): string {
-  const itemAction = normalizeAuditActionType(item.ActionType || parentEntry.ActionType)
-  if (!isRollbackAuditAction(parentEntry.ActionType)) return itemAction
+  const itemAction = normalizeAuditActionType(item.ActionType)
+  const fallbackAction = itemAction || normalizeAuditActionType(parentEntry.ActionType)
+  if (!isRollbackAuditAction(parentEntry.ActionType)) return fallbackAction
+
+  // Rollback AuditItems already describe the action that was actually executed.
+  // Do not replace a concrete child action with the original audit action:
+  // rolling back Create executes Delete, and rolling back Delete executes Create.
+  if (itemAction === 'C' || itemAction === 'U' || itemAction === 'D') return itemAction
 
   const sourceEntry = findRollbackSourceEntry(parentEntry, allEntries)
-  if (!sourceEntry) return itemAction
+  if (!sourceEntry) return fallbackAction
 
   const sourceItems = getEmbeddedAuditItems(sourceEntry)
   const itemRecordKey = getRawRecordKey(item)
@@ -162,7 +202,42 @@ export function getAuditItemDisplayActionType(
   ) || sourceItems.find(sourceItem => item.ItemNo != null && sourceItem.ItemNo === item.ItemNo)
   const sourceAction = normalizeAuditActionType(matchingSourceItem?.ActionType || sourceEntry.ActionType)
 
-  return sourceAction && sourceAction !== 'R' && sourceAction !== 'B' ? sourceAction : itemAction
+  if (sourceAction === 'C') return 'D'
+  if (sourceAction === 'D') return 'C'
+  if (sourceAction === 'U') return 'U'
+
+  return fallbackAction
+}
+
+export function getAuditDetailFieldSummary(
+  recordFieldNames: string[],
+  changeFieldNames: string[]
+): { detailFields: string[]; changedFieldCount: number } {
+  const uniqueFields = (fields: string[]) => {
+    const seen = new Set<string>()
+    return fields.reduce<string[]>((result, field) => {
+      const normalizedField = String(field || '').trim()
+      const comparisonKey = normalizedField.toUpperCase()
+      if (!normalizedField || seen.has(comparisonKey)) return result
+      seen.add(comparisonKey)
+      result.push(normalizedField)
+      return result
+    }, [])
+  }
+
+  const normalizedRecordFields = uniqueFields(recordFieldNames)
+  const recordFieldKeys = new Set(normalizedRecordFields.map(field => field.toUpperCase()))
+  const normalizedChangeFields = uniqueFields(changeFieldNames)
+  const changedBusinessFields = normalizedChangeFields.filter(
+    field => !recordFieldKeys.has(field.toUpperCase())
+  )
+
+  return {
+    detailFields: uniqueFields([...normalizedRecordFields, ...normalizedChangeFields]),
+    // Record keys such as ENTITY_ID are displayed as columns, but they are not
+    // business fields changed by the operation.
+    changedFieldCount: changedBusinessFields.length
+  }
 }
 
 export function paginateAuditEntries<T>(

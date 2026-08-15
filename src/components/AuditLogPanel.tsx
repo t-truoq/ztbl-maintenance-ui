@@ -18,7 +18,10 @@ import { getAuditDisplayCells, getAuditValueParts } from '../utils/auditFormatte
 import {
   extractBulkCount,
   findBulkChildren,
+  getAuditActionLabel,
+  getAuditDetailFieldSummary,
   getAuditItemDisplayActionType,
+  getAuditOperationLabel,
   getBulkActionType,
   getRawRecordKey,
   getRecordKey,
@@ -32,22 +35,12 @@ import {
 import { AuditLogEntry, AuditItemEntry } from '../types'
 import AppLoadingState from './AppLoadingState'
 
-const ACTION_LABELS: Record<string, string> = {
-  C: 'Created',
-  U: 'Updated',
-  D: 'Deleted',
-  R: 'Rollback',
-  B: 'Bulk Operation',
-  BULK: 'Bulk Operation'
-}
-
 const ACTION_META: Record<string, { icon: string; color: string; background: string }> = {
   C: { icon: 'add', color: '#107e3e', background: '#e4f5e9' },
   U: { icon: 'edit', color: '#e09d00', background: '#fffaf0' },
   D: { icon: 'delete', color: '#bb0000', background: '#ffebeb' },
-  R: { icon: 'history', color: '#0a6ed1', background: '#eaf4ff' },
-  B: { icon: 'group-2', color: '#6f42c1', background: '#f3e8ff' },
-  BULK: { icon: 'group-2', color: '#6f42c1', background: '#f3e8ff' }
+  R: { icon: 'undo', color: '#0a6ed1', background: '#eaf4ff' },
+  B: { icon: 'group-2', color: '#6f42c1', background: '#f3e8ff' }
 }
 
 interface AuditLogPanelProps {
@@ -130,8 +123,7 @@ function includesText(value: unknown, query: string): boolean {
 }
 
 function actionLabel(actionType: string): string {
-  const normalizedAction = normalizeAuditActionType(actionType)
-  return ACTION_LABELS[normalizedAction] || normalizedAction || 'Unknown'
+  return getAuditActionLabel(actionType)
 }
 
 function auditFilterActionType(entry: AuditLogEntry, cachedChildItems?: AuditItemEntry[]): string {
@@ -159,9 +151,19 @@ function extractAuditItemCount(entry: AuditLogEntry | AuditItemEntry): number | 
   return match ? parseInt(match[1], 10) : null
 }
 
-function ActionBadge({ actionType, label }: { actionType: string; label?: string }) {
+function ActionBadge({
+  actionType,
+  label,
+  context = 'action'
+}: {
+  actionType: string
+  label?: string
+  context?: 'action' | 'operation'
+}) {
   const normalizedAction = normalizeAuditActionType(actionType)
-  const actionLabelText = label || actionLabel(normalizedAction)
+  const actionLabelText = label || (context === 'operation'
+    ? getAuditOperationLabel(normalizedAction)
+    : getAuditActionLabel(normalizedAction))
   const meta = ACTION_META[normalizedAction] || { icon: 'question-mark', color: '#556b82', background: '#eef2f5' }
 
   return (
@@ -350,7 +352,7 @@ function BulkAuditItemsDialog({
             <Text>{formatDateTime(auditEntry.ChangedAt)}</Text>
           </div>
           <div style={{ marginLeft: 'auto' }}>
-            <ActionBadge actionType={displayActionType} />
+            <ActionBadge actionType={displayActionType} context="operation" />
           </div>
         </div>
 
@@ -512,10 +514,15 @@ function getAuditOverview(
 
   if (hasSummary && !singleItem) {
     const itemCount = childItems.length > 0 ? childItems.length : extractAuditItemCount(entry)
-    const changedFieldCount = childItems.reduce((total, item) => {
+    const recordFieldNames = childItems.flatMap(item =>
+      Array.from(partsToMap(splitAuditParts(getRawRecordKey(item))).keys())
+    )
+    const changeFieldNames = childItems.flatMap(item => {
       const itemAction = getAuditItemDisplayActionType(entry, item, allEntries)
-      return total + getAuditChangeRows(getAuditDisplayCells(item, itemAction), itemAction).length
-    }, 0)
+      return getAuditChangeRows(getAuditDisplayCells(item, itemAction), itemAction)
+        .map(change => change.field)
+    })
+    const { changedFieldCount } = getAuditDetailFieldSummary(recordFieldNames, changeFieldNames)
     const recordSummary = itemCount === null
       ? 'Bulk operation'
       : `${itemCount} ${itemCount === 1 ? 'record' : 'records'}`
@@ -529,12 +536,19 @@ function getAuditOverview(
   }
 
   const changes = getAuditChangeRows(getAuditDisplayCells(source, action), action)
+  const recordFieldNames = Array.from(
+    partsToMap(splitAuditParts(getRawRecordKey(source))).keys()
+  )
+  const { changedFieldCount } = getAuditDetailFieldSummary(
+    recordFieldNames,
+    changes.map(change => change.field)
+  )
   return {
     source,
     action,
-    summary: changes.length === 0
+    summary: changedFieldCount === 0
       ? 'No field changes'
-      : `${changes.length} ${changes.length === 1 ? 'field' : 'fields'}`
+      : `${changedFieldCount} ${changedFieldCount === 1 ? 'field' : 'fields'}`
   }
 }
 
@@ -904,8 +918,8 @@ function AuditEntryItem({
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className="audit-table-row" role="row">
-        <div className="audit-table-cell audit-table-cell--action" role="cell" data-label="Action">
-          <ActionBadge actionType={displayActionType} />
+        <div className="audit-table-cell audit-table-cell--action" role="cell" data-label="Operation">
+          <ActionBadge actionType={displayActionType} context="operation" />
         </div>
         <div className="audit-table-cell" role="cell" data-label="Changed by">{entry.ChangedBy || '-'}</div>
         <div className="audit-table-cell audit-table-cell--date" role="cell" data-label="Changed at">{formatDateTime(entry.ChangedAt)}</div>
@@ -1043,10 +1057,7 @@ function AuditDetailsDialog({
   const changeFieldNames = detailRows
     .map(row => row.field)
     .filter(field => Boolean(field))
-  const detailFields = Array.from(new Set([
-    ...recordFieldNames,
-    ...changeFieldNames
-  ]))
+  const { detailFields, changedFieldCount } = getAuditDetailFieldSummary(recordFieldNames, changeFieldNames)
   const detailGroups = Array.from(detailRows.reduce((groups, row) => {
     const groupKey = row.record || `item-${row.itemNo}`
     const existing = groups.get(groupKey) || {
@@ -1093,10 +1104,10 @@ function AuditDetailsDialog({
         </div>
         <div className="audit-details-meta-item">
           <Label>Details</Label>
-          <Text>{detailGroups.length} {detailGroups.length === 1 ? 'record' : 'records'} · {detailFields.length} {detailFields.length === 1 ? 'field' : 'fields'}</Text>
+          <Text>{detailGroups.length} {detailGroups.length === 1 ? 'record' : 'records'} · {changedFieldCount} {changedFieldCount === 1 ? 'field' : 'fields'}</Text>
         </div>
         <div className="audit-details-meta-action">
-          <ActionBadge actionType={displayActionType} />
+          <ActionBadge actionType={displayActionType} context="operation" />
         </div>
       </div>
 
@@ -1423,17 +1434,17 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
           />
         </div>
         <div className="audit-filter-field audit-filter-action">
-          <Label>Action</Label>
+          <Label>Operation</Label>
           <Select
             value={actionFilter}
             onChange={(event: any) => setActionFilter(event.detail.selectedOption.value as ActionFilter)}
           >
-            <Option value="ALL">All</Option>
-            <Option value="C">Created</Option>
-            <Option value="U">Updated</Option>
-            <Option value="D">Deleted</Option>
+            <Option value="ALL">All operations</Option>
+            <Option value="C">Create</Option>
+            <Option value="U">Update</Option>
+            <Option value="D">Delete</Option>
             <Option value="R">Rollback</Option>
-            <Option value="B">Bulk Operation</Option>
+            <Option value="B">Bulk</Option>
           </Select>
         </div>
         <div className="audit-filter-field audit-filter-date">
@@ -1490,7 +1501,7 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
         <section className="audit-list-wrap">
           <div className="audit-table audit-overview-table" role="table" aria-label="Audit records">
             <div className="audit-table-row audit-table-row--header" role="row">
-              <div className="audit-table-cell" role="columnheader">Action</div>
+              <div className="audit-table-cell" role="columnheader">Operation</div>
               <div className="audit-table-cell" role="columnheader">Audit ID</div>
               <div className="audit-table-cell" role="columnheader">Changed</div>
               <div className="audit-table-cell" role="columnheader">Summary</div>
@@ -1521,10 +1532,10 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
                   role="row"
                   key={entry.AuditId}
                 >
-                  <div className="audit-table-cell audit-table-cell--action" role="cell" data-label="Action">
+                  <div className="audit-table-cell audit-table-cell--action" role="cell" data-label="Operation">
                     <ActionBadge
                       actionType={action}
-                      label={normalizeAuditActionType(action) === 'B' ? 'Bulk' : undefined}
+                      context="operation"
                     />
                   </div>
                   <div

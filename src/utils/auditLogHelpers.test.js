@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest'
+import { getAuditDisplayCells } from './auditFormatters'
 import {
   extractBulkCount,
+  getAuditDetailFieldSummary,
+  getAuditActionLabel,
   getAuditItemDisplayActionType,
+  getAuditOperationLabel,
   findBulkChildren,
   getBulkActionType,
   getRecordKey,
@@ -101,7 +105,7 @@ describe('auditLogHelpers bulk flow', () => {
     expect(getAuditItemDisplayActionType(bulkEntry, { ActionType: 'D' })).toBe('D')
   })
 
-  it('restores the original item action when rollback items are returned as R', () => {
+  it('uses the executed child action and inverts the source action only when rollback items are returned as R', () => {
     const rollbackEntry = {
       ...bulkEntry,
       AuditId: 'ROLLBACK-2',
@@ -121,17 +125,61 @@ describe('auditLogHelpers bulk flow', () => {
       rollbackEntry,
       { ItemNo: 1, RecordKey: '{"CATEGORY_ID":"5"}', ActionType: 'R' },
       [rollbackEntry, sourceEntry]
-    )).toBe('D')
+    )).toBe('C')
     expect(getAuditItemDisplayActionType(
       rollbackEntry,
       { ItemNo: 2, RecordKey: '{"CATEGORY_ID":"3"}', ActionType: 'R' },
       [rollbackEntry, sourceEntry]
-    )).toBe('C')
+    )).toBe('D')
     expect(getAuditItemDisplayActionType(
       rollbackEntry,
       { ItemNo: 2, RecordKey: '{"CATEGORY_ID":"3"}', ActionType: 'D' },
       [rollbackEntry, sourceEntry]
-    )).toBe('C')
+    )).toBe('D')
+  })
+
+  it('keeps record-key columns visible without counting them as changed fields', () => {
+    expect(getAuditDetailFieldSummary(
+      ['ENTITY_ID'],
+      ['ENTITY_ID', 'NAME', 'STATUS', 'NAME', 'entity_id']
+    )).toEqual({
+      detailFields: ['ENTITY_ID', 'NAME', 'STATUS'],
+      changedFieldCount: 2
+    })
+  })
+
+  it('excludes every composite record-key field from the changed field count', () => {
+    expect(getAuditDetailFieldSummary(
+      ['COMPANY_CODE', 'DOCUMENT_ID'],
+      ['company_code', 'DOCUMENT_ID', 'NAME']
+    )).toEqual({
+      detailFields: ['COMPANY_CODE', 'DOCUMENT_ID', 'NAME'],
+      changedFieldCount: 1
+    })
+  })
+
+  it('keeps the executed actions for the four-item rollback audit fixture', () => {
+    const rollbackEntry = {
+      ...bulkEntry,
+      AuditId: '8B95F36A4F271FE1A68CFB88621AF3A2',
+      ActionType: 'R'
+    }
+    const items = [
+      { RecordKey: '{"ENTITY_ID":"8B95F36A4F271FE1A68CDA02FFFB7078"}', OldValue: '{"NAME":"data2","STATUS":"F"}', NewValue: '', ActionType: 'D' },
+      { RecordKey: '{"ENTITY_ID":"8B95F36A4F271FE1A68CDA02FFFB5078"}', OldValue: '{"NAME":"AA","STATUS":"D"}', NewValue: '', ActionType: 'D' },
+      { RecordKey: '{"ENTITY_ID":"8B95F36A4F271FD1A68B31325C8A0358"}', OldValue: '', NewValue: '{"NAME":"TEST","STATUS":"A"}', ActionType: 'C' },
+      { RecordKey: '{"ENTITY_ID":"8B95F36A4F271FD1A4EA6B7DED31FF97"}', OldValue: '{"NAME":"data"}', NewValue: '{"NAME":"a"}', ActionType: 'U' }
+    ]
+    const actions = items.map(item => getAuditItemDisplayActionType(rollbackEntry, item))
+    const displays = items.map((item, index) => getAuditDisplayCells(item, actions[index]))
+
+    expect(actions).toEqual([
+      'D', 'D', 'C', 'U'
+    ])
+    expect(displays[0]).toMatchObject({ oldValue: 'NAME: data2 | STATUS: F', newValue: '' })
+    expect(displays[1]).toMatchObject({ oldValue: 'NAME: AA | STATUS: D', newValue: '' })
+    expect(displays[2]).toMatchObject({ oldValue: '', newValue: 'NAME: TEST | STATUS: A' })
+    expect(displays[3]).toMatchObject({ oldValue: 'NAME: data', newValue: 'NAME: a' })
   })
 
   it('normalizes rollback action values returned by the backend', () => {
@@ -146,6 +194,22 @@ describe('auditLogHelpers bulk flow', () => {
     expect(hasAuditItemSummary(rollbackEntry)).toBe(true)
     expect(getBulkActionType(rollbackEntry, [{ ActionType: 'C' }, { ActionType: 'D' }])).toBe('R')
     expect(getAuditItemDisplayActionType(rollbackEntry, { ActionType: 'C' })).toBe('C')
+  })
+
+  it('uses one operation contract for backend aliases and UI labels', () => {
+    expect([
+      normalizeAuditActionType('01'),
+      normalizeAuditActionType('updated'),
+      normalizeAuditActionType('DELETE'),
+      normalizeAuditActionType('R BULK'),
+      normalizeAuditActionType('Bulk CRUD Operation')
+    ]).toEqual(['C', 'U', 'D', 'R', 'B'])
+    expect(['C', 'U', 'D', 'R', 'B'].map(getAuditOperationLabel)).toEqual([
+      'Create', 'Update', 'Delete', 'Rollback', 'Bulk'
+    ])
+    expect(['C', 'U', 'D', 'R', 'B'].map(getAuditActionLabel)).toEqual([
+      'Created', 'Updated', 'Deleted', 'Rolled back', 'Bulk'
+    ])
   })
 
   it('only allows rollback when the operation control explicitly enables it', () => {

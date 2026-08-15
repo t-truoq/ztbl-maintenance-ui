@@ -2753,6 +2753,16 @@ ui5-toast {
   background: #fff8f8;
 }
 
+.audit-action-row--r,
+.audit-action-row--r > td {
+  background: #eaf4ff;
+}
+
+.audit-action-row--b,
+.audit-action-row--b > td {
+  background: #f3e8ff;
+}
+
 .audit-action-row--c {
   box-shadow: inset 4px 0 0 #107e3e;
 }
@@ -2765,6 +2775,14 @@ ui5-toast {
   box-shadow: inset 4px 0 0 #bb0000;
 }
 
+.audit-action-row--r {
+  box-shadow: inset 4px 0 0 #0a6ed1;
+}
+
+.audit-action-row--b {
+  box-shadow: inset 4px 0 0 #6f42c1;
+}
+
 .audit-unified-detail-table tbody .audit-action-row--c:hover td {
   background: #e8f9ef;
 }
@@ -2775,6 +2793,14 @@ ui5-toast {
 
 .audit-unified-detail-table tbody .audit-action-row--d:hover td {
   background: #fff0f0;
+}
+
+.audit-unified-detail-table tbody .audit-action-row--r:hover td {
+  background: #dceeff;
+}
+
+.audit-unified-detail-table tbody .audit-action-row--b:hover td {
+  background: #eadcff;
 }
 
 .audit-unified-detail-table th:nth-child(1) {
