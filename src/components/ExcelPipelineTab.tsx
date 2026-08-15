@@ -717,7 +717,7 @@ function ExcelImportResultSummary({ result }: { result: ExcelConfirmResult | nul
         </div>
       </div>
 
-      {(parsed.approvalId || parsed.rowNo || parsed.waitingText) && (
+      {(parsed.approvalId || parsed.rowNo) && (
         <div className="excel-result-detail-grid">
           {parsed.approvalId && (
             <div className="excel-result-detail">
@@ -729,12 +729,6 @@ function ExcelImportResultSummary({ result }: { result: ExcelConfirmResult | nul
             <div className="excel-result-detail">
               <span className="excel-result-detail-label">Source Row</span>
               <span className="excel-result-detail-value">Row {parsed.rowNo}</span>
-            </div>
-          )}
-          {parsed.waitingText && (
-            <div className="excel-result-detail">
-              <span className="excel-result-detail-label">Next Step</span>
-              <span className="excel-result-detail-value">{parsed.waitingText}</span>
             </div>
           )}
         </div>
@@ -755,14 +749,12 @@ function parseImportResultMessage(message: string): {
   approvalId: string
   pendingApproval: boolean
   rowNo: string
-  waitingText: string
   fallback: string
 } {
   const text = String(message || '').trim()
   const rowNo = text.match(/^Row\s+(\d+):/i)?.[1] || ''
   const approvalId = text.match(/Approval request submitted\s*\(ID:\s*([^)]+)\)/i)?.[1] || ''
-  const pendingApproval = Boolean(approvalId) || /(?:waiting for approval|submitted for approval|request submitted for approval)/i.test(text)
-  const waitingText = pendingApproval ? 'Waiting for ADMIN approval.' : ''
+  const pendingApproval = Boolean(approvalId) || /(?:waiting for(?: ADMIN)? approval|submitted for approval|request submitted for approval)/i.test(text)
 
   if (pendingApproval) {
     return {
@@ -771,7 +763,6 @@ function parseImportResultMessage(message: string): {
       approvalId,
       pendingApproval,
       rowNo,
-      waitingText,
       fallback: ''
     }
   }
@@ -783,7 +774,6 @@ function parseImportResultMessage(message: string): {
       approvalId: '',
       pendingApproval,
       rowNo,
-      waitingText: '',
       fallback: text
     }
   }
@@ -794,7 +784,6 @@ function parseImportResultMessage(message: string): {
     approvalId: '',
     pendingApproval,
     rowNo,
-    waitingText,
     fallback: ''
   }
 }
