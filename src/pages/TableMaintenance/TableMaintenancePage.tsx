@@ -433,6 +433,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
             {canViewTable ? (
               <ExcelPipelineTab
                 tableName={selectedTable.TableName}
+                allFields={allFields}
                 canUpload={canUploadTable}
                 onImported={() => loadTable(selectedTable)}
               />

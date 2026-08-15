@@ -19,7 +19,8 @@
     "@ui5/webcomponents-react": "^2.22.1",
     "axios": "^1.9.0",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "read-excel-file": "^9.3.10"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
