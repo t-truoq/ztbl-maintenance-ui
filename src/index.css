@@ -1380,32 +1380,6 @@ ui5-toast {
   gap: 0.75rem;
 }
 
-.excel-parse-details {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.25rem;
-  width: min(100%, 700px);
-  margin-top: 0.5rem;
-}
-
-.excel-parse-details-body {
-  width: 100%;
-  max-height: none;
-  overflow: visible;
-  padding: 0.625rem 0.75rem;
-  border: 1px solid #e09d00;
-  border-left: 4px solid #e09d00;
-  border-radius: 6px;
-  background: #fff8d6;
-  color: var(--sapTextColor, #32363a);
-  box-sizing: border-box;
-  font-size: 0.8125rem;
-  line-height: 1.25rem;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
 .excel-error-banner,
 .excel-feedback-banner {
   position: sticky;
@@ -2763,15 +2737,51 @@ ui5-toast {
   background: var(--sapList_Hover_Background, #f5faff);
 }
 
+/* Keep audit actions scannable with the same full-row colors as Excel preview. */
+.audit-action-row--c,
+.audit-action-row--c > td {
+  background: #f1fdf6;
+}
+
+.audit-action-row--u,
+.audit-action-row--u > td {
+  background: #fffaf0;
+}
+
+.audit-action-row--d,
+.audit-action-row--d > td {
+  background: #fff8f8;
+}
+
+.audit-action-row--c {
+  box-shadow: inset 4px 0 0 #107e3e;
+}
+
+.audit-action-row--u {
+  box-shadow: inset 4px 0 0 #e09d00;
+}
+
+.audit-action-row--d {
+  box-shadow: inset 4px 0 0 #bb0000;
+}
+
+.audit-unified-detail-table tbody .audit-action-row--c:hover td {
+  background: #e8f9ef;
+}
+
+.audit-unified-detail-table tbody .audit-action-row--u:hover td {
+  background: #fff4df;
+}
+
+.audit-unified-detail-table tbody .audit-action-row--d:hover td {
+  background: #fff0f0;
+}
+
 .audit-unified-detail-table th:nth-child(1) {
   min-width: 7rem;
 }
 
-.audit-unified-detail-table th:nth-child(2) {
-  min-width: 16rem;
-}
-
-.audit-unified-detail-table th:nth-child(n + 3) {
+.audit-unified-detail-table th:nth-child(n + 2) {
   min-width: 12rem;
 }
 
@@ -2786,10 +2796,6 @@ ui5-toast {
   text-transform: uppercase;
 }
 
-.audit-unified-detail-record {
-  font-weight: 600;
-}
-
 .audit-unified-change-values {
   display: inline-flex;
   align-items: center;
@@ -2798,6 +2804,30 @@ ui5-toast {
 
 .audit-unified-old-value {
   color: var(--sapContent_LabelColor, #637b91);
+}
+
+.audit-unified-single-value {
+  color: var(--sapTextColor, #1d2d3e);
+  font-weight: 600;
+}
+
+.audit-unified-record-key-value {
+  display: block;
+  max-width: 16rem;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+
+.audit-unified-change-cell--entity-id {
+  min-width: 22rem;
+}
+
+.audit-unified-record-key-value--entity-id {
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 .audit-unified-change-arrow {
@@ -3684,10 +3714,13 @@ ui5-toast {
   box-shadow: inset 3px 0 0 var(--sapNegativeColor, #bb0000);
 }
 
-.audit-spreadsheet-row--r,
 .audit-spreadsheet-row--b,
 .audit-spreadsheet-row--bulk {
   box-shadow: inset 3px 0 0 #8e24aa;
+}
+
+.audit-spreadsheet-row--r {
+  box-shadow: inset 3px 0 0 #0a6ed1;
 }
 
 .audit-spreadsheet-row--c .audit-table-cell--action {
@@ -3702,10 +3735,13 @@ ui5-toast {
   border-left: 3px solid var(--sapNegativeColor, #bb0000);
 }
 
-.audit-spreadsheet-row--r .audit-table-cell--action,
 .audit-spreadsheet-row--b .audit-table-cell--action,
 .audit-spreadsheet-row--bulk .audit-table-cell--action {
   border-left: 3px solid #8e24aa;
+}
+
+.audit-spreadsheet-row--r .audit-table-cell--action {
+  border-left: 3px solid #0a6ed1;
 }
 
 .audit-spreadsheet-value--changed {
@@ -3724,11 +3760,15 @@ ui5-toast {
   box-shadow: inset 0 -3px 0 var(--sapNegativeColor, #bb0000);
 }
 
-.audit-spreadsheet-row--r .audit-spreadsheet-value--changed,
 .audit-spreadsheet-row--b .audit-spreadsheet-value--changed,
 .audit-spreadsheet-row--bulk .audit-spreadsheet-value--changed {
   background: #f7efff;
   box-shadow: inset 0 -2px 0 #8e24aa;
+}
+
+.audit-spreadsheet-row--r .audit-spreadsheet-value--changed {
+  background: #eaf4ff;
+  box-shadow: inset 0 -2px 0 #0a6ed1;
 }
 
 .audit-spreadsheet .audit-table-cell--action {

@@ -73,28 +73,65 @@ describe('auditLogHelpers bulk flow', () => {
       ActionType: 'C'
     })
     expect(getRecordKey(children[0])).toBe('CATEGORY_ID: C004')
-    expect(getBulkActionType(entryWithItems, children)).toBe('B')
+    expect(getBulkActionType(entryWithItems, children)).toBe('C')
   })
 
-  it('uses generic bulk badge for summary entries regardless of child actions', () => {
+  it('uses the actual badge for homogeneous items and bulk for mixed actions', () => {
     expect(getBulkActionType(bulkEntry, [
       { ActionType: 'U' }
-    ])).toBe('B')
+    ])).toBe('U')
+    expect(getBulkActionType(bulkEntry, [
+      { ActionType: 'C' },
+      { ActionType: 'C' }
+    ])).toBe('C')
     expect(getBulkActionType(bulkEntry, [
       { ActionType: 'C' },
       { ActionType: 'U' }
     ])).toBe('B')
   })
 
-  it('keeps rollback child items displayed as rollback instead of the technical reversal action', () => {
+  it('shows the actual action type for each rollback child item', () => {
     const rollbackEntry = {
       ...bulkEntry,
       ActionType: 'R'
     }
 
-    expect(getAuditItemDisplayActionType(rollbackEntry, { ActionType: 'C' })).toBe('R')
-    expect(getAuditItemDisplayActionType(rollbackEntry, { ActionType: 'D' })).toBe('R')
+    expect(getAuditItemDisplayActionType(rollbackEntry, { ActionType: 'C' })).toBe('C')
+    expect(getAuditItemDisplayActionType(rollbackEntry, { ActionType: 'D' })).toBe('D')
     expect(getAuditItemDisplayActionType(bulkEntry, { ActionType: 'D' })).toBe('D')
+  })
+
+  it('restores the original item action when rollback items are returned as R', () => {
+    const rollbackEntry = {
+      ...bulkEntry,
+      AuditId: 'ROLLBACK-2',
+      ActionType: 'R'
+    }
+    const sourceEntry = {
+      ...bulkEntry,
+      AuditId: 'SOURCE-1',
+      RollbackAuditId: 'ROLLBACK-2',
+      _Items: [
+        { ItemNo: 1, RecordKey: '{"CATEGORY_ID":"5"}', ActionType: 'D' },
+        { ItemNo: 2, RecordKey: '{"CATEGORY_ID":"3"}', ActionType: 'C' }
+      ]
+    }
+
+    expect(getAuditItemDisplayActionType(
+      rollbackEntry,
+      { ItemNo: 1, RecordKey: '{"CATEGORY_ID":"5"}', ActionType: 'R' },
+      [rollbackEntry, sourceEntry]
+    )).toBe('D')
+    expect(getAuditItemDisplayActionType(
+      rollbackEntry,
+      { ItemNo: 2, RecordKey: '{"CATEGORY_ID":"3"}', ActionType: 'R' },
+      [rollbackEntry, sourceEntry]
+    )).toBe('C')
+    expect(getAuditItemDisplayActionType(
+      rollbackEntry,
+      { ItemNo: 2, RecordKey: '{"CATEGORY_ID":"3"}', ActionType: 'D' },
+      [rollbackEntry, sourceEntry]
+    )).toBe('C')
   })
 
   it('normalizes rollback action values returned by the backend', () => {
@@ -108,7 +145,7 @@ describe('auditLogHelpers bulk flow', () => {
     expect(isRollbackAuditAction('ROLLBACK')).toBe(true)
     expect(hasAuditItemSummary(rollbackEntry)).toBe(true)
     expect(getBulkActionType(rollbackEntry, [{ ActionType: 'C' }, { ActionType: 'D' }])).toBe('R')
-    expect(getAuditItemDisplayActionType(rollbackEntry, { ActionType: 'C' })).toBe('R')
+    expect(getAuditItemDisplayActionType(rollbackEntry, { ActionType: 'C' })).toBe('C')
   })
 
   it('only allows rollback when the operation control explicitly enables it', () => {

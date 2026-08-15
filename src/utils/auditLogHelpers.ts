@@ -110,13 +110,59 @@ export function findBulkChildren(bulkEntry: AuditLogEntry, _allEntries: AuditLog
 
 export function getBulkActionType(entry: AuditLogEntry, childItems: AuditItemEntry[]): string {
   if (isRollbackAuditAction(entry.ActionType)) return 'R'
+
+  const childActions = new Set(
+    childItems
+      .map(item => normalizeAuditActionType(item.ActionType))
+      .filter(action => action && action !== 'B' && action !== 'R')
+  )
+  if (childActions.size === 1) return Array.from(childActions)[0]
   if (isBulkAuditEntry(entry) || hasAuditItemSummary(entry) || childItems.length > 0) return 'B'
   return normalizeAuditActionType(entry.ActionType) || 'B'
 }
 
-export function getAuditItemDisplayActionType(parentEntry: AuditLogEntry, item: AuditItemEntry): string {
-  if (isRollbackAuditAction(parentEntry.ActionType)) return 'R'
-  return normalizeAuditActionType(item.ActionType || parentEntry.ActionType)
+function getEmbeddedAuditItems(entry: AuditLogEntry): AuditItemEntry[] {
+  const rawItems = (entry as any)._Items?.value || (entry as any)._Items
+  return Array.isArray(rawItems) ? rawItems : []
+}
+
+export function findRollbackSourceEntry(
+  rollbackEntry: AuditLogEntry,
+  allEntries: AuditLogEntry[]
+): AuditLogEntry | undefined {
+  if (!isRollbackAuditAction(rollbackEntry.ActionType)) return undefined
+
+  return allEntries.find(candidate => {
+    const rollbackAuditId = String(
+      (candidate as any).RollbackAuditId ?? (candidate as any).rollbackAuditId ?? ''
+    ).trim()
+    return rollbackAuditId === rollbackEntry.AuditId
+  })
+}
+
+export function getAuditItemDisplayActionType(
+  parentEntry: AuditLogEntry,
+  item: AuditItemEntry,
+  allEntries: AuditLogEntry[] = []
+): string {
+  const itemAction = normalizeAuditActionType(item.ActionType || parentEntry.ActionType)
+  if (!isRollbackAuditAction(parentEntry.ActionType)) return itemAction
+
+  const sourceEntry = findRollbackSourceEntry(parentEntry, allEntries)
+  if (!sourceEntry) return itemAction
+
+  const sourceItems = getEmbeddedAuditItems(sourceEntry)
+  const itemRecordKey = getRawRecordKey(item)
+  const normalizedRecordKey = getRecordKey(item)
+  const matchingSourceItem = sourceItems.find(sourceItem =>
+    itemRecordKey && (
+      getRawRecordKey(sourceItem) === itemRecordKey ||
+      getRecordKey(sourceItem) === normalizedRecordKey
+    )
+  ) || sourceItems.find(sourceItem => item.ItemNo != null && sourceItem.ItemNo === item.ItemNo)
+  const sourceAction = normalizeAuditActionType(matchingSourceItem?.ActionType || sourceEntry.ActionType)
+
+  return sourceAction && sourceAction !== 'R' && sourceAction !== 'B' ? sourceAction : itemAction
 }
 
 export function paginateAuditEntries<T>(

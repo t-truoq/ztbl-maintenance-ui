@@ -43,9 +43,9 @@ const ACTION_LABELS: Record<string, string> = {
 
 const ACTION_META: Record<string, { icon: string; color: string; background: string }> = {
   C: { icon: 'add', color: '#107e3e', background: '#e4f5e9' },
-  U: { icon: 'edit', color: '#0a6ed1', background: '#eaf4ff' },
+  U: { icon: 'edit', color: '#e09d00', background: '#fffaf0' },
   D: { icon: 'delete', color: '#bb0000', background: '#ffebeb' },
-  R: { icon: 'history', color: '#8e24aa', background: '#f3e5f5' },
+  R: { icon: 'history', color: '#0a6ed1', background: '#eaf4ff' },
   B: { icon: 'group-2', color: '#6f42c1', background: '#f3e8ff' },
   BULK: { icon: 'group-2', color: '#6f42c1', background: '#f3e8ff' }
 }
@@ -376,7 +376,7 @@ function BulkAuditItemsDialog({
         )}
 
         {!loading && !error && items.length > 0 && (() => {
-          const excel = getBulkExcelRows(items, auditEntry, isRollbackSummary)
+          const excel = getBulkExcelRows(items, auditEntry, allEntries)
           return (
             <div className="audit-bulk-excel-wrap">
               <div className="audit-bulk-excel" role="table" aria-label="Bulk audit spreadsheet">
@@ -392,7 +392,7 @@ function BulkAuditItemsDialog({
                 </div>
                 {excel.rows.map((row, index) => (
                   <div
-                    className="audit-bulk-excel-row"
+                    className={`audit-bulk-excel-row audit-action-row--${normalizeAuditActionType(row.action).toLowerCase()}`}
                     role="row"
                     key={`${row.item.ItemNo ?? index}-${index}`}
                     style={{ gridTemplateColumns: `4rem 8rem 15rem repeat(${Math.max(excel.columns.length, 1)}, minmax(10rem, 1fr))` }}
@@ -505,7 +505,7 @@ function getAuditOverview(
   const singleItem = childItems.length === 1 ? childItems[0] : null
   const source = singleItem || entry
   const action = singleItem
-    ? getAuditItemDisplayActionType(entry, singleItem)
+    ? getAuditItemDisplayActionType(entry, singleItem, allEntries)
     : hasSummary
     ? getBulkActionType(entry, childItems)
     : normalizeAuditActionType(entry.ActionType)
@@ -513,7 +513,7 @@ function getAuditOverview(
   if (hasSummary && !singleItem) {
     const itemCount = childItems.length > 0 ? childItems.length : extractAuditItemCount(entry)
     const changedFieldCount = childItems.reduce((total, item) => {
-      const itemAction = getAuditItemDisplayActionType(entry, item)
+      const itemAction = getAuditItemDisplayActionType(entry, item, allEntries)
       return total + getAuditChangeRows(getAuditDisplayCells(item, itemAction), itemAction).length
     }, 0)
     const recordSummary = itemCount === null
@@ -538,12 +538,9 @@ function getAuditOverview(
   }
 }
 
-function getBulkExcelRows(items: AuditItemEntry[], auditEntry: AuditLogEntry, isRollbackSummary: boolean) {
+function getBulkExcelRows(items: AuditItemEntry[], auditEntry: AuditLogEntry, allEntries: AuditLogEntry[]) {
   const rows = items.map(item => {
-    const fallbackAction = getAuditItemDisplayActionType(auditEntry, item)
-    const action = isRollbackSummary
-      ? normalizeAuditActionType(item.ActionType || fallbackAction)
-      : fallbackAction
+    const action = getAuditItemDisplayActionType(auditEntry, item, allEntries)
     const display = getAuditDisplayCells(item, action)
     const oldMap = partsToMap(splitAuditParts(display.oldValue))
     const newMap = partsToMap(splitAuditParts(display.newValue))
@@ -625,7 +622,7 @@ function getAuditSpreadsheetRows(
 
     if (childItems.length > 0) {
       return childItems.map((item, index) => {
-        const action = getAuditItemDisplayActionType(entry, item)
+        const action = getAuditItemDisplayActionType(entry, item, allEntries)
         const { values, changedFields } = getAuditSpreadsheetValues(item, action)
         return {
           id: `${entry.AuditId}-${item.ItemNo ?? index}`,
@@ -877,7 +874,7 @@ function AuditEntryItem({
   const previewDisplay = getAuditDisplayCells(displaySource, displayActionType)
   const previewChanges = showSummaryPanel
     ? childItems.flatMap(item => {
-      const itemAction = getAuditItemDisplayActionType(entry, item)
+      const itemAction = getAuditItemDisplayActionType(entry, item, allEntries)
       const record = getCompactAuditRecordKey(item)
       return getAuditChangeRows(getAuditDisplayCells(item, itemAction), itemAction).map(change => ({
         ...change,
@@ -1009,19 +1006,23 @@ function AuditDetailsDialog({
   if (!entry) return null
 
   const normalizedAction = normalizeAuditActionType(entry.ActionType)
-  const parentIsRollback = isRollbackAuditAction(normalizedAction)
   const detailSources: Array<AuditLogEntry | AuditItemEntry> = hasItemSummary && items.length > 0
     ? items
     : [entry]
   const detailRows = detailSources.flatMap((source, sourceIndex) => {
     const isItem = source !== entry
     const action = isItem
-      ? parentIsRollback ? 'R' : getAuditItemDisplayActionType(entry, source as AuditItemEntry)
+      ? getAuditItemDisplayActionType(entry, source as AuditItemEntry, allEntries)
       : normalizedAction
     const display = getAuditDisplayCells(source, action)
     const changes = getAuditChangeRows(display, action)
+    const recordFields = new Map(
+      Array.from(partsToMap(splitAuditParts(getRawRecordKey(source))).entries())
+        .map(([field, value]) => [normalizeDash(field), value] as const)
+        .filter(([field]) => Boolean(field))
+    )
     const normalizedChanges = changes.length > 0 ? changes : [{
-      field: display.fieldName || '-',
+      field: normalizeDash(display.fieldName),
       oldValue: display.oldValue || '',
       newValue: display.newValue || ''
     }]
@@ -1031,27 +1032,40 @@ function AuditDetailsDialog({
       itemNo: (source as AuditItemEntry).ItemNo ?? sourceIndex + 1,
       action,
       record: getRecordKey(source),
-      field: change.field,
+      recordFields,
+      field: normalizeDash(change.field),
       oldValue: change.oldValue,
       newValue: change.newValue
     }))
   })
-  const detailFields = Array.from(new Set(detailRows.map(row => row.field)))
+  const recordFieldNames = Array.from(new Set(detailRows.flatMap(row => Array.from(row.recordFields.keys()))))
+    .filter(field => Boolean(field))
+  const changeFieldNames = detailRows
+    .map(row => row.field)
+    .filter(field => Boolean(field))
+  const detailFields = Array.from(new Set([
+    ...recordFieldNames,
+    ...changeFieldNames
+  ]))
   const detailGroups = Array.from(detailRows.reduce((groups, row) => {
     const groupKey = row.record || `item-${row.itemNo}`
     const existing = groups.get(groupKey) || {
       key: groupKey,
       action: row.action,
       record: row.record,
+      recordFields: row.recordFields,
       changes: new Map<string, { oldValue: string; newValue: string }>()
     }
-    existing.changes.set(row.field, { oldValue: row.oldValue, newValue: row.newValue })
+    if (row.field) {
+      existing.changes.set(row.field, { oldValue: row.oldValue, newValue: row.newValue })
+    }
     groups.set(groupKey, existing)
     return groups
   }, new Map<string, {
     key: string
     action: string
     record: string
+    recordFields: Map<string, string>
     changes: Map<string, { oldValue: string; newValue: string }>
   }>()).values())
   const displayActionType = hasItemSummary ? getBulkActionType(entry, items) : normalizedAction
@@ -1100,33 +1114,60 @@ function AuditDetailsDialog({
             <thead>
               <tr>
                 <th>Action</th>
-                <th>Record</th>
                 {detailFields.map(field => <th key={field}>{field}</th>)}
               </tr>
             </thead>
             <tbody>
-              {detailGroups.map(group => (
-                <tr key={group.key}>
-                  <td><ActionBadge actionType={group.action} /></td>
-                  <td className="audit-unified-detail-record" title={group.record}>{group.record || '-'}</td>
-                  {detailFields.map(field => {
-                    const change = group.changes.get(field)
-                    return (
-                      <td key={field} className="audit-unified-change-cell">
-                        {change ? (
-                          <div className="audit-unified-change-values">
-                            <span className="audit-unified-old-value">{change.oldValue || '-'}</span>
-                            <span className="audit-unified-change-arrow" aria-hidden="true">→</span>
-                            <span className="audit-unified-new-value">{change.newValue || '-'}</span>
-                          </div>
-                        ) : (
-                          <span className="audit-unified-empty-value">—</span>
-                        )}
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
+              {detailGroups.map(group => {
+                const normalizedGroupAction = normalizeAuditActionType(group.action)
+                const isCreate = normalizedGroupAction === 'C'
+                const isDelete = normalizedGroupAction === 'D'
+
+                return (
+                  <tr
+                    key={group.key}
+                    className={`audit-action-row--${normalizedGroupAction.toLowerCase()}`}
+                  >
+                    <td><ActionBadge actionType={group.action} /></td>
+                    {detailFields.map(field => {
+                      const recordValue = group.recordFields.get(field)
+                      const change = group.changes.get(field)
+                      const isEntityId = field.toUpperCase() === 'ENTITY_ID'
+                      return (
+                        <td
+                          key={field}
+                          className={`audit-unified-change-cell${isEntityId ? ' audit-unified-change-cell--entity-id' : ''}`}
+                        >
+                          {recordValue !== undefined ? (
+                            <span
+                              className={`audit-unified-record-key-value${isEntityId ? ' audit-unified-record-key-value--entity-id' : ''}`}
+                              title={recordValue || '-'}
+                            >
+                              {recordValue || '-'}
+                            </span>
+                          ) : change ? (
+                            <div className="audit-unified-change-values">
+                              {isCreate ? (
+                                <span className="audit-unified-new-value">{change.newValue || '-'}</span>
+                              ) : isDelete ? (
+                                <span className="audit-unified-old-value audit-unified-single-value">{change.oldValue || '-'}</span>
+                              ) : (
+                                <>
+                                  <span className="audit-unified-old-value">{change.oldValue || '-'}</span>
+                                  <span className="audit-unified-change-arrow" aria-hidden="true">→</span>
+                                  <span className="audit-unified-new-value">{change.newValue || '-'}</span>
+                                </>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="audit-unified-empty-value">—</span>
+                          )}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

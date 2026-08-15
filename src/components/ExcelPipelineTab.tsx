@@ -20,16 +20,19 @@ import {
   EXCEL_WORKBOOK_STRUCTURE_ERROR_MESSAGE,
   getExcelErrorMessage,
   getExcelFileFormat,
-  getInfoRows,
   isExcelConfirmFailure,
   isExcelFilenameAllowed,
   isLikelyExcelWorkbookStructureError,
   uploadExcel
 } from '../services/excelPipelineApi'
+import type { FieldMeta } from '../types'
+import { getUploadedFileFieldOrder } from '../utils/excelImportHeaders'
+import { deduplicateExcelMessages, orderExcelPreviewFields } from '../utils/excelPreviewHelpers'
 import AppLoadingState from './AppLoadingState'
 
 interface ExcelPipelineTabProps {
   tableName: string
+  allFields?: FieldMeta[]
   canUpload?: boolean
   onImported: () => Promise<void> | void
 }
@@ -60,6 +63,7 @@ const DIFF_STATUS_META: Record<string, { state: 'Positive' | 'Critical' | 'Negat
 
 export default function ExcelPipelineTab({
   tableName,
+  allFields = [],
   canUpload = true,
   onImported
 }: ExcelPipelineTabProps) {
@@ -70,6 +74,7 @@ export default function ExcelPipelineTab({
   const [feedback, setFeedback] = useState<ExcelFeedback | null>(null)
   const [error, setError] = useState('')
   const [selectedFileName, setSelectedFileName] = useState('')
+  const [uploadedFieldOrder, setUploadedFieldOrder] = useState<string[]>([])
   const [confirmResult, setConfirmResult] = useState<ExcelConfirmResult | null>(null)
   const [diffDialogOpen, setDiffDialogOpen] = useState(false)
   const [errorDialogOpen, setErrorDialogOpen] = useState(false)
@@ -79,7 +84,18 @@ export default function ExcelPipelineTab({
     () => diffRows.filter(row => !(row.row_no === 0 || row.status === 'INFO')),
     [diffRows]
   )
-  const infoRows = useMemo(() => getInfoRows(diffRows), [diffRows])
+  const excelFieldOrder = useMemo(
+    () => [...allFields]
+      .sort((left, right) => {
+        const leftOrder = left.display_order ?? left.DisplayOrder ?? Number.MAX_SAFE_INTEGER
+        const rightOrder = right.display_order ?? right.DisplayOrder ?? Number.MAX_SAFE_INTEGER
+        return leftOrder - rightOrder
+      })
+      .map(field => field.field_name || field.FieldName)
+      .filter(Boolean),
+    [allFields]
+  )
+  const previewFieldOrder = uploadedFieldOrder.length > 0 ? uploadedFieldOrder : excelFieldOrder
   const commitRows = useMemo(() => filterDiffForCommit(diffRows, tableName), [diffRows, tableName])
   const visibleRecordCount = useMemo(() => countDistinctRecords(visibleRows), [visibleRows])
   const commitRecordCount = useMemo(() => countDistinctRecords(commitRows), [commitRows])
@@ -96,10 +112,6 @@ export default function ExcelPipelineTab({
     [diffRows]
   )
   const statusCounts = useMemo(() => buildStatusCounts(visibleRows), [visibleRows])
-  const parseSummary = useMemo(
-    () => buildParseSummary(infoRows),
-    [infoRows]
-  )
   const approvalPending = confirmResult
     ? isApprovalPendingResult(confirmResult)
     : false
@@ -110,6 +122,7 @@ export default function ExcelPipelineTab({
     setFeedback(null)
     setError('')
     setSelectedFileName('')
+    setUploadedFieldOrder([])
     setConfirmResult(null)
     setDiffDialogOpen(false)
     setErrorDialogOpen(false)
@@ -156,6 +169,7 @@ export default function ExcelPipelineTab({
     uploadInFlightRef.current = true
     resetFeedback()
     setDiffRows([])
+    setUploadedFieldOrder([])
     setSelectedFileName(file.name)
     setBusyStep('upload')
 
@@ -176,6 +190,8 @@ export default function ExcelPipelineTab({
           `The selected workbook is too large (${formatFileSize(file.size)}). Please upload a file smaller than ${formatFileSize(MAX_UPLOAD_FILE_BYTES)}.`
         )
       }
+
+      setUploadedFieldOrder(await getUploadedFileFieldOrder(file, fileFormat))
 
       const base64 = await fileToBase64(file)
       console.debug('[ExcelPipeline] file encoded', {
@@ -317,11 +333,7 @@ export default function ExcelPipelineTab({
           <Text className="tab-panel-subtitle excel-muted excel-subtitle">
             Export table data, upload the edited workbook, review the diff, then confirm the import.
           </Text>
-          {workbookStructureError ? (
-            <WorkbookStructureNotice />
-          ) : parseSummary && (
-            <ParseDetails details={parseSummary} />
-          )}
+          {workbookStructureError && <WorkbookStructureNotice />}
         </div>
         <div className="tab-panel-actions excel-primary-actions">
           <Button
@@ -459,6 +471,8 @@ export default function ExcelPipelineTab({
       {!workbookStructureError && (
         <DiffTable
           rows={visibleRows}
+          fieldOrder={previewFieldOrder}
+          exactFieldOrder={uploadedFieldOrder.length > 0}
           statusState={statusState}
           rowLimit={MAIN_DIFF_ROW_LIMIT}
         />
@@ -548,6 +562,8 @@ export default function ExcelPipelineTab({
             ) : (
               <DiffTable
                 rows={visibleRows}
+                fieldOrder={previewFieldOrder}
+                exactFieldOrder={uploadedFieldOrder.length > 0}
                 statusState={statusState}
                 rowLimit={PREVIEW_DIFF_ROW_LIMIT}
                 compact
@@ -655,20 +671,6 @@ function FlowStep({
   )
 }
 
-function ParseDetails({
-  details
-}: {
-  details: string
-}) {
-  return (
-    <div className="excel-parse-details">
-      <div className="excel-parse-details-body">
-        {details}
-      </div>
-    </div>
-  )
-}
-
 function WorkbookStructureNotice({ compact = false }: { compact?: boolean }) {
   return (
     <div style={{ padding: compact ? '0 1rem 1rem' : undefined }}>
@@ -680,15 +682,6 @@ function WorkbookStructureNotice({ compact = false }: { compact?: boolean }) {
       </Text>
     </div>
   )
-}
-
-function buildParseSummary(infoRows: ExcelDiffRow[]): string {
-  const messages = infoRows
-    .map(row => row.message)
-    .filter(Boolean)
-    .filter(message => !/readonly\/hidden\/system-managed/i.test(message))
-
-  return messages.join(' | ')
 }
 
 function ExcelImportResultSummary({ result }: { result: ExcelConfirmResult | null }) {
@@ -1019,12 +1012,16 @@ interface DiffRecordGroup {
 
 function DiffTable({
   rows,
+  fieldOrder,
+  exactFieldOrder,
   statusState,
   rowLimit,
   compact = false,
   includeAllStatuses = false
 }: {
   rows: ExcelDiffRow[]
+  fieldOrder: string[]
+  exactFieldOrder: boolean
   statusState: (status: string) => 'Positive' | 'Critical' | 'Negative' | 'Information' | 'None'
   rowLimit?: number
   compact?: boolean
@@ -1038,7 +1035,7 @@ function DiffTable({
   const displayedGroups = rowLimit && changedGroups.length > rowLimit
     ? changedGroups.slice(0, rowLimit)
     : changedGroups
-  const fieldColumns = getDiffFieldColumns(displayedGroups)
+  const fieldColumns = getDiffFieldColumns(displayedGroups, fieldOrder, exactFieldOrder)
   const listShellRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -1084,7 +1081,6 @@ function DiffTable({
             style={{ gridTemplateColumns: diffTableGridTemplate(fieldColumns.length) }}
           >
             <div className="excel-diff-table-cell excel-diff-table-cell--flag" role="columnheader">Action</div>
-            <div className="excel-diff-table-cell" role="columnheader">Record</div>
             <div className="excel-diff-table-cell" role="columnheader">Excel row</div>
             {fieldColumns.map(field => (
               <div className="excel-diff-table-cell" role="columnheader" key={field}>{field}</div>
@@ -1106,9 +1102,6 @@ function DiffTable({
                 <div className="excel-diff-table-cell excel-diff-table-cell--flag" role="cell" data-label="Action">
                   <Icon name="flag" className="excel-diff-flag-icon" />
                   <ObjectStatus state={statusState(status)}>{formatGroupAction(group)}</ObjectStatus>
-                </div>
-                <div className="excel-diff-table-cell excel-diff-table-cell--record" role="cell" data-label="Record">
-                  <Text>{formatDiffRecordKey(group.recordKey)}</Text>
                 </div>
                 <div className="excel-diff-table-cell excel-diff-table-cell--record" role="cell" data-label="Excel row">
                   {Array.from(new Set(group.rows.map(row => row.row_no))).join(', ')}
@@ -1133,24 +1126,26 @@ function isActionableDiffStatus(status: string): boolean {
 }
 
 function diffTableGridTemplate(fieldCount: number): string {
-  return `minmax(8rem, 0.8fr) minmax(8rem, 0.9fr) minmax(7.5rem, 0.75fr) repeat(${fieldCount}, minmax(8.5rem, 1fr)) minmax(12rem, 1.3fr)`
+  return `minmax(8rem, 0.8fr) minmax(7.5rem, 0.75fr) repeat(${fieldCount}, minmax(8.5rem, 1fr)) minmax(12rem, 1.3fr)`
 }
 
-function getDiffFieldColumns(groups: DiffRecordGroup[]): string[] {
+function getDiffFieldColumns(
+  groups: DiffRecordGroup[],
+  preferredOrder: string[],
+  exactPreferredOrder: boolean
+): string[] {
   const fields: string[] = []
+
   groups.forEach(group => {
     group.rows.forEach(row => {
-      const field = getDiffFieldLabel(row)
-      if (field !== '-' && field.toUpperCase() !== 'ACTION' && !fields.includes(field)) fields.push(field)
+      fields.push(getDiffFieldLabel(row))
     })
     if (isDeleteDiffStatus(group.status)) {
       const deletedRecord = parseDiffRecordValue(group.rows[0]?.old_value)
-      Object.keys(deletedRecord || {}).forEach(field => {
-        if (!fields.includes(field)) fields.push(field)
-      })
+      fields.push(...Object.keys(deletedRecord || {}))
     }
   })
-  return fields
+  return orderExcelPreviewFields(fields, preferredOrder, exactPreferredOrder)
 }
 
 function formatGroupAction(group: DiffRecordGroup): string {
@@ -1219,12 +1214,11 @@ function formatExcelAction(value: unknown): string {
 }
 
 function DiffSpreadsheetMessage({ group }: { group: DiffRecordGroup }) {
-  const messages = Array.from(new Set(
-    group.rows.map(row => String(row.message || '').trim()).filter(Boolean)
-  ))
+  const messages = group.rows.map(row => String(row.message || '').trim()).filter(Boolean)
   if (isDeleteDiffStatus(group.status)) messages.unshift('Record will be deleted')
 
-  return <Text className="excel-diff-cell-text">{messages.join('; ') || '-'}</Text>
+  const uniqueMessages = deduplicateExcelMessages(messages)
+  return <Text className="excel-diff-cell-text">{uniqueMessages.join('; ') || '-'}</Text>
 }
 
 function buildDiffRecordGroups(rows: ExcelDiffRow[]): DiffRecordGroup[] {
