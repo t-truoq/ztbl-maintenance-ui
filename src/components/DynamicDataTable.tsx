@@ -380,11 +380,7 @@ export default function DynamicDataTable({
   const selectionColumnWidth = 44
   const columnsStyle =
     `${selectionColumnWidth}px ${fieldsWithWidths
-      .map((item, index) => (
-        index === fieldsWithWidths.length - 1
-          ? `minmax(${item.minColWidth}px, 1fr)`
-          : `${item.minColWidth}px`
-      ))
+      .map(item => `${item.minColWidth}px`)
       .join(' ')}${hasNewRows ? ' 100px' : ''}`
   const tableColumnCount = fields.length + 1 + (hasNewRows ? 1 : 0)
   const selectionCellStyle = {
