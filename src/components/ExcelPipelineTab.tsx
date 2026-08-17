@@ -49,6 +49,8 @@ const MAIN_DIFF_ROW_LIMIT = 200
 const PREVIEW_DIFF_ROW_LIMIT = 500
 const STORED_UNCHANGED_ROW_LIMIT = 200
 const MAX_UPLOAD_FILE_BYTES = 12 * 1024 * 1024
+const EXCEL_ERROR_IMPORT_MESSAGE = 'ERROR rows will be excluded from import. Review them before confirming the remaining records.'
+const EXCEL_ERROR_ACCENT = '#8e44ad'
 
 const DIFF_STATUS_META: Record<string, { state: 'Positive' | 'Critical' | 'Negative' | 'Information' | 'None'; className: string }> = {
   NEW: { state: 'Positive', className: 'excel-diff-row--new' },
@@ -56,7 +58,7 @@ const DIFF_STATUS_META: Record<string, { state: 'Positive' | 'Critical' | 'Negat
   DELETE: { state: 'Negative', className: 'excel-diff-row--deleted' },
   DELETED: { state: 'Negative', className: 'excel-diff-row--deleted' },
   WARNING: { state: 'Critical', className: 'excel-diff-row--warning' },
-  ERROR: { state: 'Negative', className: 'excel-diff-row--error' },
+  ERROR: { state: 'None', className: 'excel-diff-row--error' },
   UNCHANGED: { state: 'None', className: 'excel-diff-row--unchanged' },
   INFO: { state: 'Information', className: '' }
 }
@@ -103,6 +105,7 @@ export default function ExcelPipelineTab({
     () => diffRows.filter(row => row.status === 'ERROR'),
     [diffRows]
   )
+  const errorRecordCount = useMemo(() => countDistinctRecords(errorRows), [errorRows])
   const warningRows = useMemo(
     () => diffRows.filter(row => row.status === 'WARNING'),
     [diffRows]
@@ -207,7 +210,7 @@ export default function ExcelPipelineTab({
       const commitRecordCount = countDistinctRecords(commitRows)
       const visibleCount = visibleRows.length
       const visibleRecordCount = countDistinctRecords(visibleRows)
-      const errorCount = rows.filter(row => row.status === 'ERROR').length
+      const errorCount = countDistinctRecords(rows.filter(row => row.status === 'ERROR'))
       const warningCount = rows.filter(row => row.status === 'WARNING').length
       const unchangedCount = rows.filter(row => row.status === 'UNCHANGED').length
       setDiffRows(compactRowsForUi(rows))
@@ -226,7 +229,7 @@ export default function ExcelPipelineTab({
         })
       } else if (errorCount > 0) {
         setFeedback({
-          text: `Upload checked ${formatCount(visibleRecordCount, 'record')} across ${formatCount(visibleCount, 'detail row')}. Resolve ${formatCount(errorCount, 'error')} before importing.`,
+          text: `Upload checked ${formatCount(visibleRecordCount, 'record')} across ${formatCount(visibleCount, 'detail row')}. ${EXCEL_ERROR_IMPORT_MESSAGE}`,
           design: 'Critical'
         })
       } else {
@@ -294,6 +297,7 @@ export default function ExcelPipelineTab({
     setBusyStep('confirm')
 
     try {
+      const confirmStartedAt = performance.now()
       const result = await confirmImport(tableName, diffRows)
       const confirmFailed = isExcelConfirmFailure(result)
       setConfirmResult(result)
@@ -301,8 +305,19 @@ export default function ExcelPipelineTab({
         text: buildConfirmFeedbackText(result),
         design: confirmFailed ? 'Negative' : 'Positive'
       })
-      console.debug('[ExcelPipeline] confirm completed', result)
-      await onImported()
+      console.debug('[ExcelPipeline] confirm completed', {
+        ...result,
+        durationMs: Math.round(performance.now() - confirmStartedAt)
+      })
+
+      // Do not keep the confirmation modal blocked by the parent table refresh.
+      // The import response is authoritative; the refreshed table can update in
+      // the background without making a successful confirm look slow or failed.
+      void Promise.resolve()
+        .then(() => onImported())
+        .catch(refreshError => {
+          console.error('[ExcelPipeline] table refresh after confirm failed', refreshError)
+        })
     } catch (e: any) {
       const msg = getExcelErrorMessage(e)
       console.error('[ExcelPipeline] confirm failed', e)
@@ -322,7 +337,8 @@ export default function ExcelPipelineTab({
   const busy = !!busyStep
   const canReview = visibleRows.length > 0 && !busy && !confirmResult
   const canConfirm = canUpload && commitRows.length > 0 && !busy && !confirmResult
-  const noChangesDetected = visibleRows.length > 0 && commitRows.length === 0 && errorRows.length === 0
+  const hasErrors = errorRecordCount > 0
+  const noChangesDetected = visibleRows.length > 0 && commitRows.length === 0 && !hasErrors
   const confirmLabel = noChangesDetected ? 'Nothing to Import' : `Confirm Import (${commitRecordCount})`
 
   return (
@@ -425,8 +441,8 @@ export default function ExcelPipelineTab({
         <div className="excel-summary-card">
           <div className="excel-summary-header">
             <Text className="excel-label">Current Session</Text>
-            <ObjectStatus state={approvalPending ? 'Information' : errorRows.length > 0 ? 'Negative' : commitRows.length > 0 ? 'Information' : 'None'}>
-              {approvalPending ? 'Waiting for ADMIN approval' : errorRows.length > 0 ? 'Needs attention' : commitRows.length > 0 ? 'Ready to review' : noChangesDetected ? 'No changes' : 'Waiting for upload'}
+            <ObjectStatus state={approvalPending ? 'Information' : hasErrors ? 'Negative' : commitRows.length > 0 ? 'Information' : 'None'}>
+              {approvalPending ? 'Waiting for ADMIN approval' : hasErrors ? 'Needs attention' : commitRows.length > 0 ? 'Ready to review' : noChangesDetected ? 'No changes' : 'Waiting for upload'}
             </ObjectStatus>
           </div>
           <div className="excel-session-context">
@@ -438,6 +454,7 @@ export default function ExcelPipelineTab({
             total={visibleRecordCount}
             commit={commitRecordCount}
             statusCounts={statusCounts}
+            errorCount={errorRecordCount}
           />
           {approvalPending && (
             <MessageStrip design="Information" hideCloseButton>
@@ -536,6 +553,7 @@ export default function ExcelPipelineTab({
               total={visibleRecordCount}
               commit={commitRecordCount}
               statusCounts={statusCounts}
+              errorCount={errorRecordCount}
             />
             <Text className="excel-summary-note">Counts are by record; the table below shows field-level details.</Text>
 
@@ -545,13 +563,13 @@ export default function ExcelPipelineTab({
               </MessageStrip>
             )}
 
-            {errorRows.length > 0 && (
-              <MessageStrip design="Negative" hideCloseButton>
-                Resolve ERROR rows before confirming the import.
+            {hasErrors && (
+              <MessageStrip design="Negative" hideCloseButton className="excel-error-import-notice">
+                {EXCEL_ERROR_IMPORT_MESSAGE}
               </MessageStrip>
             )}
 
-            {warningRows.length > 0 && errorRows.length === 0 && (
+            {warningRows.length > 0 && !hasErrors && (
               <MessageStrip design="Critical" hideCloseButton>
                 Existing exported values raised warnings, but unchanged warning rows will not be sent to confirm.
               </MessageStrip>
@@ -924,23 +942,25 @@ function ModernModal({
 function StatusSummary({
   total,
   commit,
-  statusCounts
+  statusCounts,
+  errorCount
 }: {
   total: number
   commit: number
   statusCounts: Record<string, number>
+  errorCount: number
 }) {
   const items = [
     { label: 'Total records', value: total, accent: '#5b738b' },
     { label: 'New', value: statusCounts.NEW, accent: '#107e3e' },
     { label: 'Updated', value: statusCounts.CHANGED, accent: '#e09d00' },
     { label: 'Deleted', value: (statusCounts.DELETE ?? 0) + (statusCounts.DELETED ?? 0), accent: '#bb0000' },
+    { label: 'Errors', value: errorCount, accent: EXCEL_ERROR_ACCENT },
     { label: 'Commit records', value: commit, accent: '#0a6ed1' }
   ]
   const additionalItems = [
     { label: 'Unchanged', value: statusCounts.UNCHANGED ?? 0, tone: 'neutral' },
-    { label: 'Warnings', value: statusCounts.WARNING ?? 0, tone: 'warning' },
-    { label: 'Errors', value: statusCounts.ERROR ?? 0, tone: 'negative' }
+    { label: 'Warnings', value: statusCounts.WARNING ?? 0, tone: 'warning' }
   ].filter(item => item.value > 0)
 
   return (

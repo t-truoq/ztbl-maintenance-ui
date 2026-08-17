@@ -87,10 +87,15 @@ describe('auditLogHelpers bulk flow', () => {
     expect(getBulkActionType(bulkEntry, [
       { ActionType: 'C' },
       { ActionType: 'C' }
-    ])).toBe('C')
+    ])).toBe('B')
     expect(getBulkActionType(bulkEntry, [
       { ActionType: 'C' },
       { ActionType: 'U' }
+    ])).toBe('B')
+    expect(getBulkActionType(bulkEntry, [
+      { ActionType: 'D' },
+      { ActionType: 'D' },
+      { ActionType: 'D' }
     ])).toBe('B')
   })
 

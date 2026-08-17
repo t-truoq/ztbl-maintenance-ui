@@ -27,6 +27,7 @@ import {
   getRecordKey,
   hasAuditItemSummary,
   isRollbackAuditAction,
+  isRolledBackAuditEntry,
   canRollbackAuditEntry,
   isBulkAuditEntry,
   normalizeAuditActionType,
@@ -127,14 +128,17 @@ function actionLabel(actionType: string): string {
 }
 
 function auditFilterActionType(entry: AuditLogEntry, cachedChildItems?: AuditItemEntry[]): string {
-  if (isRollbackAuditAction(entry.ActionType)) return 'R'
   if (isBulkAuditEntry(entry) || hasAuditItemSummary(entry)) {
-    const count = cachedChildItems?.length ?? extractAuditItemCount(entry)
-    if (count === 1 && cachedChildItems?.[0]) {
-      return normalizeAuditActionType(cachedChildItems[0].ActionType || entry.ActionType)
-    }
+    const childItems = cachedChildItems ?? findBulkChildren(entry, [])
+    const bulkAction = getBulkActionType(entry, childItems)
+    if (isRollbackAuditAction(entry.ActionType) || isRolledBackAuditEntry(entry)) return 'R'
+    if (bulkAction === 'B') return 'B'
+    if (childItems.length > 0) return bulkAction
+
+    const count = extractAuditItemCount(entry)
     return count === 1 ? normalizeAuditActionType(entry.ActionType) : 'B'
   }
+  if (isRollbackAuditAction(entry.ActionType) || isRolledBackAuditEntry(entry)) return 'R'
   return normalizeAuditActionType(entry.ActionType)
 }
 
@@ -1080,6 +1084,9 @@ function AuditDetailsDialog({
     changes: Map<string, { oldValue: string; newValue: string }>
   }>()).values())
   const displayActionType = hasItemSummary ? getBulkActionType(entry, items) : normalizedAction
+  const operationActionType = isRollbackAuditAction(normalizedAction) || isRolledBackAuditEntry(entry)
+    ? 'R'
+    : displayActionType
 
   return (
     <AuditModernModal
@@ -1107,7 +1114,7 @@ function AuditDetailsDialog({
           <Text>{detailGroups.length} {detailGroups.length === 1 ? 'record' : 'records'} · {changedFieldCount} {changedFieldCount === 1 ? 'field' : 'fields'}</Text>
         </div>
         <div className="audit-details-meta-action">
-          <ActionBadge actionType={displayActionType} context="operation" />
+          <ActionBadge actionType={operationActionType} context="operation" />
         </div>
       </div>
 
@@ -1276,7 +1283,9 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
 
     return entries.filter(entry => {
       const filterActionType = auditFilterActionType(entry, bulkChildMap[entry.AuditId])
-      if (actionFilter !== 'ALL' && filterActionType !== actionFilter) return false
+      const isRollbackEntry = isRollbackAuditAction(entry.ActionType) || isRolledBackAuditEntry(entry)
+      if (actionFilter === 'R' && !isRollbackEntry) return false
+      if (actionFilter !== 'ALL' && actionFilter !== 'R' && filterActionType !== actionFilter) return false
 
       const entryDate = dateInputValue(entry.ChangedAt)
       if (dateFrom && entryDate && entryDate < dateFrom) return false
@@ -1524,7 +1533,10 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
                   : canRollback
                     ? 'Rollback is not available for this audit entry.'
                     : 'You do not have permission to rollback this audit entry.'
-              const rowAction = normalizeAuditActionType(action).toLowerCase()
+              const operationAction = isRollbackAuditAction(entry.ActionType) || isRolledBackAuditEntry(entry)
+                ? 'R'
+                : action
+              const rowAction = normalizeAuditActionType(operationAction).toLowerCase()
 
               return (
                 <div
@@ -1534,7 +1546,7 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
                 >
                   <div className="audit-table-cell audit-table-cell--action" role="cell" data-label="Operation">
                     <ActionBadge
-                      actionType={action}
+                      actionType={operationAction}
                       context="operation"
                     />
                   </div>
