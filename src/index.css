@@ -1301,7 +1301,7 @@ ui5-toast {
 
 .excel-status-summary {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 0.5rem;
   width: 100%;
   min-width: 0;
@@ -1345,6 +1345,12 @@ ui5-toast {
   color: var(--sapContent_LabelColor, #6a6d70);
   font-size: 0.75rem;
   line-height: 1rem;
+}
+
+.excel-error-import-notice {
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 100%;
 }
 
 .excel-status-secondary-item {
@@ -1642,8 +1648,8 @@ ui5-toast {
 }
 
 .excel-diff-table-row.excel-diff-row--error {
-  border-left-color: #bb0000;
-  background: #fff1f0;
+  border-left-color: #8e44ad;
+  background: #f8f0fb;
 }
 
 .excel-diff-table-row.excel-diff-row--deleted {
@@ -1660,7 +1666,7 @@ ui5-toast {
 }
 
 .excel-diff-table-row.excel-diff-row--error .excel-diff-table-cell {
-  background: #fff1f0;
+  background: #f8f0fb;
 }
 
 .excel-diff-table-row.excel-diff-row--deleted .excel-diff-table-cell {
@@ -1750,7 +1756,11 @@ ui5-toast {
   background: #fff8d6;
 }
 
-.excel-record-group.excel-diff-row--error,
+.excel-record-group.excel-diff-row--error {
+  border-left-color: #8e44ad;
+  background: #f8f0fb;
+}
+
 .excel-record-group.excel-diff-row--deleted {
   border-left-color: #bb0000;
   background: #fff1f0;
@@ -1974,8 +1984,8 @@ ui5-toast {
 }
 
 .excel-diff-note--error {
-  background: #ffe5e5;
-  color: #8b0000;
+  background: #f1ddf8;
+  color: #6c3483;
 }
 
 .excel-diff-note--delete,
@@ -2155,7 +2165,7 @@ ui5-toast {
 
 .audit-filter-bar {
   display: grid;
-  grid-template-columns: minmax(18rem, 1.6fr) minmax(10rem, 0.7fr) minmax(13rem, 1fr) minmax(13rem, 1fr);
+  grid-template-columns: minmax(18rem, 1fr) minmax(10rem, 0.7fr) minmax(12rem, 13rem) minmax(12rem, 13rem);
   gap: 0.75rem;
   align-items: flex-end;
   padding: 0.75rem;

@@ -47,6 +47,11 @@ export function isRollbackAuditAction(actionType?: string): boolean {
   return normalizeAuditActionType(actionType) === 'R'
 }
 
+export function isRolledBackAuditEntry(entry: AuditLogEntry | AuditItemEntry): boolean {
+  const anyEntry = entry as any
+  return Boolean(String(anyEntry.RollbackAuditId ?? anyEntry.rollbackAuditId ?? '').trim())
+}
+
 function isTruthyRollbackStatus(value: unknown): boolean {
   return value === true || ['true', 'x', '1', 'yes'].includes(String(value ?? '').trim().toLowerCase())
 }
@@ -144,6 +149,14 @@ export function findBulkChildren(bulkEntry: AuditLogEntry, _allEntries: AuditLog
 
 export function getBulkActionType(entry: AuditLogEntry, childItems: AuditItemEntry[]): string {
   if (isRollbackAuditAction(entry.ActionType)) return 'R'
+
+  // More than two child actions are represented as a bulk operation even
+  // when every child has the same action. This keeps the overview operation
+  // aligned with the size of the grouped audit.
+  const summaryText = String(entry.NewValue || entry.OldValue || '')
+  const summaryCount = Number(summaryText.match(/(\d+)\s*item/i)?.[1] || 0)
+  const actionCount = childItems.length > 0 ? childItems.length : summaryCount
+  if (actionCount >= 2) return 'B'
 
   const childActions = new Set(
     childItems
