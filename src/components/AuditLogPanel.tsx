@@ -21,15 +21,18 @@ import {
   getAuditActionLabel,
   getAuditDetailFieldSummary,
   getAuditItemDisplayActionType,
+  getAuditDisplayId,
   getAuditOperationLabel,
   getBulkActionType,
   getRawRecordKey,
   getRecordKey,
   hasAuditItemSummary,
   isRollbackAuditAction,
+  isRolledBackAuditEntry,
   canRollbackAuditEntry,
   isBulkAuditEntry,
   normalizeAuditActionType,
+  normalizeAuditLogEntries,
   paginateAuditEntries
 } from '../utils/auditLogHelpers'
 import { AuditLogEntry, AuditItemEntry } from '../types'
@@ -127,14 +130,17 @@ function actionLabel(actionType: string): string {
 }
 
 function auditFilterActionType(entry: AuditLogEntry, cachedChildItems?: AuditItemEntry[]): string {
-  if (isRollbackAuditAction(entry.ActionType)) return 'R'
   if (isBulkAuditEntry(entry) || hasAuditItemSummary(entry)) {
-    const count = cachedChildItems?.length ?? extractAuditItemCount(entry)
-    if (count === 1 && cachedChildItems?.[0]) {
-      return normalizeAuditActionType(cachedChildItems[0].ActionType || entry.ActionType)
-    }
+    const childItems = cachedChildItems ?? findBulkChildren(entry, [])
+    const bulkAction = getBulkActionType(entry, childItems)
+    if (isRollbackAuditAction(entry.ActionType) || isRolledBackAuditEntry(entry)) return 'R'
+    if (bulkAction === 'B') return 'B'
+    if (childItems.length > 0) return bulkAction
+
+    const count = extractAuditItemCount(entry)
     return count === 1 ? normalizeAuditActionType(entry.ActionType) : 'B'
   }
+  if (isRollbackAuditAction(entry.ActionType) || isRolledBackAuditEntry(entry)) return 'R'
   return normalizeAuditActionType(entry.ActionType)
 }
 
@@ -341,7 +347,7 @@ function BulkAuditItemsDialog({
         >
           <div>
             <Label style={{ display: 'block', fontSize: '0.75rem' }}>Audit ID</Label>
-            <Text style={{ fontWeight: 600 }}>{auditEntry.AuditId}</Text>
+          <Text style={{ fontWeight: 600 }}>{getAuditDisplayId(auditEntry)}</Text>
           </div>
           <div>
             <Label style={{ display: 'block', fontSize: '0.75rem' }}>Changed By</Label>
@@ -1080,6 +1086,9 @@ function AuditDetailsDialog({
     changes: Map<string, { oldValue: string; newValue: string }>
   }>()).values())
   const displayActionType = hasItemSummary ? getBulkActionType(entry, items) : normalizedAction
+  const operationActionType = isRollbackAuditAction(normalizedAction) || isRolledBackAuditEntry(entry)
+    ? 'R'
+    : displayActionType
 
   return (
     <AuditModernModal
@@ -1092,7 +1101,7 @@ function AuditDetailsDialog({
       <div className="audit-details-meta">
         <div className="audit-details-meta-item audit-details-meta-item--id">
           <Label>Audit ID</Label>
-          <Text title={entry.AuditId}>{entry.AuditId}</Text>
+          <Text title={getAuditDisplayId(entry)}>{getAuditDisplayId(entry)}</Text>
         </div>
         <div className="audit-details-meta-item">
           <Label>Changed by</Label>
@@ -1107,7 +1116,7 @@ function AuditDetailsDialog({
           <Text>{detailGroups.length} {detailGroups.length === 1 ? 'record' : 'records'} · {changedFieldCount} {changedFieldCount === 1 ? 'field' : 'fields'}</Text>
         </div>
         <div className="audit-details-meta-action">
-          <ActionBadge actionType={displayActionType} context="operation" />
+          <ActionBadge actionType={operationActionType} context="operation" />
         </div>
       </div>
 
@@ -1244,10 +1253,11 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
       setBulkChildMap({})
       auditItemsInFlightRef.current.clear()
       const result = await getAuditLog(tableName)
-      setEntries(result)
+      const normalizedEntries = normalizeAuditLogEntries(result)
+      setEntries(normalizedEntries)
 
       const initialMap: Record<string, AuditItemEntry[]> = {}
-      result.forEach(entry => {
+      normalizedEntries.forEach(entry => {
         const items = (entry as any)._Items?.value || (entry as any)._Items
         if (Array.isArray(items) && items.length > 0) {
           initialMap[entry.AuditId] = items
@@ -1276,7 +1286,9 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
 
     return entries.filter(entry => {
       const filterActionType = auditFilterActionType(entry, bulkChildMap[entry.AuditId])
-      if (actionFilter !== 'ALL' && filterActionType !== actionFilter) return false
+      const isRollbackEntry = isRollbackAuditAction(entry.ActionType) || isRolledBackAuditEntry(entry)
+      if (actionFilter === 'R' && !isRollbackEntry) return false
+      if (actionFilter !== 'ALL' && actionFilter !== 'R' && filterActionType !== actionFilter) return false
 
       const entryDate = dateInputValue(entry.ChangedAt)
       if (dateFrom && entryDate && entryDate < dateFrom) return false
@@ -1524,7 +1536,10 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
                   : canRollback
                     ? 'Rollback is not available for this audit entry.'
                     : 'You do not have permission to rollback this audit entry.'
-              const rowAction = normalizeAuditActionType(action).toLowerCase()
+              const operationAction = isRollbackAuditAction(entry.ActionType) || isRolledBackAuditEntry(entry)
+                ? 'R'
+                : action
+              const rowAction = normalizeAuditActionType(operationAction).toLowerCase()
 
               return (
                 <div
@@ -1534,7 +1549,7 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
                 >
                   <div className="audit-table-cell audit-table-cell--action" role="cell" data-label="Operation">
                     <ActionBadge
-                      actionType={action}
+                      actionType={operationAction}
                       context="operation"
                     />
                   </div>
@@ -1542,9 +1557,9 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
                     className="audit-table-cell audit-table-cell--key audit-overview-id"
                     role="cell"
                     data-label="Audit ID"
-                    title={entry.AuditId}
+                    title={getAuditDisplayId(entry)}
                   >
-                    <span>{entry.AuditId || '-'}</span>
+                    <span>{getAuditDisplayId(entry) || '-'}</span>
                   </div>
                   <div className="audit-table-cell audit-table-cell--changed" role="cell" data-label="Changed">
                     <span>{entry.ChangedBy || '-'}</span>

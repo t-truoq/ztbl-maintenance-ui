@@ -47,6 +47,11 @@ export function isRollbackAuditAction(actionType?: string): boolean {
   return normalizeAuditActionType(actionType) === 'R'
 }
 
+export function isRolledBackAuditEntry(entry: AuditLogEntry | AuditItemEntry): boolean {
+  const anyEntry = entry as any
+  return Boolean(String(anyEntry.RollbackAuditId ?? anyEntry.rollbackAuditId ?? '').trim())
+}
+
 function isTruthyRollbackStatus(value: unknown): boolean {
   return value === true || ['true', 'x', '1', 'yes'].includes(String(value ?? '').trim().toLowerCase())
 }
@@ -142,8 +147,126 @@ export function findBulkChildren(bulkEntry: AuditLogEntry, _allEntries: AuditLog
   return []
 }
 
+/**
+ * Normalize APIs that expose one AuditLog row per changed item.
+ *
+ * Fiori's audit model has one operation/header row and many AuditItem rows
+ * sharing the same AuditId. Some custom OData implementations flatten those
+ * rows into AuditLog, so the UI groups them back into the Fiori shape here.
+ */
+export function normalizeAuditLogEntries(entries: AuditLogEntry[]): AuditLogEntry[] {
+  const rollbackEntryIds = new Set(entries.map(entry => String(entry.AuditId || '').trim()))
+  const sourceAuditIdsRolledBack = new Set(
+    entries
+      .filter(entry => {
+        const rollbackAuditId = String((entry as any).RollbackAuditId ?? (entry as any).rollbackAuditId ?? '').trim()
+        return rollbackAuditId && rollbackEntryIds.has(rollbackAuditId)
+      })
+      .map(entry => String(entry.AuditId || '').trim())
+      .filter(Boolean)
+  )
+  const groups = new Map<string, AuditLogEntry[]>()
+  const withoutId: AuditLogEntry[] = []
+
+  entries.forEach(entry => {
+    const auditId = String(entry.AuditId || '').trim()
+    if (!auditId) {
+      withoutId.push(entry)
+      return
+    }
+    const group = groups.get(auditId) || []
+    group.push(entry)
+    groups.set(auditId, group)
+  })
+
+  const normalized: AuditLogEntry[] = []
+  groups.forEach(group => {
+    if (group.length === 1) {
+      normalized.push(group[0])
+      return
+    }
+
+    const header = { ...group[0] }
+    const items: AuditItemEntry[] = []
+    const seenItems = new Set<string>()
+
+    group.forEach(entry => {
+      const embedded = getEmbeddedAuditItems(entry)
+      if (embedded.length > 0) {
+        embedded.forEach((item, index) => addUniqueAuditItem(items, seenItems, item, index))
+        return
+      }
+
+      // A flattened AuditLog row is itself an audit item.
+      addUniqueAuditItem(items, seenItems, {
+        AuditId: entry.AuditId,
+        ItemNo: entry.ItemNo,
+        TableName: entry.TableName,
+        RecordKey: entry.RecordKey,
+        FieldName: entry.FieldName,
+        OldValue: entry.OldValue,
+        NewValue: entry.NewValue,
+        ActionType: entry.ActionType
+      }, items.length)
+    })
+
+    if (items.length > 0) {
+      const isRollbackGroup = group.some(entry => isRollbackAuditAction(entry.ActionType))
+      header.ActionType = isRollbackGroup ? 'R' : 'B'
+      header.RecordKey = 'BULK'
+      header._Items = items
+      header.NewValue = `Bulk audit: ${items.length} item(s)`
+    }
+    normalized.push(header)
+  })
+
+  return [...normalized, ...withoutId]
+    .filter(entry => !sourceAuditIdsRolledBack.has(String(entry.AuditId || '').trim()))
+    .map(entry => {
+      const source = entries.find(candidate =>
+        String((candidate as any).RollbackAuditId ?? (candidate as any).rollbackAuditId ?? '').trim() === entry.AuditId
+      )
+      if (!source) return entry
+      return {
+        ...entry,
+        DisplayAuditId: source.AuditId
+      }
+    })
+}
+
+export function getAuditDisplayId(entry: AuditLogEntry): string {
+  return String(entry.DisplayAuditId || entry.AuditId || '').trim()
+}
+
+function addUniqueAuditItem(
+  target: AuditItemEntry[],
+  seen: Set<string>,
+  item: AuditItemEntry,
+  fallbackIndex: number
+) {
+  const key = [
+    item.ItemNo ?? fallbackIndex,
+    item.RecordKey || '',
+    item.FieldName || '',
+    item.ActionType || '',
+    item.OldValue || '',
+    item.NewValue || ''
+  ].join('|')
+  if (seen.has(key)) return
+  seen.add(key)
+  target.push({ ...item, ItemNo: item.ItemNo ?? target.length + 1 })
+}
+
 export function getBulkActionType(entry: AuditLogEntry, childItems: AuditItemEntry[]): string {
   if (isRollbackAuditAction(entry.ActionType)) return 'R'
+
+  // More than two child actions are represented as a bulk operation even
+  // when every child has the same action. This keeps the overview operation
+  // aligned with the size of the grouped audit.
+  const summaryText = String(entry.NewValue || entry.OldValue || '')
+  const summaryCount = Number(summaryText.match(/(\d+)\s*item/i)?.[1] || 0)
+  const actionCount = childItems.length > 0 ? childItems.length : summaryCount
+  if (actionCount >= 2) return 'B'
 
   const childActions = new Set(
     childItems

@@ -14,6 +14,7 @@ import {
   isRollbackAuditAction,
   canRollbackAuditEntry,
   normalizeAuditActionType,
+  normalizeAuditLogEntries,
   paginateAuditEntries
 } from './auditLogHelpers'
 
@@ -33,6 +34,29 @@ describe('auditLogHelpers bulk flow', () => {
     expect(isBulkAuditEntry(bulkEntry)).toBe(true)
     expect(hasAuditItemSummary(bulkEntry)).toBe(true)
     expect(extractBulkCount(bulkEntry)).toBe('2 item(s)')
+  })
+
+  it('groups flattened AuditLog rows with the same AuditId into one Fiori operation', () => {
+    const result = normalizeAuditLogEntries([
+      { AuditId: 'A-1', TableName: 'ZTEST', RecordKey: '001', FieldName: 'STATUS', ActionType: 'U', OldValue: 'A', NewValue: 'B' },
+      { AuditId: 'A-1', TableName: 'ZTEST', RecordKey: '002', FieldName: 'STATUS', ActionType: 'D', OldValue: 'A', NewValue: '' }
+    ])
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ AuditId: 'A-1', RecordKey: 'BULK', ActionType: 'B' })
+    expect(result[0]._Items).toHaveLength(2)
+    expect(result[0]._Items[0]).toMatchObject({ RecordKey: '001', ActionType: 'U' })
+    expect(result[0]._Items[1]).toMatchObject({ RecordKey: '002', ActionType: 'D' })
+  })
+
+  it('keeps the original AuditId when a rollback audit is returned', () => {
+    const result = normalizeAuditLogEntries([
+      { AuditId: 'ORIGINAL-1', TableName: 'ZTEST', RecordKey: '001', FieldName: 'STATUS', ActionType: 'D', RollbackAuditId: 'ROLLBACK-1' },
+      { AuditId: 'ROLLBACK-1', TableName: 'ZTEST', RecordKey: '001', FieldName: 'STATUS', ActionType: 'R' }
+    ])
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ AuditId: 'ROLLBACK-1', DisplayAuditId: 'ORIGINAL-1', ActionType: 'R' })
   })
 
   it('detects rollback summaries with item counts without requiring BULK record key', () => {
@@ -87,10 +111,15 @@ describe('auditLogHelpers bulk flow', () => {
     expect(getBulkActionType(bulkEntry, [
       { ActionType: 'C' },
       { ActionType: 'C' }
-    ])).toBe('C')
+    ])).toBe('B')
     expect(getBulkActionType(bulkEntry, [
       { ActionType: 'C' },
       { ActionType: 'U' }
+    ])).toBe('B')
+    expect(getBulkActionType(bulkEntry, [
+      { ActionType: 'D' },
+      { ActionType: 'D' },
+      { ActionType: 'D' }
     ])).toBe('B')
   })
 
