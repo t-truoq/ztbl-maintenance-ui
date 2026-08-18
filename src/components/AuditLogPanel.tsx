@@ -21,6 +21,7 @@ import {
   getAuditActionLabel,
   getAuditDetailFieldSummary,
   getAuditItemDisplayActionType,
+  getAuditDisplayId,
   getAuditOperationLabel,
   getBulkActionType,
   getRawRecordKey,
@@ -31,6 +32,7 @@ import {
   canRollbackAuditEntry,
   isBulkAuditEntry,
   normalizeAuditActionType,
+  normalizeAuditLogEntries,
   paginateAuditEntries
 } from '../utils/auditLogHelpers'
 import { AuditLogEntry, AuditItemEntry } from '../types'
@@ -345,7 +347,7 @@ function BulkAuditItemsDialog({
         >
           <div>
             <Label style={{ display: 'block', fontSize: '0.75rem' }}>Audit ID</Label>
-            <Text style={{ fontWeight: 600 }}>{auditEntry.AuditId}</Text>
+          <Text style={{ fontWeight: 600 }}>{getAuditDisplayId(auditEntry)}</Text>
           </div>
           <div>
             <Label style={{ display: 'block', fontSize: '0.75rem' }}>Changed By</Label>
@@ -1099,7 +1101,7 @@ function AuditDetailsDialog({
       <div className="audit-details-meta">
         <div className="audit-details-meta-item audit-details-meta-item--id">
           <Label>Audit ID</Label>
-          <Text title={entry.AuditId}>{entry.AuditId}</Text>
+          <Text title={getAuditDisplayId(entry)}>{getAuditDisplayId(entry)}</Text>
         </div>
         <div className="audit-details-meta-item">
           <Label>Changed by</Label>
@@ -1251,10 +1253,11 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
       setBulkChildMap({})
       auditItemsInFlightRef.current.clear()
       const result = await getAuditLog(tableName)
-      setEntries(result)
+      const normalizedEntries = normalizeAuditLogEntries(result)
+      setEntries(normalizedEntries)
 
       const initialMap: Record<string, AuditItemEntry[]> = {}
-      result.forEach(entry => {
+      normalizedEntries.forEach(entry => {
         const items = (entry as any)._Items?.value || (entry as any)._Items
         if (Array.isArray(items) && items.length > 0) {
           initialMap[entry.AuditId] = items
@@ -1554,9 +1557,9 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
                     className="audit-table-cell audit-table-cell--key audit-overview-id"
                     role="cell"
                     data-label="Audit ID"
-                    title={entry.AuditId}
+                    title={getAuditDisplayId(entry)}
                   >
-                    <span>{entry.AuditId || '-'}</span>
+                    <span>{getAuditDisplayId(entry) || '-'}</span>
                   </div>
                   <div className="audit-table-cell audit-table-cell--changed" role="cell" data-label="Changed">
                     <span>{entry.ChangedBy || '-'}</span>

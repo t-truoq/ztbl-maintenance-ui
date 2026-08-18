@@ -82,6 +82,8 @@ export interface AuditItemEntry {
 
 export interface AuditLogEntry {
   AuditId: string;
+  /** UI-only alias used to keep a rollback operation under its original Audit ID. */
+  DisplayAuditId?: string;
   TableName: string;
   RecordKey: string;
   FieldName: string;
