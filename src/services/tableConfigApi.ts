@@ -167,7 +167,10 @@ export async function getPendingApprovalRecords(tableName: string): Promise<Pend
   const res = await api.get('/ApprovalItem', {
     params: {
       'sap-client': SAP_CLIENT,
-      '$filter': `TableName eq '${escapedTableName}'`,
+      // Only pending approval items can block a row in the main table.
+      // Filtering at OData level avoids treating historical REJECTED/
+      // APPROVED items as active locks and keeps the response small.
+      '$filter': `TableName eq '${escapedTableName}' and Status eq 'PENDING'`,
       '$select': 'TableName,RecordKey,Status,ActionType'
     },
     headers: {
@@ -178,12 +181,18 @@ export async function getPendingApprovalRecords(tableName: string): Promise<Pend
 
   const rows = Array.isArray(res.data?.value) ? res.data.value : []
   return rows
-    .map((row: any) => ({
-      TableName: String(row.TableName ?? ''),
-      RecordKey: String(row.RecordKey ?? ''),
-      Status: String(row.Status ?? ''),
-      ActionType: String(row.ActionType ?? '')
-    }))
+    .map((row: any) => {
+      const recordKey = row.RecordKey ?? row.recordKey ?? row.RECORDKEY ?? ''
+      const actionType = row.ActionType ?? row.actionType ?? row.ACTIONTYPE ?? ''
+      return {
+        TableName: String(row.TableName ?? row.tableName ?? row.TABLENAME ?? ''),
+        // Some OData adapters deserialize this JSON field into an object.
+        // Keep the wire shape comparable with the row key used by the table.
+        RecordKey: typeof recordKey === 'string' ? recordKey : JSON.stringify(recordKey),
+        Status: String(row.Status ?? row.status ?? row.STATUS ?? ''),
+        ActionType: String(actionType)
+      }
+    })
     .filter(row => isPendingApprovalStatus(row.Status))
 }
 

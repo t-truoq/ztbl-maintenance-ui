@@ -78,6 +78,26 @@ describe('formatPayload', () => {
     )
     expect(JSON.parse(json).ENTITY_ID).toBe('8B95F36A4F271FD195A3D745D07762DD')
   })
+
+  it('does not send SAP-managed audit fields in CRUD payloads', () => {
+    const json = formatPayload(
+      {
+        NAME: 'Changed',
+        CHANGED_AT: '2026-08-19 12:00:00.0000000',
+        CREATED_ON: '20260819',
+        ERDAT: '20260819'
+      },
+      [
+        { field_name: 'NAME', fe_type: 'text' },
+        { field_name: 'CHANGED_AT', fe_type: 'date' },
+        { field_name: 'CREATED_ON', fe_type: 'date' },
+        { field_name: 'ERDAT', fe_type: 'date' }
+      ],
+      false
+    )
+
+    expect(JSON.parse(json)).toEqual({ NAME: 'Changed' })
+  })
 })
 
 describe('parseTableData', () => {

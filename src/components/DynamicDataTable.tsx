@@ -200,7 +200,9 @@ export default function DynamicDataTable({
 
   const pendingRecordKeySet = useMemo(() => new Set(
     pendingApprovalRecords
-      .filter(record => String(record.ActionType || '').trim().toUpperCase() !== 'C')
+      // Create requests do not have a row in the active table yet. Update and
+      // delete requests must lock the existing row until ADMIN decides.
+      .filter(record => !['C', 'CREATE'].includes(String(record.ActionType || '').trim().toUpperCase()))
       .map(record => normalizeRecordKeyString(record.RecordKey))
       .filter(Boolean)
   ), [pendingApprovalRecords])

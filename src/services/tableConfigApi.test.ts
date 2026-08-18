@@ -152,7 +152,7 @@ describe('tableConfigApi table loading', () => {
 
     expect(mockGet).toHaveBeenCalledWith('/ApprovalItem', expect.objectContaining({
       params: expect.objectContaining({
-        '$filter': "TableName eq 'Z253_CAT'",
+        '$filter': "TableName eq 'Z253_CAT' and Status eq 'PENDING'",
         '$select': 'TableName,RecordKey,Status,ActionType'
       })
     }))

@@ -108,6 +108,11 @@ export function useTableMaintenance({
   const [activeTableLock, setActiveTableLock] = useState<{ lockedBy: string } | null>(null)
 
   const latestActiveTableUuidRef = useRef<string | null>(null)
+  // Prevent duplicate backend action calls while the same table is loading.
+  // React StrictMode re-runs effects in development; sending two concurrent
+  // getFieldMeta/getTableData actions can make SAP return a misleading 423
+  // table-configuration-lock error even though the first request succeeds.
+  const loadingTableUuidRef = useRef<string | null>(null)
   const sessionId = useId()
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -279,6 +284,9 @@ export function useTableMaintenance({
 
   async function loadTable(table: TableConfig) {
     const normalizedUuid = normalizeConfigUuid(table.ConfigUuid)
+    if (loadingTableUuidRef.current === normalizedUuid) return
+
+    loadingTableUuidRef.current = normalizedUuid
     const isChangingTable = latestActiveTableUuidRef.current !== normalizedUuid
     latestActiveTableUuidRef.current = normalizedUuid
 
@@ -327,6 +335,9 @@ export function useTableMaintenance({
         clearPageData()
       }
     } finally {
+      if (loadingTableUuidRef.current === normalizedUuid) {
+        loadingTableUuidRef.current = null
+      }
       if (latestActiveTableUuidRef.current === normalizedUuid) {
         setDataLoading(false)
       }
