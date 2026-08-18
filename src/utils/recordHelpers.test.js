@@ -90,7 +90,6 @@ describe('recordHelpers payloads', () => {
       NAME: 'Course',
       VALID_FROM: '20260521',
       ACTIVE: 'X',
-      CHANGED_AT: ''
     })
   })
 
@@ -144,7 +143,7 @@ describe('recordHelpers payloads', () => {
       ACTIVE: 'X'
     })
     expect(result).not.toHaveProperty('MANDT')
-    expect(result.CHANGED_AT).toBe('')
+    expect(result).not.toHaveProperty('CHANGED_AT')
   })
 })
 

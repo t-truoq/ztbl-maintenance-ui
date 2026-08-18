@@ -328,6 +328,29 @@ export function normalizeUuidFromBe(value: any): string {
  */
 /** SAP system-managed fields that must never be sent in any payload */
 const SAP_CLIENT_FIELDS = new Set(['CLIENT', 'MANDT'])
+const SAP_SYSTEM_FIELDS = new Set([
+  'CREATED_BY',
+  'CREATED_AT',
+  'CREATED_ON',
+  'CHANGED_BY',
+  'CHANGED_AT',
+  'CHANGED_ON',
+  'LAST_CHANGED_BY',
+  'LAST_CHANGED_AT',
+  'LOCAL_LAST_CHANGED_AT',
+  'ERNAM',
+  'ERDAT',
+  'ERZET',
+  'AENAM',
+  'AEDAT',
+  'AEZET',
+  'LAEDA'
+])
+
+function isSapSystemField(fieldName: string): boolean {
+  const name = String(fieldName || '').trim().toUpperCase()
+  return SAP_SYSTEM_FIELDS.has(name) || /^(CREATED|CHANGED|LAST_CHANGED|LOCAL_LAST_CHANGED)_(BY|AT|ON|DATE|TIME)$/i.test(name)
+}
 
 export function formatPayload(formData: Record<string, any>, meta: FieldMeta[], isCreate: boolean): string {
   const payload: Record<string, any> = {}
@@ -338,6 +361,9 @@ export function formatPayload(formData: Record<string, any>, meta: FieldMeta[], 
     if (SAP_CLIENT_FIELDS.has((field.field_name || '').toUpperCase())) continue
 
     const key = field.field_name
+    // Audit/timestamp fields are filled by SAP. Sending an empty fallback
+    // such as 00000000 for a DATE/TIME audit field causes CX_SY_CONVERSION_NO_DATE_TIME.
+    if (isSapSystemField(key)) continue
     // CLIENT / MANDT is auto-managed by the ABAP compiler — never send it
     if (key.toUpperCase() === 'CLIENT' || key.toUpperCase() === 'MANDT') continue
 
