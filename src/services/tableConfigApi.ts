@@ -80,6 +80,15 @@ export function parseTableDataJson(dataJson: string, fieldMeta: FieldMeta[] | nu
   return Array.isArray(rows) ? rows : [rows]
 }
 
+/* ============================================================================
+ * PHAN: CAC HAM TIEN ICH DINH DANG UUID VA ACTION URL
+ * ============================================================================ */
+
+/**
+ * Chuan hoa chuoi UUID tu dang 32 ky tu hex lien tuc (RAW16 cua SAP)
+ * sang dang UUID tieu chuan co 4 dau gach noi (8-4-4-4-12) de truyen vao OData V4 key.
+ * Vi du: '8B95F36A4F271FD195A3D745D07762DD' -> '8b95f36a-4f27-1fd1-95a3-d745d07762dd'
+ */
 export function normalizeConfigUuid(configUuid: string): string {
   if (!configUuid) return ''
   const s = String(configUuid).trim()
@@ -91,6 +100,10 @@ export function normalizeConfigUuid(configUuid: string): string {
   return s
 }
 
+/**
+ * Xay dung duong dan OData Bound Action tren Entity TableConfig cua RAP Model.
+ * Vi du: /TableConfig(ConfigUuid=...,IsActiveEntity=true)/com.sap.gateway.srvd.zsd_tbl_config.v0001.getTableData
+ */
 function actionUrl(configUuid: string, action: string): string {
   const uuid = normalizeConfigUuid(configUuid)
   return `/TableConfig(ConfigUuid=${uuid},IsActiveEntity=true)/com.sap.gateway.srvd.zsd_tbl_config.v0001.${action}`
@@ -114,11 +127,19 @@ function parseDomainValuesJson(valuesJson: string): Array<{ value: string; descr
   }
 }
 
+/* ============================================================================
+ * PHAN: HAM LAY DANH SACH BANG DA KICH HOAT (getTables)
+ * ============================================================================ */
+
+/**
+ * [HAM getTables]: Truy van toan bo cac bang Z/Y da duoc cau hinh va kich hoat tren he thong.
+ */
 export async function getTables(): Promise<TableConfig[]> {
   const selectFields = 'TableName,Description,ConfigUuid,ActiveFlag,ApprovalRequired,IsActiveEntity'
   let rows: TableConfig[] = []
 
   try {
+    // Thu goi query chuan voi OData V4 Draft filter
     const res = await api.get('/TableConfig', {
       params: {
         'sap-client': SAP_CLIENT,
@@ -132,6 +153,7 @@ export async function getTables(): Promise<TableConfig[]> {
     })
     rows = res.data.value || []
   } catch (e: any) {
+    // Fallback neu Backend RAP chua bat hoac loi draft filter
     console.warn('getTables IsActiveEntity filter failed, fetching without $filter:', e?.message)
     const res = await api.get('/TableConfig', {
       params: {
@@ -146,8 +168,10 @@ export async function getTables(): Promise<TableConfig[]> {
     rows = res.data.value || []
   }
 
+  // Loc chi lay cac bang da duoc kich hoat (ActiveFlag = 'X')
   const activeRows = rows.filter(row => row.IsActiveEntity !== false && isYesFlag(row.ActiveFlag))
 
+  // Khu trung lap va chuan hoa UUID truoc khi tra ve danh sach bang cho Sidebar
   return Array.from(
     new Map(activeRows.map(row => [normalizeConfigUuid(row.ConfigUuid), {
       ...row,
@@ -881,7 +905,7 @@ export async function getAuditItems(auditId: string): Promise<AuditItemEntry[]> 
   }
 }
 
- export async function rollbackAudit(auditId: string): Promise<{ success: boolean; message: string }> {
+export async function rollbackAudit(auditId: string): Promise<{ success: boolean; message: string }> {
   const url = `/AuditLog(AuditId='${encodeURIComponent(auditId)}')/com.sap.gateway.srvd.zsd_tbl_config.v0001.rollback`
   const res = await apiPostWithCsrf(url, {}, { params: { 'sap-client': SAP_CLIENT } })
   const data = res.data
