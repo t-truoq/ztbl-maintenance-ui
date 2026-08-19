@@ -182,7 +182,7 @@ export default function DynamicDataTable({
     const isDomain = feType === 'domain' || feType === 'fk_select'
     const hasKeyIcon = f.is_key || f.IsKeyField === 'X'
     const defaultWidth = Math.max(
-      isDate ? 210 : isDomain ? 200 : 180,
+      isDate ? 225 : isDomain ? 200 : 180,
       headerLabel.length * 9 + 104 + (hasKeyIcon ? 18 : 0)
     )
     const minColWidth = columnWidths[technicalName] || defaultWidth
@@ -200,7 +200,9 @@ export default function DynamicDataTable({
 
   const pendingRecordKeySet = useMemo(() => new Set(
     pendingApprovalRecords
-      .filter(record => String(record.ActionType || '').trim().toUpperCase() !== 'C')
+      // Create requests do not have a row in the active table yet. Update and
+      // delete requests must lock the existing row until ADMIN decides.
+      .filter(record => !['C', 'CREATE'].includes(String(record.ActionType || '').trim().toUpperCase()))
       .map(record => normalizeRecordKeyString(record.RecordKey))
       .filter(Boolean)
   ), [pendingApprovalRecords])
@@ -422,58 +424,58 @@ export default function DynamicDataTable({
         <div className="tab-panel-actions">
           {isEditingTable ? (
             <>
-            <Button
-              design="Emphasized"
-              icon={'save' as any}
-              onClick={onSaveInlineEdits}
-              disabled={Object.values(inlineErrors).some(row => Object.keys(row).length > 0)}
-            >
-              Save
-            </Button>
-            <Button design="Transparent" icon={'decline' as any} onClick={cancelInlineEditing}>
-              Cancel
-            </Button>
-            <Button design="Transparent" icon={'add' as any} onClick={onAddRow}>
-              Add Row
-            </Button>
+              <Button
+                design="Emphasized"
+                icon={'save' as any}
+                onClick={onSaveInlineEdits}
+                disabled={Object.values(inlineErrors).some(row => Object.keys(row).length > 0)}
+              >
+                Save
+              </Button>
+              <Button design="Transparent" icon={'decline' as any} onClick={cancelInlineEditing}>
+                Cancel
+              </Button>
+              <Button design="Transparent" icon={'add' as any} onClick={onAddRow}>
+                Add Row
+              </Button>
             </>
           ) : (
             <>
-            <Button
-              design="Emphasized"
-              icon={'add' as any}
-              disabled={dataLoading || createDenied || !!activeTableLock}
-              onClick={startCreatingNewRow}
-              accessibleName={createDenied ? 'You do not have permission to create records.' : undefined}
-            >
-              Create
-            </Button>
-            <Button
-              design="Default"
-              icon={'edit' as any}
-              disabled={dataLoading || updateDenied || !!activeTableLock || selectedRowCount === 0}
-              onClick={startEditingSelectedRows}
-              accessibleName={updateDenied ? 'You do not have permission to update this record.' : undefined}
-            >
-              {selectedRowCount > 0 ? `Edit (${selectedRowCount})` : 'Edit'}
-            </Button>
-            <Button
-              design="Transparent"
-              icon={'delete' as any}
-              disabled={dataLoading || deleteDenied || !!activeTableLock || selectedRowCount === 0}
-              onClick={deleteSelectedRow}
-              accessibleName={deleteDenied ? 'You do not have permission to delete this record.' : undefined}
-            >
-              {selectedRowCount > 1 ? `Delete (${selectedRowCount})` : 'Delete'}
-            </Button>
-            <Button
-              design="Transparent"
-              icon={'refresh' as any}
-              onClick={onRefresh}
-              disabled={dataLoading}
-            >
-              Refresh
-            </Button>
+              <Button
+                design="Emphasized"
+                icon={'add' as any}
+                disabled={dataLoading || createDenied || !!activeTableLock}
+                onClick={startCreatingNewRow}
+                accessibleName={createDenied ? 'You do not have permission to create records.' : undefined}
+              >
+                Create
+              </Button>
+              <Button
+                design="Default"
+                icon={'edit' as any}
+                disabled={dataLoading || updateDenied || !!activeTableLock || selectedRowCount === 0}
+                onClick={startEditingSelectedRows}
+                accessibleName={updateDenied ? 'You do not have permission to update this record.' : undefined}
+              >
+                {selectedRowCount > 0 ? `Edit (${selectedRowCount})` : 'Edit'}
+              </Button>
+              <Button
+                design="Transparent"
+                icon={'delete' as any}
+                disabled={dataLoading || deleteDenied || !!activeTableLock || selectedRowCount === 0}
+                onClick={deleteSelectedRow}
+                accessibleName={deleteDenied ? 'You do not have permission to delete this record.' : undefined}
+              >
+                {selectedRowCount > 1 ? `Delete (${selectedRowCount})` : 'Delete'}
+              </Button>
+              <Button
+                design="Transparent"
+                icon={'refresh' as any}
+                onClick={onRefresh}
+                disabled={dataLoading}
+              >
+                Refresh
+              </Button>
             </>
           )}
         </div>
@@ -640,19 +642,20 @@ export default function DynamicDataTable({
                         minWidth={`${minColWidth}px`}
                         style={{
                           minWidth: `${minColWidth}px`,
-                          overflow: feType === 'date' || feType === 'fk_select' ? 'visible' : undefined,
                         }}
                       >
                         {rowSelected ? (
-                          <CellEditControl
-                            row={row}
-                            rowIndex={i}
-                            field={f}
-                            inlineErrors={inlineErrors}
-                            configUuid={selectedTable.ConfigUuid}
-                            tableName={selectedTable.TableName}
-                            onCellChange={onCellChange}
-                          />
+                          <div style={{ width: '100%', minWidth: 0 }}>
+                            <CellEditControl
+                              row={row}
+                              rowIndex={i}
+                              field={f}
+                              inlineErrors={inlineErrors}
+                              configUuid={selectedTable.ConfigUuid}
+                              tableName={selectedTable.TableName}
+                              onCellChange={onCellChange}
+                            />
+                          </div>
                         ) : (
                           <FlexBox alignItems="Center" gap="4px" style={{ width: '100%', minWidth: 0 }}>
                             <Text
@@ -712,83 +715,83 @@ export default function DynamicDataTable({
             sortedData.map((row, i) => {
               const pendingApproval = isRowPending(row, i)
               return (
-              <TableRow
-                className={`dynamic-table-data-row${selectedRowKeys.has(getRowKey(row, i)) ? ' dynamic-table-data-row--selected' : ''}${pendingApproval ? ' dynamic-table-data-row--pending' : ''}`}
-                key={i}
-                interactive={!activeTableLock && !pendingApproval}
-                title={pendingApproval ? 'This record is waiting for ADMIN approval.' : undefined}
-                onClick={() => {
-                  if (activeTableLock || pendingApproval) return
-                  toggleRowSelection(getRowKey(row, i), !selectedRowKeys.has(getRowKey(row, i)))
-                }}
-                style={{
-                  gridTemplateColumns: columnsStyle,
-                  ['--ui5-table-grid-columns' as any]: columnsStyle
-                }}
-              >
-                <TableCell
-                  className="dynamic-table-selection-cell"
-                  style={selectionCellStyle}
-                  onClick={(e: any) => e.stopPropagation()}
+                <TableRow
+                  className={`dynamic-table-data-row${selectedRowKeys.has(getRowKey(row, i)) ? ' dynamic-table-data-row--selected' : ''}${pendingApproval ? ' dynamic-table-data-row--pending' : ''}`}
+                  key={i}
+                  interactive={!activeTableLock && !pendingApproval}
+                  title={pendingApproval ? 'This record is waiting for ADMIN approval.' : undefined}
+                  onClick={() => {
+                    if (activeTableLock || pendingApproval) return
+                    toggleRowSelection(getRowKey(row, i), !selectedRowKeys.has(getRowKey(row, i)))
+                  }}
+                  style={{
+                    gridTemplateColumns: columnsStyle,
+                    ['--ui5-table-grid-columns' as any]: columnsStyle
+                  }}
                 >
-                  <CheckBox
-                    checked={selectedRowKeys.has(getRowKey(row, i))}
-                    disabled={!!activeTableLock || pendingApproval}
-                    onChange={(e: any) => {
-                      e.stopPropagation()
-                      toggleRowSelection(getRowKey(row, i), e.target.checked)
-                    }}
-                  />
-                  {pendingApproval && (
-                    <Icon
-                      name={'locked' as any}
-                      className="dynamic-table-pending-lock"
-                      title="Waiting for ADMIN approval"
-                    />
-                  )}
-                </TableCell>
-                {fieldsWithWidths.map(({ field: f, minColWidth }) => {
-                  const name = f.field_name || f.FieldName
-                  const val = row[name]
-                  const singleLine = shouldKeepCellSingleLine(f, val)
-
-                  return (
-                    <TableCell
-                      key={name}
-                      minWidth={`${minColWidth}px`}
-                      style={{
-                        minWidth: `${minColWidth}px`,
+                  <TableCell
+                    className="dynamic-table-selection-cell"
+                    style={selectionCellStyle}
+                    onClick={(e: any) => e.stopPropagation()}
+                  >
+                    <CheckBox
+                      checked={selectedRowKeys.has(getRowKey(row, i))}
+                      disabled={!!activeTableLock || pendingApproval}
+                      onChange={(e: any) => {
+                        e.stopPropagation()
+                        toggleRowSelection(getRowKey(row, i), e.target.checked)
                       }}
-                    >
-                      <FlexBox alignItems="Center" gap="4px" style={{ width: '100%', minWidth: 0 }}>
-                        <Text
-                          title={String(val ?? '')}
-                          style={{
-                            color: '#32363a',
-                            overflow: singleLine ? 'hidden' : 'visible',
-                            textOverflow: singleLine ? 'ellipsis' : undefined,
-                            whiteSpace: singleLine ? 'nowrap' : 'normal',
-                            overflowWrap: 'normal',
-                            wordBreak: 'normal',
-                            minWidth: 0,
-                          }}
-                        >
-                          {formatCellValue(f, val)}
-                        </Text>
-                        {shouldShowCopyButton(f, val) && (
-                          <Button
-                            design="Transparent"
-                            icon={'copy' as any}
-                            accessibleName="Copy full value"
-                            title={copiedCellKey === `${i}-${name}` ? 'Copied' : 'Copy full value'}
-                            onClick={(e: any) => copyCellValue(val, `${i}-${name}`, e)}
-                          />
-                        )}
-                      </FlexBox>
-                    </TableCell>
-                  )
-                })}
-              </TableRow>
+                    />
+                    {pendingApproval && (
+                      <Icon
+                        name={'locked' as any}
+                        className="dynamic-table-pending-lock"
+                        title="Waiting for ADMIN approval"
+                      />
+                    )}
+                  </TableCell>
+                  {fieldsWithWidths.map(({ field: f, minColWidth }) => {
+                    const name = f.field_name || f.FieldName
+                    const val = row[name]
+                    const singleLine = shouldKeepCellSingleLine(f, val)
+
+                    return (
+                      <TableCell
+                        key={name}
+                        minWidth={`${minColWidth}px`}
+                        style={{
+                          minWidth: `${minColWidth}px`,
+                        }}
+                      >
+                        <FlexBox alignItems="Center" gap="4px" style={{ width: '100%', minWidth: 0 }}>
+                          <Text
+                            title={String(val ?? '')}
+                            style={{
+                              color: '#32363a',
+                              overflow: singleLine ? 'hidden' : 'visible',
+                              textOverflow: singleLine ? 'ellipsis' : undefined,
+                              whiteSpace: singleLine ? 'nowrap' : 'normal',
+                              overflowWrap: 'normal',
+                              wordBreak: 'normal',
+                              minWidth: 0,
+                            }}
+                          >
+                            {formatCellValue(f, val)}
+                          </Text>
+                          {shouldShowCopyButton(f, val) && (
+                            <Button
+                              design="Transparent"
+                              icon={'copy' as any}
+                              accessibleName="Copy full value"
+                              title={copiedCellKey === `${i}-${name}` ? 'Copied' : 'Copy full value'}
+                              onClick={(e: any) => copyCellValue(val, `${i}-${name}`, e)}
+                            />
+                          )}
+                        </FlexBox>
+                      </TableCell>
+                    )
+                  })}
+                </TableRow>
               )
             })
           )}

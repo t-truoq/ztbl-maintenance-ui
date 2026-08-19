@@ -3,6 +3,7 @@ import {
   loadTableContext,
   getTableData,
   createRecord,
+  bulkCreateRecords,
   updateRecord,
   bulkUpdateRecords,
   deleteRecord,
@@ -22,6 +23,7 @@ import { clearDomainCache } from '../../../services/domainCache'
 import {
   buildKeyRecord,
   buildRecordKeyString,
+  buildFullRecord,
   buildFullRecordPayload,
   buildUpdateRecord,
   buildEtagMap,
@@ -108,6 +110,11 @@ export function useTableMaintenance({
   const [activeTableLock, setActiveTableLock] = useState<{ lockedBy: string } | null>(null)
 
   const latestActiveTableUuidRef = useRef<string | null>(null)
+  // Prevent duplicate backend action calls while the same table is loading.
+  // React StrictMode re-runs effects in development; sending two concurrent
+  // getFieldMeta/getTableData actions can make SAP return a misleading 423
+  // table-configuration-lock error even though the first request succeeds.
+  const loadingTableUuidRef = useRef<string | null>(null)
   const sessionId = useId()
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -279,6 +286,9 @@ export function useTableMaintenance({
 
   async function loadTable(table: TableConfig) {
     const normalizedUuid = normalizeConfigUuid(table.ConfigUuid)
+    if (loadingTableUuidRef.current === normalizedUuid) return
+
+    loadingTableUuidRef.current = normalizedUuid
     const isChangingTable = latestActiveTableUuidRef.current !== normalizedUuid
     latestActiveTableUuidRef.current = normalizedUuid
 
@@ -327,6 +337,9 @@ export function useTableMaintenance({
         clearPageData()
       }
     } finally {
+      if (loadingTableUuidRef.current === normalizedUuid) {
+        loadingTableUuidRef.current = null
+      }
       if (latestActiveTableUuidRef.current === normalizedUuid) {
         setDataLoading(false)
       }
@@ -567,16 +580,38 @@ export function useTableMaintenance({
       const successMessages: string[] = []
 
       // -----------------------------------------------------------------------
-      // [C - CREATE INLINE] Thực thi tạo lần lượt từng dòng mới dưới SAP Backend
+      // [C - CREATE INLINE] Thực thi tạo dòng mới dưới SAP Backend
       // -----------------------------------------------------------------------
-      for (const row of newRows) {
+      if (newRows.length === 1) {
+        const row = newRows[0]
         const payload = buildFullRecordPayload(allFields, row, null)
         const res = await createRecord(selectedTable.ConfigUuid, selectedTable.TableName, payload)
-        if (res.success === false) throw new Error(res.message || 'Failed to create record')
-        const msg = res.message || res.value?.message || res.data?.message || res.data?.value?.message
+        if (res.success === false) throw new Error(getActionMessage(res) || res.message || 'Failed to create record')
+        const msg = getActionMessage(res) || res.message || res.value?.message || res.data?.message || res.data?.value?.message
         if (msg && !successMessages.includes(msg)) successMessages.push(msg)
         const code = extractApprovalCode(res)
         if (code && !approvalCodes.includes(code)) approvalCodes.push(code)
+      } else if (newRows.length > 1) {
+        // Tạo theo lô (Bulk Create) nếu thêm từ 2 dòng trở lên cùng lúc để gom chung 1 Approval ID
+        for (const chunk of chunkRecords(newRows)) {
+          const records = chunk.map(row => buildFullRecord(allFields, row, null))
+          const res = await bulkCreateRecords(
+            selectedTable.ConfigUuid,
+            selectedTable.TableName,
+            records
+          )
+          if (res.success === false) throw new Error(getActionMessage(res) || res.message || 'Failed to create records')
+
+          const failures = getBulkFailures(res)
+          if (failures.length > 0) {
+            throw new Error(formatBulkFailureMessage('create', failures))
+          }
+
+          const msg = getActionMessage(res) || res.message || res.value?.message || res.data?.message || res.data?.value?.message
+          if (msg && !successMessages.includes(msg)) successMessages.push(msg)
+          const code = extractApprovalCode(res)
+          if (code && !approvalCodes.includes(code)) approvalCodes.push(code)
+        }
       }
 
       // -----------------------------------------------------------------------

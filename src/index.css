@@ -416,8 +416,9 @@ ui5-filter-bar {
 }
 
 .table-date-picker {
+  display: block;
   width: 100%;
-  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* Keep the selected-today date cell to one visual layer inside the portal calendar. */

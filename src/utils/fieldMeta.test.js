@@ -5,7 +5,8 @@ import {
   parseFieldMetaJson,
   normalizeUuidFromBe,
   abapToIso,
-  getFormFieldsFromMeta
+  getFormFieldsFromMeta,
+  normalizeFieldMetaRow
 } from './fieldMeta.js'
 import { buildKeyRecord, isFieldReadonly } from './recordHelpers'
 
@@ -77,6 +78,26 @@ describe('formatPayload', () => {
       false
     )
     expect(JSON.parse(json).ENTITY_ID).toBe('8B95F36A4F271FD195A3D745D07762DD')
+  })
+
+  it('does not send SAP-managed audit fields in CRUD payloads', () => {
+    const json = formatPayload(
+      {
+        NAME: 'Changed',
+        CHANGED_AT: '2026-08-19 12:00:00.0000000',
+        CREATED_ON: '20260819',
+        ERDAT: '20260819'
+      },
+      [
+        { field_name: 'NAME', fe_type: 'text' },
+        { field_name: 'CHANGED_AT', fe_type: 'date' },
+        { field_name: 'CREATED_ON', fe_type: 'date' },
+        { field_name: 'ERDAT', fe_type: 'date' }
+      ],
+      false
+    )
+
+    expect(JSON.parse(json)).toEqual({ NAME: 'Changed' })
   })
 })
 
@@ -243,6 +264,29 @@ describe('buildKeyRecord', () => {
     expect(key).toEqual({
       ENTITY_ID: '8B95F36A4F271FE19C93E36B309140B2'
     })
+  })
+})
+
+describe('normalizeFieldMetaRow with boolean checkbox flags', () => {
+  it('parses boolean true/false values from BE FieldConfig checkboxes', () => {
+    const raw = {
+      FieldName: 'ENTITY_ID',
+      FieldType: 'TEXT',
+      IsKeyField: true,
+      MandatoryFlag: true,
+      ReadonlyFlag: true,
+      HiddenFlag: false
+    }
+    const normalized = normalizeFieldMetaRow(raw)
+
+    expect(normalized.is_key).toBe(true)
+    expect(normalized.IsKeyField).toBe('X')
+    expect(normalized.is_mandatory).toBe(true)
+    expect(normalized.MandatoryFlag).toBe('X')
+    expect(normalized.is_readonly).toBe(true)
+    expect(normalized.ReadonlyFlag).toBe('X')
+    expect(normalized.is_hidden).toBe(false)
+    expect(normalized.HiddenFlag).toBe('')
   })
 })
 

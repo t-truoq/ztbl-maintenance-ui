@@ -13,6 +13,7 @@ export interface FieldMeta {
   decimals?: number;
   is_key?: boolean;
   is_mandatory?: boolean;
+  is_readonly?: boolean;
   label?: string;
   domain_name?: string;
   display_order?: number;

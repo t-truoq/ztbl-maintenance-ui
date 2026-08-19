@@ -58,7 +58,7 @@ const DIFF_STATUS_META: Record<string, { state: 'Positive' | 'Critical' | 'Negat
   DELETE: { state: 'Negative', className: 'excel-diff-row--deleted' },
   DELETED: { state: 'Negative', className: 'excel-diff-row--deleted' },
   WARNING: { state: 'Critical', className: 'excel-diff-row--warning' },
-  ERROR: { state: 'None', className: 'excel-diff-row--error' },
+  ERROR: { state: 'Negative', className: 'excel-diff-row--error' },
   UNCHANGED: { state: 'None', className: 'excel-diff-row--unchanged' },
   INFO: { state: 'Information', className: '' }
 }
@@ -492,6 +492,7 @@ export default function ExcelPipelineTab({
           exactFieldOrder={uploadedFieldOrder.length > 0}
           statusState={statusState}
           rowLimit={MAIN_DIFF_ROW_LIMIT}
+          includeAllStatuses
         />
       )}
 
@@ -1098,6 +1099,7 @@ function DiffTable({
           </div>
           {displayedGroups.map(group => {
             const status = normalizeDiffStatus(group.status)
+            const isError = status === 'ERROR' || group.statuses.includes('ERROR') || group.rows.some(r => normalizeDiffStatus(r.status) === 'ERROR')
             const statusClass = diffRowClass(status)
             const rowKey = recordIdentity(group.rows[0])
 
@@ -1109,8 +1111,8 @@ function DiffTable({
                 style={{ gridTemplateColumns: diffTableGridTemplate(fieldColumns.length) }}
               >
                 <div className="excel-diff-table-cell excel-diff-table-cell--flag" role="cell" data-label="Action">
-                  <Icon name="flag" className="excel-diff-flag-icon" />
-                  <ObjectStatus state={statusState(status)}>{formatGroupAction(group)}</ObjectStatus>
+                  <Icon name={isError ? 'error' : 'flag'} className="excel-diff-flag-icon" />
+                  <ObjectStatus state={isError ? 'Negative' : statusState(status)}>{formatGroupAction(group)}</ObjectStatus>
                 </div>
                 <div className="excel-diff-table-cell excel-diff-table-cell--record" role="cell" data-label="Excel row">
                   {Array.from(new Set(group.rows.map(row => row.row_no))).join(', ')}
@@ -1158,14 +1160,18 @@ function getDiffFieldColumns(
 }
 
 function formatGroupAction(group: DiffRecordGroup): string {
+  const groupStatus = normalizeDiffStatus(group.status)
+  if (groupStatus === 'ERROR' || group.statuses.includes('ERROR') || group.rows.some(r => normalizeDiffStatus(r.status) === 'ERROR')) {
+    return 'Error'
+  }
   const actionRow = group.rows.find(row => String(row.field_name || '').trim().toUpperCase() === 'ACTION')
   const rawAction = String(actionRow?.new_value || actionRow?.old_value || '').trim().toUpperCase()
   if (rawAction === 'U' || rawAction === 'UPDATE') return 'Update'
   if (rawAction === 'C' || rawAction === 'CREATE') return 'Create'
   if (rawAction === 'D' || rawAction === 'DELETE') return 'Delete'
-  if (normalizeDiffStatus(group.status) === 'CHANGED') return 'Update'
+  if (groupStatus === 'CHANGED') return 'Update'
   if (isDeleteDiffStatus(group.status)) return 'Delete'
-  if (normalizeDiffStatus(group.status) === 'NEW') return 'Create'
+  if (groupStatus === 'NEW') return 'Create'
   return 'Ignore'
 }
 
@@ -1219,6 +1225,7 @@ function formatExcelAction(value: unknown): string {
   if (normalized === 'C' || normalized === 'CREATE') return 'Create'
   if (normalized === 'U' || normalized === 'UPDATE') return 'Update'
   if (normalized === 'D' || normalized === 'DELETE') return 'Delete'
+  if (normalized === 'ERROR' || normalized === 'E') return 'Error'
   return 'Ignore'
 }
 

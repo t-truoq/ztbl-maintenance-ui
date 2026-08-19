@@ -32,8 +32,13 @@ export function parseFieldMetaJson(metaJson: string): FieldMeta[] {
   }
 }
 
-function isTruthyFlag(value: any): boolean {
-  return value === true || value === 'X' || value === 'x' || value === 1
+export function isTruthyFlag(value: any): boolean {
+  if (value === true || value === 1) return true
+  if (typeof value === 'string') {
+    const s = value.trim().toUpperCase()
+    return s === 'X' || s === 'TRUE' || s === '1' || s === 'Y' || s === 'YES'
+  }
+  return false
 }
 
 /** Infer fe_type when getFieldMeta unavailable — uses field_list + sample row */
@@ -132,8 +137,13 @@ export function normalizeFieldMetaRow(raw: Record<string, any>): FieldMeta {
   }
   const domainName = String(raw.domain_name ?? raw.DomainName ?? raw.DOMAIN_NAME ?? raw.domname ?? raw.DomName ?? raw.DOMNAME ?? '')
   const rollName = String(raw.rollname ?? raw.RollName ?? raw.ROLLNAME ?? '')
-  const isFkKey = isTruthyFlag(raw.is_fk_key) || raw.IsFkKey === 'X' || isTruthyFlag(raw.IS_FK_KEY)
+  const isFkKey = isTruthyFlag(raw.is_fk_key) || isTruthyFlag(raw.IsFkKey) || isTruthyFlag(raw.IS_FK_KEY)
   const fkRefTable = String(raw.fk_ref_table ?? raw.FkRefTable ?? raw.FK_REF_TABLE ?? '')
+
+  const isKey = isTruthyFlag(raw.is_key) || isTruthyFlag(raw.IsKeyField) || isTruthyFlag(raw.IS_KEY)
+  const isMandatory = isTruthyFlag(raw.is_mandatory) || isTruthyFlag(raw.MandatoryFlag) || isTruthyFlag(raw.IS_MANDATORY) || isTruthyFlag(raw.Mandatory) || isTruthyFlag(raw.MANDATORY)
+  const isHidden = isTruthyFlag(raw.is_hidden) || isTruthyFlag(raw.HiddenFlag) || isTruthyFlag(raw.IS_HIDDEN) || isTruthyFlag(raw.Hidden) || isTruthyFlag(raw.HIDDEN)
+  const isReadonly = isTruthyFlag(raw.readonly_flag) || isTruthyFlag(raw.ReadonlyFlag) || isTruthyFlag(raw.READONLY_FLAG) || isTruthyFlag(raw.Readonly) || isTruthyFlag(raw.READONLY) || isTruthyFlag(raw.is_readonly) || isTruthyFlag(raw.IsReadonly)
 
   return {
     _raw: raw,
@@ -142,23 +152,24 @@ export function normalizeFieldMetaRow(raw: Record<string, any>): FieldMeta {
     fe_type: feType,
     length: Number(raw.length ?? raw.Length ?? raw.LENGTH ?? raw.leng ?? raw.Leng ?? raw.LENG ?? 0),
     decimals: Number(raw.decimals ?? raw.Decimals ?? raw.DECIMALS ?? 0),
-    is_key: isTruthyFlag(raw.is_key) || raw.IsKeyField === 'X' || isTruthyFlag(raw.IS_KEY),
-    is_mandatory: isTruthyFlag(raw.is_mandatory) || raw.MandatoryFlag === 'X' || isTruthyFlag(raw.IS_MANDATORY),
+    is_key: isKey,
+    is_mandatory: isMandatory,
     label: String(raw.label ?? raw.LabelText ?? raw.LABEL ?? fieldName),
     domain_name: domainName,
     display_order: Number(raw.display_order ?? raw.DisplayOrder ?? raw.DISPLAY_ORDER ?? 0),
-    is_hidden: isTruthyFlag(raw.is_hidden) || raw.HiddenFlag === 'X' || isTruthyFlag(raw.IS_HIDDEN) || raw.Hidden === 'X',
+    is_hidden: isHidden,
     is_fk_key: isFkKey,
     fk_ref_table: fkRefTable,
-    ReadonlyFlag: isTruthyFlag(raw.readonly_flag) || raw.ReadonlyFlag === 'X' || isTruthyFlag(raw.READONLY_FLAG) || isTruthyFlag(raw.Readonly) || isTruthyFlag(raw.READONLY) ? 'X' : '',
+    is_readonly: isReadonly,
+    ReadonlyFlag: isReadonly ? 'X' : '',
     /** Legacy aliases for existing UI helpers */
     FieldName: fieldName,
     FeType: feType,
     FieldType: feTypeToLegacyFieldType(feType),
     LabelText: String(raw.label ?? raw.LabelText ?? raw.LABEL ?? fieldName),
-    IsKeyField: isTruthyFlag(raw.is_key) || raw.IsKeyField === 'X' || isTruthyFlag(raw.IS_KEY) ? 'X' : '',
-    MandatoryFlag: isTruthyFlag(raw.is_mandatory) || raw.MandatoryFlag === 'X' || isTruthyFlag(raw.IS_MANDATORY) ? 'X' : '',
-    HiddenFlag: isTruthyFlag(raw.is_hidden) || raw.HiddenFlag === 'X' || isTruthyFlag(raw.IS_HIDDEN) || raw.Hidden === 'X' ? 'X' : '',
+    IsKeyField: isKey ? 'X' : '',
+    MandatoryFlag: isMandatory ? 'X' : '',
+    HiddenFlag: isHidden ? 'X' : '',
     DomainName: domainName,
     RollName: rollName,
     rollname: rollName,
@@ -336,10 +347,8 @@ export function normalizeUuidFromBe(value: any): string {
  * @param {boolean} isCreate
  * @returns {string}
  */
-/** SAP system-managed fields that must never be sent in any payload */
+const SAP_CLIENT_FIELDS = new Set(['CLIENT', 'MANDT'])
 const SAP_SYSTEM_FIELDS = new Set([
-  'CLIENT',
-  'MANDT',
   'CREATED_BY',
   'CREATED_AT',
   'CREATED_ON',
@@ -358,20 +367,23 @@ const SAP_SYSTEM_FIELDS = new Set([
   'LAEDA'
 ])
 
+function isSapSystemField(fieldName: string): boolean {
+  const name = String(fieldName || '').trim().toUpperCase()
+  return SAP_SYSTEM_FIELDS.has(name) || /^(CREATED|CHANGED|LAST_CHANGED|LOCAL_LAST_CHANGED)_(BY|AT|ON|DATE|TIME)$/i.test(name)
+}
+
 export function formatPayload(formData: Record<string, any>, meta: FieldMeta[], isCreate: boolean): string {
   const payload: Record<string, any> = {}
 
   for (const field of meta) {
     if (field.is_hidden) continue
     const keyName = (field.field_name || field.FieldName || '').toUpperCase()
-    
-    // CLIENT/MANDT & system audit fields are managed by SAP ABAP backend — never send in payload
-    if (
-      SAP_SYSTEM_FIELDS.has(keyName) ||
-      /^(CREATED|CHANGED|LAST_CHANGED|LOCAL_LAST_CHANGED)_(BY|AT|ON|DATE|TIME)$/i.test(keyName)
-    ) {
-      continue
-    }
+
+    // CLIENT/MANDT is always managed by SAP — never send it in any payload
+    if (SAP_CLIENT_FIELDS.has(keyName) || keyName === 'CLIENT' || keyName === 'MANDT') continue
+
+    // Audit/timestamp fields are filled by SAP.
+    if (isSapSystemField(keyName)) continue
 
     const key = field.field_name || field.FieldName
     const raw = formData[key]

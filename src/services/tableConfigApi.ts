@@ -15,7 +15,8 @@ import {
   parseFieldMetaJson,
   parseTableData,
   normalizeFieldMetaRow,
-  buildFieldMetaFromFieldList
+  buildFieldMetaFromFieldList,
+  isTruthyFlag
 } from '../utils/fieldMeta'
 import { TableConfig, FieldMeta, AuditLogEntry, AuditItemEntry, TableRowData, AiFieldDescription, PendingApprovalRecord } from '../types'
 import { isYesFlag } from '../utils/tableHelpers'
@@ -191,7 +192,10 @@ export async function getPendingApprovalRecords(tableName: string): Promise<Pend
   const res = await api.get('/ApprovalItem', {
     params: {
       'sap-client': SAP_CLIENT,
-      '$filter': `TableName eq '${escapedTableName}'`,
+      // Only pending approval items can block a row in the main table.
+      // Filtering at OData level avoids treating historical REJECTED/
+      // APPROVED items as active locks and keeps the response small.
+      '$filter': `TableName eq '${escapedTableName}' and Status eq 'PENDING'`,
       '$select': 'TableName,RecordKey,Status,ActionType'
     },
     headers: {
@@ -202,12 +206,18 @@ export async function getPendingApprovalRecords(tableName: string): Promise<Pend
 
   const rows = Array.isArray(res.data?.value) ? res.data.value : []
   return rows
-    .map((row: any) => ({
-      TableName: String(row.TableName ?? ''),
-      RecordKey: String(row.RecordKey ?? ''),
-      Status: String(row.Status ?? ''),
-      ActionType: String(row.ActionType ?? '')
-    }))
+    .map((row: any) => {
+      const recordKey = row.RecordKey ?? row.recordKey ?? row.RECORDKEY ?? ''
+      const actionType = row.ActionType ?? row.actionType ?? row.ACTIONTYPE ?? ''
+      return {
+        TableName: String(row.TableName ?? row.tableName ?? row.TABLENAME ?? ''),
+        // Some OData adapters deserialize this JSON field into an object.
+        // Keep the wire shape comparable with the row key used by the table.
+        RecordKey: typeof recordKey === 'string' ? recordKey : JSON.stringify(recordKey),
+        Status: String(row.Status ?? row.status ?? row.STATUS ?? ''),
+        ActionType: String(actionType)
+      }
+    })
     .filter(row => isPendingApprovalStatus(row.Status))
 }
 
@@ -325,13 +335,13 @@ export async function getFieldConfig(tableName: string): Promise<FieldMeta[]> {
       abap_type: row.AbapType || row.IntType || row.ABAP_TYPE || row.INTTYPE,
       length: row.Length,
       decimals: row.Decimals,
-      is_key: row.IsKeyField === 'X',
-      is_mandatory: row.MandatoryFlag === 'X',
+      is_key: isTruthyFlag(row.IsKeyField ?? row.is_key),
+      is_mandatory: isTruthyFlag(row.MandatoryFlag ?? row.is_mandatory ?? row.Mandatory),
       label: row.LabelText,
       domain_name: row.DomainName,
       display_order: row.DisplayOrder,
-      is_hidden: row.HiddenFlag === 'X' || row.Hidden === 'X',
-      readonly_flag: row.ReadonlyFlag === 'X' || row.Readonly === 'X'
+      is_hidden: isTruthyFlag(row.HiddenFlag ?? row.is_hidden ?? row.Hidden),
+      readonly_flag: isTruthyFlag(row.ReadonlyFlag ?? row.readonly_flag ?? row.Readonly)
     })
   )
 }
@@ -372,15 +382,25 @@ export async function loadFieldMetaForTable(configUuid: string, tableName: strin
         ? dbField.fe_type
         : custom.fe_type || dbField.fe_type
 
+    const isKey = custom.is_key !== undefined ? custom.is_key : dbField.is_key
+    const isMandatory = custom.is_mandatory !== undefined ? custom.is_mandatory : dbField.is_mandatory
+    const isHidden = custom.is_hidden !== undefined ? custom.is_hidden : dbField.is_hidden
+    const isReadonly = custom.is_readonly !== undefined ? custom.is_readonly : (custom.ReadonlyFlag === 'X' || dbField.ReadonlyFlag === 'X')
+
     return {
       ...dbField,
       label: custom.label || dbField.label,
       LabelText: custom.LabelText || dbField.LabelText,
       display_order: custom.display_order ?? dbField.display_order,
       DisplayOrder: custom.DisplayOrder ?? dbField.DisplayOrder,
-      is_hidden: custom.is_hidden,
-      HiddenFlag: custom.HiddenFlag,
-      ReadonlyFlag: custom.ReadonlyFlag,
+      is_key: isKey,
+      IsKeyField: isKey ? 'X' : '',
+      is_mandatory: isMandatory,
+      MandatoryFlag: isMandatory ? 'X' : '',
+      is_hidden: isHidden,
+      HiddenFlag: isHidden ? 'X' : '',
+      is_readonly: isReadonly,
+      ReadonlyFlag: isReadonly ? 'X' : '',
       fe_type: mergedFeType,
       FeType: mergedFeType
     }
@@ -709,7 +729,19 @@ function asRecordKeyJson(recordKey: any): string {
 }
 
 function asRecordsDataJson(records: any[]): string {
-  return JSON.stringify(records.map(record => stripClientFields(record)))
+  if (!Array.isArray(records)) return '[]'
+  return JSON.stringify(
+    records.map(record => {
+      if (typeof record === 'string') {
+        try {
+          return stripClientFields(JSON.parse(record))
+        } catch {
+          return record
+        }
+      }
+      return stripClientFields(record)
+    })
+  )
 }
 
 export interface BulkActionResult {
@@ -771,6 +803,26 @@ export async function createRecord(configUuid: string, tableName: string, record
       record_key: '',
       record_data: asRecordDataJson(recordData),
       records_data: '',
+      etag_field: '',
+      etag_value: ''
+    },
+    { params: { 'sap-client': SAP_CLIENT } }
+  )
+  return res.data
+}
+
+export async function bulkCreateRecords(
+  configUuid: string,
+  tableName: string,
+  records: any[]
+): Promise<any> {
+  const res = await apiPostWithCsrf(
+    actionUrl(configUuid, 'createRecord'),
+    {
+      table_name: tableName,
+      record_key: '',
+      record_data: '',
+      records_data: asRecordsDataJson(records),
       etag_field: '',
       etag_value: ''
     },

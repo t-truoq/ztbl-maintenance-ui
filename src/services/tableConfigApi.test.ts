@@ -28,6 +28,7 @@ import {
   bulkDeleteRecords,
   bulkUpdateRecords,
   createRecord,
+  bulkCreateRecords,
   deleteRecord,
   formatActionErrorMessage,
   getActionMessage,
@@ -152,7 +153,7 @@ describe('tableConfigApi table loading', () => {
 
     expect(mockGet).toHaveBeenCalledWith('/ApprovalItem', expect.objectContaining({
       params: expect.objectContaining({
-        '$filter': "TableName eq 'Z253_CAT'",
+        '$filter': "TableName eq 'Z253_CAT' and Status eq 'PENDING'",
         '$select': 'TableName,RecordKey,Status,ActionType'
       })
     }))
@@ -196,6 +197,40 @@ describe('tableConfigApi table loading', () => {
     expect(result.fieldMeta.map(f => f.field_name)).toEqual(['COURSE_ID', 'VALID_FROM'])
     expect(result.rows).toEqual([{ COURSE_ID: 'C001', VALID_FROM: '2026-05-21' }])
   })
+
+  it('merges FieldConfig with boolean ReadonlyFlag into table metadata correctly', async () => {
+    mockPostWithCsrf
+      .mockResolvedValueOnce({
+        data: {
+          meta_json: JSON.stringify([
+            { FIELD_NAME: 'EMP_ID', FE_TYPE: 'text', IS_KEY: true, IS_MANDATORY: true, DISPLAY_ORDER: 2 },
+            { FIELD_NAME: 'FULL_NAME', FE_TYPE: 'text', IS_KEY: false, IS_MANDATORY: false, DISPLAY_ORDER: 3 },
+            { FIELD_NAME: 'ROLE', FE_TYPE: 'text', IS_KEY: false, IS_MANDATORY: false, DISPLAY_ORDER: 4 }
+          ])
+        }
+      })
+      .mockResolvedValueOnce({
+        data: { data_json: '[]' }
+      })
+    mockGet.mockResolvedValueOnce({
+      data: {
+        value: [
+          { TableName: 'YSAP21_EMPLOYEE', FieldName: 'EMP_ID', IsKeyField: true, MandatoryFlag: true, ReadonlyFlag: false, HiddenFlag: false, DisplayOrder: 2 },
+          { TableName: 'YSAP21_EMPLOYEE', FieldName: 'FULL_NAME', IsKeyField: false, MandatoryFlag: false, ReadonlyFlag: true, HiddenFlag: true, DisplayOrder: 3 },
+          { TableName: 'YSAP21_EMPLOYEE', FieldName: 'ROLE', IsKeyField: false, MandatoryFlag: false, ReadonlyFlag: true, HiddenFlag: false, DisplayOrder: 4 }
+        ]
+      }
+    })
+
+    const result = await loadTableContext('8B95F36A4F271FD195A3D745D07762DD', 'YSAP21_EMPLOYEE')
+    const roleField = result.fieldMeta.find(f => f.field_name === 'ROLE')
+    const fullNameField = result.fieldMeta.find(f => f.field_name === 'FULL_NAME')
+
+    expect(roleField?.is_readonly).toBe(true)
+    expect(roleField?.ReadonlyFlag).toBe('X')
+    expect(fullNameField?.is_hidden).toBe(true)
+    expect(fullNameField?.HiddenFlag).toBe('X')
+  })
 })
 
 describe('tableConfigApi CRUD payloads', () => {
@@ -219,6 +254,26 @@ describe('tableConfigApi CRUD payloads', () => {
       records_data: ''
     })
     expect(JSON.parse(body.record_data)).toEqual({ COURSE_ID: 'C001', NAME: 'Course' })
+  })
+
+  it('bulk creates records with client-safe records_data JSON', async () => {
+    mockPostWithCsrf.mockResolvedValueOnce({ data: { success: true, message: 'Bulk Created' } })
+
+    await bulkCreateRecords('8B95F36A4F271FD195A3D745D07762DD', 'Z251_SCHEDULE', [
+      { MANDT: '324', COURSE_ID: 'C001', NAME: 'Course 1' },
+      { CLIENT: '324', COURSE_ID: 'C002', NAME: 'Course 2' }
+    ])
+
+    const [, body] = mockPostWithCsrf.mock.calls[0]
+    expect(body).toMatchObject({
+      table_name: 'Z251_SCHEDULE',
+      record_key: '',
+      record_data: ''
+    })
+    expect(JSON.parse(body.records_data)).toEqual([
+      { COURSE_ID: 'C001', NAME: 'Course 1' },
+      { COURSE_ID: 'C002', NAME: 'Course 2' }
+    ])
   })
 
   it('updates records with key, record data, and formatted ETag value', async () => {

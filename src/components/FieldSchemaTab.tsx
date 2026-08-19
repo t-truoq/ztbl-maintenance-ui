@@ -82,85 +82,85 @@ export default function FieldSchemaTab({
           overflowMode="Scroll"
           headerRow={
             <TableHeaderRow className="field-schema-table-header-row">
-            <TableHeaderCell className="field-schema-table-header-cell" minWidth="180px">
-              <Label>Field</Label>
-            </TableHeaderCell>
-            <TableHeaderCell className="field-schema-table-header-cell" minWidth="120px">
-              <Label>FE type</Label>
-            </TableHeaderCell>
-            <TableHeaderCell className="field-schema-table-header-cell" minWidth="100px">
-              <Label>ABAP</Label>
-            </TableHeaderCell>
-            <TableHeaderCell className="field-schema-table-header-cell" minWidth="180px">
-              <Label>Label</Label>
-            </TableHeaderCell>
-            <TableHeaderCell className="field-schema-table-header-cell" minWidth="80px">
-              <Label>Key</Label>
-            </TableHeaderCell>
-            <TableHeaderCell className="field-schema-table-header-cell" minWidth="110px">
-              <Label>Required</Label>
-            </TableHeaderCell>
-            <TableHeaderCell className="field-schema-table-header-cell" minWidth="80px">
-              <Label>FK</Label>
-            </TableHeaderCell>
-            <TableHeaderCell className="field-schema-table-header-cell" minWidth="150px">
-              <Label>Domain</Label>
-            </TableHeaderCell>
-            <TableHeaderCell className="field-schema-table-header-cell" minWidth="180px">
-              <Label>AI Description</Label>
-            </TableHeaderCell>
-            <TableHeaderCell className="field-schema-table-header-cell" minWidth="180px">
-              <Label>Input Guidance</Label>
-            </TableHeaderCell>
-          </TableHeaderRow>
+              <TableHeaderCell className="field-schema-table-header-cell" minWidth="180px">
+                <Label>Field</Label>
+              </TableHeaderCell>
+              <TableHeaderCell className="field-schema-table-header-cell" minWidth="120px">
+                <Label>FE type</Label>
+              </TableHeaderCell>
+              <TableHeaderCell className="field-schema-table-header-cell" minWidth="100px">
+                <Label>ABAP</Label>
+              </TableHeaderCell>
+              <TableHeaderCell className="field-schema-table-header-cell" minWidth="180px">
+                <Label>Label</Label>
+              </TableHeaderCell>
+              <TableHeaderCell className="field-schema-table-header-cell" minWidth="80px">
+                <Label>Key</Label>
+              </TableHeaderCell>
+              <TableHeaderCell className="field-schema-table-header-cell" minWidth="110px">
+                <Label>Required</Label>
+              </TableHeaderCell>
+              <TableHeaderCell className="field-schema-table-header-cell" minWidth="80px">
+                <Label>FK</Label>
+              </TableHeaderCell>
+              <TableHeaderCell className="field-schema-table-header-cell" minWidth="150px">
+                <Label>Domain</Label>
+              </TableHeaderCell>
+              <TableHeaderCell className="field-schema-table-header-cell" minWidth="180px">
+                <Label>AI Description</Label>
+              </TableHeaderCell>
+              <TableHeaderCell className="field-schema-table-header-cell" minWidth="180px">
+                <Label>Input Guidance</Label>
+              </TableHeaderCell>
+            </TableHeaderRow>
           }
         >
-        {allFields.length === 0 ? (
-          <TableRow className="field-schema-empty-row">
-            <TableCell className="field-schema-empty-cell" {...({ colSpan: 10 } as any)}>
-              <Text>No field metadata loaded.</Text>
-            </TableCell>
-          </TableRow>
-        ) : (
-          allFields.map(f => {
-            const name = f.field_name || f.FieldName
-            const ai = aiDescriptions[name.toUpperCase()]
-            return (
-              <TableRow className="field-schema-data-row" key={name}>
-                <TableCell className="field-schema-cell field-schema-cell--technical">
-                  <Text>{name}</Text>
-                </TableCell>
-                <TableCell className="field-schema-cell field-schema-cell--technical">
-                  <Text>{f.fe_type || f.FeType || '-'}</Text>
-                </TableCell>
-                <TableCell className="field-schema-cell field-schema-cell--technical">
-                  <Text>{f.abap_type || '-'}</Text>
-                </TableCell>
-                <TableCell className="field-schema-cell">
-                  <Text>{f.label || f.LabelText || name}</Text>
-                </TableCell>
-                <TableCell className="field-schema-cell field-schema-cell--flag">
-                  <Text>{f.is_key || f.IsKeyField === 'X' ? 'Yes' : ''}</Text>
-                </TableCell>
-                <TableCell className="field-schema-cell field-schema-cell--flag">
-                  <Text>{isRequired(f) ? 'Yes' : ''}</Text>
-                </TableCell>
-                <TableCell className="field-schema-cell field-schema-cell--flag">
-                  <Text>{isForeignKey(f) ? 'Yes' : ''}</Text>
-                </TableCell>
-                <TableCell className="field-schema-cell field-schema-cell--technical">
-                  <Text>{f.domain_name || f.DomainName || ''}</Text>
-                </TableCell>
-                <TableCell className="field-schema-cell field-schema-cell--description">
-                  <Text>{ai?.description || ''}</Text>
-                </TableCell>
-                <TableCell className="field-schema-cell field-schema-cell--description">
-                  <Text>{ai?.constraints || ''}</Text>
-                </TableCell>
-              </TableRow>
-            )
-          })
-        )}
+          {allFields.length === 0 ? (
+            <TableRow className="field-schema-empty-row">
+              <TableCell className="field-schema-empty-cell" {...({ colSpan: 10 } as any)}>
+                <Text>No field metadata loaded.</Text>
+              </TableCell>
+            </TableRow>
+          ) : (
+            allFields.map(f => {
+              const name = f.field_name || f.FieldName
+              const ai = aiDescriptions[name.toUpperCase()]
+              return (
+                <TableRow className="field-schema-data-row" key={name}>
+                  <TableCell className="field-schema-cell field-schema-cell--technical">
+                    <Text>{name}</Text>
+                  </TableCell>
+                  <TableCell className="field-schema-cell field-schema-cell--technical">
+                    <Text>{f.fe_type || f.FeType || '-'}</Text>
+                  </TableCell>
+                  <TableCell className="field-schema-cell field-schema-cell--technical">
+                    <Text>{f.abap_type || '-'}</Text>
+                  </TableCell>
+                  <TableCell className="field-schema-cell">
+                    <Text>{f.label || f.LabelText || name}</Text>
+                  </TableCell>
+                  <TableCell className="field-schema-cell field-schema-cell--flag">
+                    <Text>{f.is_key || f.IsKeyField === 'X' ? 'Yes' : ''}</Text>
+                  </TableCell>
+                  <TableCell className="field-schema-cell field-schema-cell--flag">
+                    <Text>{isRequired(f) ? 'Yes' : ''}</Text>
+                  </TableCell>
+                  <TableCell className="field-schema-cell field-schema-cell--flag">
+                    <Text>{isForeignKey(f) ? 'Yes' : ''}</Text>
+                  </TableCell>
+                  <TableCell className="field-schema-cell field-schema-cell--technical">
+                    <Text>{f.domain_name || f.DomainName || ''}</Text>
+                  </TableCell>
+                  <TableCell className="field-schema-cell field-schema-cell--description">
+                    <Text>{ai?.description || ''}</Text>
+                  </TableCell>
+                  <TableCell className="field-schema-cell field-schema-cell--description">
+                    <Text>{ai?.constraints || ''}</Text>
+                  </TableCell>
+                </TableRow>
+              )
+            })
+          )}
         </Table>
       </div>
     </div>
