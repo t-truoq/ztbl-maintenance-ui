@@ -17,7 +17,7 @@ sap.ui.define([
     createContent: function () {
       var sModulePath = sap.ui.require.toUrl("ztbl/maintenance/ui");
       var sComponentId = this.getId();
-      var sAppVersion = "20260617-1745";
+      var sAppVersion = "20260819-2115";
 
       // Load index.css dynamically if not already loaded
       var sCssId = "ztbl-maintenance-css";

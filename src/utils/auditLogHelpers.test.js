@@ -49,14 +49,17 @@ describe('auditLogHelpers bulk flow', () => {
     expect(result[0]._Items[1]).toMatchObject({ RecordKey: '002', ActionType: 'D' })
   })
 
-  it('keeps the original AuditId when a rollback audit is returned', () => {
+  it('keeps the original audit and the new rollback audit as separate records', () => {
     const result = normalizeAuditLogEntries([
       { AuditId: 'ORIGINAL-1', TableName: 'ZTEST', RecordKey: '001', FieldName: 'STATUS', ActionType: 'D', RollbackAuditId: 'ROLLBACK-1' },
       { AuditId: 'ROLLBACK-1', TableName: 'ZTEST', RecordKey: '001', FieldName: 'STATUS', ActionType: 'R' }
     ])
 
-    expect(result).toHaveLength(1)
-    expect(result[0]).toMatchObject({ AuditId: 'ROLLBACK-1', DisplayAuditId: 'ORIGINAL-1', ActionType: 'R' })
+    expect(result).toHaveLength(2)
+    expect(result).toEqual(expect.arrayContaining([
+      expect.objectContaining({ AuditId: 'ORIGINAL-1', ActionType: 'D', RollbackAuditId: 'ROLLBACK-1' }),
+      expect.objectContaining({ AuditId: 'ROLLBACK-1', ActionType: 'R' })
+    ]))
   })
 
   it('detects rollback summaries with item counts without requiring BULK record key', () => {
@@ -134,7 +137,7 @@ describe('auditLogHelpers bulk flow', () => {
     expect(getAuditItemDisplayActionType(bulkEntry, { ActionType: 'D' })).toBe('D')
   })
 
-  it('uses the executed child action and inverts the source action only when rollback items are returned as R', () => {
+  it('preserves the child action exactly as returned by the backend', () => {
     const rollbackEntry = {
       ...bulkEntry,
       AuditId: 'ROLLBACK-2',
@@ -154,12 +157,12 @@ describe('auditLogHelpers bulk flow', () => {
       rollbackEntry,
       { ItemNo: 1, RecordKey: '{"CATEGORY_ID":"5"}', ActionType: 'R' },
       [rollbackEntry, sourceEntry]
-    )).toBe('C')
+    )).toBe('R')
     expect(getAuditItemDisplayActionType(
       rollbackEntry,
       { ItemNo: 2, RecordKey: '{"CATEGORY_ID":"3"}', ActionType: 'R' },
       [rollbackEntry, sourceEntry]
-    )).toBe('D')
+    )).toBe('R')
     expect(getAuditItemDisplayActionType(
       rollbackEntry,
       { ItemNo: 2, RecordKey: '{"CATEGORY_ID":"3"}', ActionType: 'D' },
