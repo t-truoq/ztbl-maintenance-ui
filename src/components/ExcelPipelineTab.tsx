@@ -83,7 +83,7 @@ export default function ExcelPipelineTab({
   const [dragActive, setDragActive] = useState(false)
 
   const visibleRows = useMemo(
-    () => diffRows.filter(row => !(row.row_no === 0 || row.status === 'INFO')),
+    () => diffRows.filter(row => row.row_no !== 0 && shouldShowReviewDiffRow(row)),
     [diffRows]
   )
   const excelFieldOrder = useMemo(
@@ -956,11 +956,11 @@ function StatusSummary({
     { label: 'New', value: statusCounts.NEW, accent: '#107e3e' },
     { label: 'Updated', value: statusCounts.CHANGED, accent: '#e09d00' },
     { label: 'Deleted', value: (statusCounts.DELETE ?? 0) + (statusCounts.DELETED ?? 0), accent: '#bb0000' },
+    { label: 'Unchanged', value: statusCounts.UNCHANGED ?? 0, accent: '#7f8c8d' },
     { label: 'Errors', value: errorCount, accent: EXCEL_ERROR_ACCENT },
     { label: 'Commit records', value: commit, accent: '#0a6ed1' }
   ]
   const additionalItems = [
-    { label: 'Unchanged', value: statusCounts.UNCHANGED ?? 0, tone: 'neutral' },
     { label: 'Warnings', value: statusCounts.WARNING ?? 0, tone: 'warning' }
   ].filter(item => item.value > 0)
 
@@ -1038,7 +1038,7 @@ function DiffTable({
   includeAllStatuses?: boolean
 }) {
   const changedRows = rows.filter(row => includeAllStatuses
-    ? ['NEW', 'CHANGED', 'DELETE', 'DELETED', 'UNCHANGED', 'WARNING', 'ERROR'].includes(normalizeDiffStatus(row.status))
+    ? ['NEW', 'CHANGED', 'DELETE', 'DELETED', 'UNCHANGED', 'INFO', 'WARNING', 'ERROR'].includes(normalizeDiffStatus(row.status))
     : isActionableDiffStatus(row.status)
   )
   const changedGroups = buildDiffRecordGroups(changedRows)
@@ -1121,7 +1121,7 @@ function DiffTable({
                   <DiffSpreadsheetFieldCell key={`${rowKey}-${field}`} group={group} field={field} />
                 ))}
                 <div className="excel-diff-table-cell" role="cell" data-label="Message">
-                  <DiffSpreadsheetMessage group={group} />
+                  <DiffSpreadsheetMessage group={group} fields={fieldColumns} />
                 </div>
               </div>
             )
@@ -1172,7 +1172,7 @@ function formatGroupAction(group: DiffRecordGroup): string {
   if (groupStatus === 'CHANGED') return 'Update'
   if (isDeleteDiffStatus(group.status)) return 'Delete'
   if (groupStatus === 'NEW') return 'Create'
-  return 'Ignore'
+  return 'Skip'
 }
 
 function DiffSpreadsheetFieldCell({ group, field }: { group: DiffRecordGroup; field: string }) {
@@ -1195,12 +1195,20 @@ function DiffSpreadsheetFieldCell({ group, field }: { group: DiffRecordGroup; fi
   if (!row) {
     const value = field === 'ACTION' && isDeleteDiffStatus(group.status)
       ? formatExcelAction('D')
-      : '-'
-    return <div className="excel-diff-table-cell" role="cell" data-label={field}>{value}</div>
+      : isUpdateActionGroup(group)
+        ? '-'
+        : '-'
+    return (
+      <div className="excel-diff-table-cell" role="cell" data-label={field}>
+        <Text className="excel-diff-cell-text">{value}</Text>
+      </div>
+    )
   }
 
   const status = normalizeDiffStatus(row.status)
-  const value = status === 'NEW'
+  const value = ['INFO', 'UNCHANGED'].includes(status) && isUpdateActionGroup(group)
+    ? '-'
+    : status === 'NEW'
     ? formatSpreadsheetFieldValue(field, row.new_value)
     : status === 'CHANGED'
       ? `${formatSpreadsheetFieldValue(field, row.old_value)} → ${formatSpreadsheetFieldValue(field, row.new_value)}`
@@ -1217,7 +1225,21 @@ function formatSpreadsheetFieldValue(field: string, value: unknown): string {
   if (String(field || '').trim().toUpperCase() === 'ACTION') {
     return formatExcelAction(value)
   }
-  return String(value ?? '').trim() || '-'
+  const text = String(value ?? '').trim()
+  if (!text) return '-'
+
+  // Excel decimal values can arrive as binary floating-point artifacts
+  // such as 2.0009999999999999. Clean only obvious repeated 0/9 tails;
+  // ordinary high-precision values are left untouched.
+  const numericMatch = text.match(/^(-?\d+)\.(\d+)$/)
+  if (numericMatch && /(?:0{4,}|9{4,})$/.test(numericMatch[2])) {
+    const numericValue = Number(text)
+    if (Number.isFinite(numericValue)) {
+      return String(Number(numericValue.toFixed(6)))
+    }
+  }
+
+  return text
 }
 
 function formatExcelAction(value: unknown): string {
@@ -1229,12 +1251,47 @@ function formatExcelAction(value: unknown): string {
   return 'Ignore'
 }
 
-function DiffSpreadsheetMessage({ group }: { group: DiffRecordGroup }) {
+function DiffSpreadsheetMessage({ group, fields }: { group: DiffRecordGroup; fields: string[] }) {
   const messages = group.rows.map(row => String(row.message || '').trim()).filter(Boolean)
   if (isDeleteDiffStatus(group.status)) messages.unshift('Record will be deleted')
 
+  if (isUpdateActionGroup(group)) {
+    const changedFields = new Set(
+      group.rows
+        .filter(row => !['INFO', 'UNCHANGED'].includes(normalizeDiffStatus(row.status)))
+        .map(row => getDiffFieldLabel(row).trim().toUpperCase())
+    )
+    const ignoredFields = group.rows
+      .filter(row => normalizeDiffStatus(row.status) === 'INFO')
+      .map(getDiffFieldLabel)
+    const skippedFields = [
+      ...group.rows
+        .filter(row => normalizeDiffStatus(row.status) === 'UNCHANGED')
+        .map(getDiffFieldLabel),
+      ...fields.filter(field => !changedFields.has(field.trim().toUpperCase()) &&
+        !ignoredFields.some(ignored => ignored.trim().toUpperCase() === field.trim().toUpperCase()))
+    ]
+    if (ignoredFields.length > 0) messages.push(`Ignore: ${ignoredFields.join(', ')}`)
+    if (skippedFields.length > 0) messages.push(`Skipped: ${Array.from(new Set(skippedFields)).join(', ')}`)
+  }
+
   const uniqueMessages = deduplicateExcelMessages(messages)
   return <Text className="excel-diff-cell-text">{uniqueMessages.join('; ') || '-'}</Text>
+}
+
+function isUpdateActionGroup(group: DiffRecordGroup): boolean {
+  const actionRow = group.rows.find(row => String(row.field_name || '').trim().toUpperCase() === 'ACTION')
+  const rawAction = String(actionRow?.new_value || actionRow?.old_value || '').trim().toUpperCase()
+  return rawAction === 'U' || rawAction === 'UPDATE' || normalizeDiffStatus(group.status) === 'CHANGED'
+}
+
+function shouldShowReviewDiffRow(row: ExcelDiffRow): boolean {
+  const status = normalizeDiffStatus(row.status)
+  // INFO/UNCHANGED rows are meaningful review results for a real Excel row:
+  // they tell the user that an ACTION was present but no field was changed.
+  // Only global informational rows (row_no = 0) are removed by the caller.
+  if (status === 'INFO' || status === 'UNCHANGED') return row.row_no !== 0
+  return true
 }
 
 function buildDiffRecordGroups(rows: ExcelDiffRow[]): DiffRecordGroup[] {

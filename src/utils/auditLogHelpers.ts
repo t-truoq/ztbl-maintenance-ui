@@ -155,16 +155,6 @@ export function findBulkChildren(bulkEntry: AuditLogEntry, _allEntries: AuditLog
  * rows into AuditLog, so the UI groups them back into the Fiori shape here.
  */
 export function normalizeAuditLogEntries(entries: AuditLogEntry[]): AuditLogEntry[] {
-  const rollbackEntryIds = new Set(entries.map(entry => String(entry.AuditId || '').trim()))
-  const sourceAuditIdsRolledBack = new Set(
-    entries
-      .filter(entry => {
-        const rollbackAuditId = String((entry as any).RollbackAuditId ?? (entry as any).rollbackAuditId ?? '').trim()
-        return rollbackAuditId && rollbackEntryIds.has(rollbackAuditId)
-      })
-      .map(entry => String(entry.AuditId || '').trim())
-      .filter(Boolean)
-  )
   const groups = new Map<string, AuditLogEntry[]>()
   const withoutId: AuditLogEntry[] = []
 
@@ -220,18 +210,9 @@ export function normalizeAuditLogEntries(entries: AuditLogEntry[]): AuditLogEntr
     normalized.push(header)
   })
 
+  // Keep both records exactly as returned by the backend: the original audit
+  // retains its original action and the rollback is a separate audit entry.
   return [...normalized, ...withoutId]
-    .filter(entry => !sourceAuditIdsRolledBack.has(String(entry.AuditId || '').trim()))
-    .map(entry => {
-      const source = entries.find(candidate =>
-        String((candidate as any).RollbackAuditId ?? (candidate as any).rollbackAuditId ?? '').trim() === entry.AuditId
-      )
-      if (!source) return entry
-      return {
-        ...entry,
-        DisplayAuditId: source.AuditId
-      }
-    })
 }
 
 export function getAuditDisplayId(entry: AuditLogEntry): string {
@@ -300,36 +281,10 @@ export function findRollbackSourceEntry(
 export function getAuditItemDisplayActionType(
   parentEntry: AuditLogEntry,
   item: AuditItemEntry,
-  allEntries: AuditLogEntry[] = []
+  _allEntries: AuditLogEntry[] = []
 ): string {
   const itemAction = normalizeAuditActionType(item.ActionType)
-  const fallbackAction = itemAction || normalizeAuditActionType(parentEntry.ActionType)
-  if (!isRollbackAuditAction(parentEntry.ActionType)) return fallbackAction
-
-  // Rollback AuditItems already describe the action that was actually executed.
-  // Do not replace a concrete child action with the original audit action:
-  // rolling back Create executes Delete, and rolling back Delete executes Create.
-  if (itemAction === 'C' || itemAction === 'U' || itemAction === 'D') return itemAction
-
-  const sourceEntry = findRollbackSourceEntry(parentEntry, allEntries)
-  if (!sourceEntry) return fallbackAction
-
-  const sourceItems = getEmbeddedAuditItems(sourceEntry)
-  const itemRecordKey = getRawRecordKey(item)
-  const normalizedRecordKey = getRecordKey(item)
-  const matchingSourceItem = sourceItems.find(sourceItem =>
-    itemRecordKey && (
-      getRawRecordKey(sourceItem) === itemRecordKey ||
-      getRecordKey(sourceItem) === normalizedRecordKey
-    )
-  ) || sourceItems.find(sourceItem => item.ItemNo != null && sourceItem.ItemNo === item.ItemNo)
-  const sourceAction = normalizeAuditActionType(matchingSourceItem?.ActionType || sourceEntry.ActionType)
-
-  if (sourceAction === 'C') return 'D'
-  if (sourceAction === 'D') return 'C'
-  if (sourceAction === 'U') return 'U'
-
-  return fallbackAction
+  return itemAction || normalizeAuditActionType(parentEntry.ActionType)
 }
 
 export function getAuditDetailFieldSummary(

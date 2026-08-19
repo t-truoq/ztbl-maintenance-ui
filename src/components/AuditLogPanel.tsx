@@ -131,16 +131,13 @@ function actionLabel(actionType: string): string {
 
 function auditFilterActionType(entry: AuditLogEntry, cachedChildItems?: AuditItemEntry[]): string {
   if (isBulkAuditEntry(entry) || hasAuditItemSummary(entry)) {
+    if (isRollbackAuditAction(entry.ActionType)) return 'R'
     const childItems = cachedChildItems ?? findBulkChildren(entry, [])
-    const bulkAction = getBulkActionType(entry, childItems)
-    if (isRollbackAuditAction(entry.ActionType) || isRolledBackAuditEntry(entry)) return 'R'
-    if (bulkAction === 'B') return 'B'
-    if (childItems.length > 0) return bulkAction
-
-    const count = extractAuditItemCount(entry)
-    return count === 1 ? normalizeAuditActionType(entry.ActionType) : 'B'
+    const itemCount = childItems.length || extractAuditItemCount(entry)
+    if (itemCount === 1) return normalizeAuditActionType(childItems[0]?.ActionType || entry.ActionType)
+    return 'B'
   }
-  if (isRollbackAuditAction(entry.ActionType) || isRolledBackAuditEntry(entry)) return 'R'
+  if (isRollbackAuditAction(entry.ActionType)) return 'R'
   return normalizeAuditActionType(entry.ActionType)
 }
 
@@ -510,16 +507,19 @@ function getAuditOverview(
   const childItems = hasSummary
     ? cachedItems ?? findBulkChildren(entry, allEntries)
     : []
+  const summaryItemCount = childItems.length || extractAuditItemCount(entry)
   const singleItem = childItems.length === 1 ? childItems[0] : null
   const source = singleItem || entry
-  const action = singleItem
-    ? getAuditItemDisplayActionType(entry, singleItem, allEntries)
+  const action = isRollbackAuditAction(entry.ActionType)
+    ? 'R'
     : hasSummary
-    ? getBulkActionType(entry, childItems)
-    : normalizeAuditActionType(entry.ActionType)
+      ? summaryItemCount === 1
+        ? normalizeAuditActionType(childItems[0]?.ActionType || entry.ActionType)
+        : 'B'
+      : normalizeAuditActionType(entry.ActionType)
 
-  if (hasSummary && !singleItem) {
-    const itemCount = childItems.length > 0 ? childItems.length : extractAuditItemCount(entry)
+  if (hasSummary && summaryItemCount !== 1) {
+    const itemCount = summaryItemCount
     const recordFieldNames = childItems.flatMap(item =>
       Array.from(partsToMap(splitAuditParts(getRawRecordKey(item))).keys())
     )
@@ -877,19 +877,16 @@ function AuditEntryItem({
   const singleSummaryItem = hasItemSummary && !isRollbackType && childItems.length === 1
     ? childItems[0]
     : null
-  const singleSummaryActionType = singleSummaryItem
-    ? normalizeAuditActionType(singleSummaryItem.ActionType || entry.ActionType)
-    : ''
   const displaySource = singleSummaryItem || entry
-  const displayActionType = singleSummaryItem
-    ? singleSummaryActionType
+  const displayActionType = isRollbackType
+    ? 'R'
     : hasItemSummary
-    ? getBulkActionType(entry, childItems)
-    : normalizedEntryAction
+      ? 'B'
+      : normalizedEntryAction
   const { fieldName } = getAuditDisplayCells(displaySource, displayActionType)
   const normalizedField = normalizeDash(fieldName)
   const showSummaryPanel = hasItemSummary && !singleSummaryItem
-  const canRollbackEntry = canRollback && canRollbackAuditEntry(entry) && !isRollbackAuditAction(normalizedEntryAction) && !isRollbackAuditAction(displayActionType)
+  const canRollbackEntry = canRollback && canRollbackAuditEntry(entry) && !isRollbackAuditAction(normalizedEntryAction)
   const summaryLabel = isRollbackType ? 'Rollback Summary' : 'Bulk Operation Summary'
   const previewDisplay = getAuditDisplayCells(displaySource, displayActionType)
   const previewChanges = showSummaryPanel
@@ -1026,6 +1023,7 @@ function AuditDetailsDialog({
   if (!entry) return null
 
   const normalizedAction = normalizeAuditActionType(entry.ActionType)
+  const isRollbackType = isRollbackAuditAction(normalizedAction)
   const detailSources: Array<AuditLogEntry | AuditItemEntry> = hasItemSummary && items.length > 0
     ? items
     : [entry]
@@ -1085,10 +1083,15 @@ function AuditDetailsDialog({
     recordFields: Map<string, string>
     changes: Map<string, { oldValue: string; newValue: string }>
   }>()).values())
-  const displayActionType = hasItemSummary ? getBulkActionType(entry, items) : normalizedAction
-  const operationActionType = isRollbackAuditAction(normalizedAction) || isRolledBackAuditEntry(entry)
+  const detailItemCount = items.length || extractAuditItemCount(entry)
+  const displayActionType = isRollbackType
     ? 'R'
-    : displayActionType
+    : hasItemSummary
+      ? detailItemCount === 1
+        ? normalizeAuditActionType(items[0]?.ActionType || normalizedAction)
+        : 'B'
+      : normalizedAction
+  const operationActionType = displayActionType
 
   return (
     <AuditModernModal
@@ -1286,8 +1289,10 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
 
     return entries.filter(entry => {
       const filterActionType = auditFilterActionType(entry, bulkChildMap[entry.AuditId])
-      const isRollbackEntry = isRollbackAuditAction(entry.ActionType) || isRolledBackAuditEntry(entry)
-      if (actionFilter === 'R' && !isRollbackEntry) return false
+      // Rollback filter shows only the separate rollback audit records.
+      // The original audit remains Delete/Update/Create/Bulk even after it
+      // receives RollbackAuditId.
+      if (actionFilter === 'R' && !isRollbackAuditAction(entry.ActionType)) return false
       if (actionFilter !== 'ALL' && actionFilter !== 'R' && filterActionType !== actionFilter) return false
 
       const entryDate = dateInputValue(entry.ChangedAt)
@@ -1524,10 +1529,9 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
               const { entry, action, summary } = row
               const canRollbackRow = canRollback &&
                 canRollbackAuditEntry(entry) &&
-                !isRollbackAuditAction(entry.ActionType) &&
-                !isRollbackAuditAction(action)
+                !isRollbackAuditAction(entry.ActionType)
               const rollbackAuditId = String((entry as any).RollbackAuditId ?? (entry as any).rollbackAuditId ?? '').trim()
-              const isRollbackRow = isRollbackAuditAction(entry.ActionType) || isRollbackAuditAction(action)
+              const isRollbackRow = isRollbackAuditAction(entry.ActionType)
               const rollbackUnavailableLabel = rollbackAuditId || isRollbackRow ? 'Rolled back' : 'Not available'
               const rollbackUnavailableTitle = rollbackAuditId
                 ? `Already rolled back by audit ${rollbackAuditId}`
@@ -1536,9 +1540,7 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
                   : canRollback
                     ? 'Rollback is not available for this audit entry.'
                     : 'You do not have permission to rollback this audit entry.'
-              const operationAction = isRollbackAuditAction(entry.ActionType) || isRolledBackAuditEntry(entry)
-                ? 'R'
-                : action
+              const operationAction = action
               const rowAction = normalizeAuditActionType(operationAction).toLowerCase()
 
               return (
@@ -1578,7 +1580,8 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
                       className="audit-action-button"
                       accessibleName="View audit details"
                       title="View details"
-                      onClick={() => {
+                      onClick={(event: any) => {
+                        event.stopPropagation()
                         setSelectedDetail({ entry })
                       }}
                     >
@@ -1648,6 +1651,7 @@ export default function AuditLogPanel({ tableName, canRollback = false }: AuditL
 
       {selectedDetail && (
         <AuditDetailsDialog
+          key={selectedDetail.entry.AuditId}
           entry={selectedDetail.entry}
           allEntries={entries}
           cachedChildItems={bulkChildMap[selectedDetail.entry.AuditId]}

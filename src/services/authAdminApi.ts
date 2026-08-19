@@ -123,6 +123,11 @@ export async function isCurrentUserInAdminList(username?: string): Promise<boole
   const normalizedUsername = normalizeSapUsername(effectiveUser)
   if (!normalizedUsername) return false
 
+  // Keep the explicitly configured emergency/admin accounts authoritative even
+  // when the AuthUsers endpoint responds successfully but omits the current
+  // user from its filtered result.
+  if (KNOWN_ADMINS.has(normalizedUsername)) return true
+
   try {
     const adminUsers = await getActiveAdminUsers()
     if (adminUsers.includes(normalizedUsername)) {
@@ -132,7 +137,7 @@ export async function isCurrentUserInAdminList(username?: string): Promise<boole
     console.warn('isCurrentUserInAdminList API error:', e)
   }
 
-  return KNOWN_ADMINS.has(normalizedUsername)
+  return false
 }
 
 export async function getTablePermissions(username: string, tableName: string): Promise<TablePermissionState> {
