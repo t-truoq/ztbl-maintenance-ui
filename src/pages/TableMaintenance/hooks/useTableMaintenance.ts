@@ -514,7 +514,6 @@ export function useTableMaintenance({
     if (!selectedTable) return
     setError('')
     setSuccessMsg('')
-    let approvalConflictRows: TableRowData[] = []
 
     // Validation
     const validationErrors: string[] = []
@@ -567,7 +566,6 @@ export function useTableMaintenance({
           return row[name] !== originalRow[name]
         })
       })
-      approvalConflictRows = modifiedRows
 
       if (newRows.length === 0 && modifiedRows.length === 0) {
         showSuccess('No changes to save')
@@ -632,7 +630,7 @@ export function useTableMaintenance({
           etagInfo.field || '',
           etagInfo.value || ''
         )
-        if (res.success === false) throw new Error(res.message || 'Failed to update record')
+        if (res.success === false) throw new Error(getActionMessage(res) || res.message || 'Failed to update record')
         const msg = getActionMessage(res)
         if (msg && !successMessages.includes(msg)) successMessages.push(msg)
         const code = extractApprovalCode(res)
@@ -679,26 +677,10 @@ export function useTableMaintenance({
       await onRefreshTableList()
     } catch (e: any) {
       const message = getFriendlyErrorMessage(e)
-      if (/waiting for ADMIN approval|pending approval|đang chờ duyệt/i.test(message)) {
-        setError('')
-        setIsEditingTable(false)
-        setEditedData([])
-        setInlineErrors({})
-        releaseTableLockIfHeld()
-
-        const fetchedPending = await fetchPendingApprovalState(selectedTable)
-        if (fetchedPending && fetchedPending.length > 0) {
-          setPendingApprovalRecords(fetchedPending)
-        } else {
-          setPendingApprovalRecords(approvalConflictRows.map(row => ({
-            TableName: selectedTable.TableName,
-            RecordKey: buildRecordKeyString(allFields, row),
-            Status: 'PENDING',
-            ActionType: 'U'
-          })))
-        }
-        return
-      }
+      setIsEditingTable(false)
+      setEditedData([])
+      setInlineErrors({})
+      releaseTableLockIfHeld()
       showError(message)
     } finally {
       setDataLoading(false)
@@ -833,7 +815,7 @@ export function useTableMaintenance({
         setOptimisticLockOpen(true)
         return { ok: false, message: result.message }
       }
-      const message = formatActionErrorMessage(result.message || 'Update failed')
+      const message = formatActionErrorMessage(getActionMessage(result) || result.message || 'Update failed')
       showError(message)
       return { ok: false, message }
     }

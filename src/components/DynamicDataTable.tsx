@@ -407,11 +407,11 @@ export default function DynamicDataTable({
               ? 'Review the selected records, then save or discard your changes.'
               : 'Select records to edit or delete. Sort and resize columns directly from the header.'}
           </Text>
-          {pendingRecordKeySet.size > 0 && (
+          {pendingApprovalRecords.length > 0 && (
             <div className="table-pending-notice" role="status">
               <Icon name={'pending' as any} className="table-pending-notice-icon" />
               <Text>
-                {pendingRecordKeySet.size} {pendingRecordKeySet.size === 1 ? 'record is' : 'records are'} waiting for ADMIN approval.
+                {pendingApprovalRecords.length} {pendingApprovalRecords.length === 1 ? 'record is' : 'records are'} waiting for ADMIN approval.
               </Text>
             </div>
           )}
