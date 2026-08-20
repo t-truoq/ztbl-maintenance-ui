@@ -96,6 +96,28 @@ describe('apiClient friendly error messages', () => {
     }))).toBe('Backend exploded')
   })
 
+  it('preserves permission messages returned with HTTP 500', () => {
+    expect(getFriendlyErrorMessage(axiosError({
+      response: {
+        status: 500,
+        data: { error: { message: 'User DEV-213 is not allowed to UPDATE on ZTPC_HEADER' } }
+      }
+    }))).toBe('User DEV-213 is not allowed to UPDATE on ZTPC_HEADER')
+  })
+
+  it('reads permission messages from SAP error details', () => {
+    expect(getFriendlyErrorMessage(axiosError({
+      response: {
+        status: 500,
+        data: {
+          error: {
+            details: [{ message: { value: 'User DEV-213 is not allowed to UPDATE on ZTPC_HEADER' } }]
+          }
+        }
+      }
+    }))).toContain('DEV-213 is not allowed to UPDATE')
+  })
+
   it('enhances ABAP JSON format errors', () => {
     expect(formatActionErrorMessage('Invalid format in JSON for field VALID_FROM')).toContain('YYYYMMDD')
   })

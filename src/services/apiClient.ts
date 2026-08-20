@@ -268,10 +268,32 @@ export async function testLogin(username: string, password: string): Promise<{ s
 /** Trích xuất câu thông báo lỗi chi tiết từ JSON trả về của SAP */
 export function getSapErrorMessage(error: any): string {
   const data = error?.response?.data
-  const sapMsg = data?.error?.message
-  if (typeof sapMsg === 'string') return sapMsg
-  if (sapMsg?.value) return sapMsg.value
-  if (typeof data?.message === 'string') return data.message
+  const readMessage = (value: any): string => {
+    if (typeof value === 'string' && value.trim()) return value.trim()
+    if (value && typeof value === 'object') {
+      for (const key of ['value', 'message', 'Message', 'text', 'Text']) {
+        const nested = readMessage(value[key])
+        if (nested) return nested
+      }
+    }
+    return ''
+  }
+
+  const candidates = [
+    data?.error?.message,
+    data?.message,
+    data?.error?.details,
+    data?.error?.innererror,
+    data?.SAP__Messages,
+    data?.['sap-messages']
+  ]
+  for (const candidate of candidates) {
+    const message = Array.isArray(candidate)
+      ? candidate.map(readMessage).find(Boolean) || ''
+      : readMessage(candidate)
+    if (message) return message
+  }
+  if (typeof data === 'string' && data.trim()) return data.trim()
   return error?.message || 'Unknown error'
 }
 
@@ -287,6 +309,12 @@ export function formatActionErrorMessage(message: string): string {
     return 'Rollback failed because SAP could not convert a date/time value from the audit record. Please check the original audit payload for DATE/TIME/TIMESTAMP fields or contact the backend team to normalize rollback date/time values.'
   }
   return msg
+}
+
+function isPermissionDeniedMessage(message: unknown): boolean {
+  return /not\s+allowed|does\s+not\s+have\s+permission|do\s+not\s+have\s+permission|permission\s+denied|unauthori[sz]ed/i.test(
+    String(message || '')
+  )
 }
 
 function isJsonFormatError(message: string): boolean {
@@ -313,6 +341,12 @@ export function getFriendlyErrorMessage(error: any): string {
     return 'Cannot connect to SAP system. Please check your connection.'
   }
   const status = error.response.status
+  const sapMessage = getSapErrorMessage(error)
+  // SAP business authorization errors can arrive as HTTP 500 from an action.
+  // Preserve the useful permission message instead of hiding it behind a generic server error.
+  if (isPermissionDeniedMessage(sapMessage)) {
+    return formatActionErrorMessage(sapMessage)
+  }
   if (status === 401) {
     return 'Session expired. Please login again.'
   }
@@ -326,7 +360,6 @@ export function getFriendlyErrorMessage(error: any): string {
     return 'The table configuration is locked. The resource might be in use or open in another session (e.g., SAP GUI). Please close other sessions and try again.'
   }
   if (status >= 500) {
-    const sapMessage = getSapErrorMessage(error)
     if (sapMessage && sapMessage !== error?.message) {
       return formatActionErrorMessage(sapMessage)
     }

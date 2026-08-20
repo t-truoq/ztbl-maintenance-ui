@@ -11,7 +11,6 @@ import {
   TabContainer,
   Tab,
   Tag,
-  Toast,
 } from '@ui5/webcomponents-react'
 import {
   useTableMaintenance,
@@ -130,6 +129,12 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
   }, [selectedTable?.ConfigUuid])
 
   useEffect(() => {
+    if (!toastOpen) return undefined
+    const timer = window.setTimeout(() => setToastOpen(false), 6000)
+    return () => window.clearTimeout(timer)
+  }, [toastOpen, toastMessage, setToastOpen])
+
+  useEffect(() => {
     let isCancelled = false
 
     setCanRollbackAudit(false)
@@ -158,11 +163,12 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
       .catch(error => {
         if (!isCancelled) {
           console.warn('Cannot load authorization settings:', error)
-          const isKnownAdmin = ['DEV-253', 'DEV-183', 'DEV-251', 'DEV-213', 'LEARN-10000', 'ADMIN', 'DEVELOPER'].includes(effectiveUsername.toUpperCase())
+          const isKnownAdmin = ['DEV-253', 'DEV-183', 'DEV-251', 'LEARN-10000', 'ADMIN', 'DEVELOPER'].includes(effectiveUsername.toUpperCase())
           setCanRollbackAudit(isKnownAdmin)
           setTablePermission(NO_TABLE_PERMISSION)
           setPermissionTableName(tableNameForPermission)
-          setError(`Cannot load table authorization. ${getFriendlyErrorMessage(error)}`)
+          const message = `Cannot load table authorization. ${getFriendlyErrorMessage(error)}`
+          setError(message)
         }
       })
       .finally(() => {
@@ -181,19 +187,12 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
   const canUpdateTable = tablePermission.canUpdate && tablePermission.updateEnabled
   const canDeleteTable = tablePermission.canDelete && tablePermission.deleteEnabled
   const canUploadTable = tablePermission.canUpload
-  const accessDeniedPanel = (
-    <div className="tab-panel-form">
-      <MessageStrip design="Negative" hideCloseButton>
-        Access Denied. You do not have permission to view this data. Please contact your administrator if you need access.
-      </MessageStrip>
-    </div>
-  )
   const permissionPendingPanel = (
     <div className="tab-panel-form">
       <AppLoadingState label="Loading table access..." />
     </div>
   )
-  const tableAccessPanel = isAccessDenied ? accessDeniedPanel : permissionPendingPanel
+  const tableAccessPanel = isAccessDenied ? null : permissionPendingPanel
 
   const handleLoadAiDescriptions = useCallback(async (forceRefresh = false) => {
     if (!selectedTable) return
@@ -280,6 +279,13 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
         <div style={{ padding: '1rem', paddingBottom: 0 }}>
           <MessageStrip design="Positive" onClose={() => setSuccessMsg('')}>
             {successMsg}
+          </MessageStrip>
+        </div>
+      )}
+      {toastOpen && toastMessage && (
+        <div style={{ padding: '1rem', paddingBottom: 0 }}>
+          <MessageStrip design="Positive" onClose={() => setToastOpen(false)}>
+            {toastMessage}
           </MessageStrip>
         </div>
       )}
@@ -519,11 +525,6 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
         onClose={() => setApprovalInfo(null)}
       />
 
-      <Toast open={toastOpen} onClose={() => setToastOpen(false)} duration={3000}>
-        <div style={{ wordBreak: 'break-all', whiteSpace: 'normal', overflowWrap: 'break-word', display: 'block', textAlign: 'center' }}>
-          {toastMessage}
-        </div>
-      </Toast>
     </div>
   )
 }

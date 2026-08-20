@@ -27,7 +27,6 @@ interface PermissionRow {
   CanCreate?: string
   CanUpdate?: string
   CanDelete?: string
-  CanUpload?: string
   Update_mc?: boolean
   Delete_mc?: boolean
 }
@@ -87,25 +86,41 @@ function escapeODataString(value: string): string {
 
 function flagEnabled(value: unknown, fallback = false): boolean {
   if (typeof value === 'boolean') return value
-  return String(value ?? '').trim().toUpperCase() === 'X' || fallback
+  const normalized = String(value ?? '').trim().toUpperCase()
+  if (['X', 'TRUE', '1', 'YES', 'Y', 'ENABLED', 'ENABLE', 'ON'].includes(normalized)) return true
+  if (['', '0', 'FALSE', 'NO', 'N', 'DISABLED', 'DISABLE', 'OFF'].includes(normalized)) return false
+  return fallback
+}
+
+function readEntity(data: any): Record<string, any> | null {
+  const entity = data?.d ?? data
+  if (!entity || typeof entity !== 'object' || Array.isArray(entity)) return null
+  if (Array.isArray(entity.results) || Array.isArray(entity.value)) return null
+  return entity
+}
+
+function readPermissionValue(row: any, name: string): unknown {
+  if (!row || typeof row !== 'object') return undefined
+  if (row[name] !== undefined) return row[name]
+  const key = Object.keys(row).find(candidate => candidate.toUpperCase() === name.toUpperCase())
+  return key ? row[key] : undefined
 }
 
 function permissionFromRow(row: PermissionRow): TablePermissionState {
-  const canCreate = flagEnabled(row.CanCreate)
-  const canUpdate = flagEnabled(row.CanUpdate)
-  const canDelete = flagEnabled(row.CanDelete)
+  const canView = flagEnabled(readPermissionValue(row, 'CanView'))
+  const canCreate = flagEnabled(readPermissionValue(row, 'CanCreate'))
+  const canUpdate = flagEnabled(readPermissionValue(row, 'CanUpdate'))
+  const canDelete = flagEnabled(readPermissionValue(row, 'CanDelete'))
   return {
-    canView: flagEnabled(row.CanView),
+    canView,
     canCreate,
     canUpdate,
     canDelete,
-    // Older auth services do not expose CanUpload. In that case importing
-    // requires at least one mutation permission; never default it to true.
-    canUpload: row.CanUpload !== undefined
-      ? flagEnabled(row.CanUpload)
-      : canCreate || canUpdate || canDelete,
-    updateEnabled: row.Update_mc !== false,
-    deleteEnabled: row.Delete_mc !== false
+    // CanUpload is not part of ZSB_AUTH_ADMIN_V2. Excel import can mutate
+    // records, so require at least one mutation permission.
+    canUpload: canCreate || canUpdate || canDelete,
+    updateEnabled: readPermissionValue(row, 'Update_mc') !== false,
+    deleteEnabled: readPermissionValue(row, 'Delete_mc') !== false
   }
 }
 
@@ -133,7 +148,7 @@ export async function getActiveAdminUsers(): Promise<string[]> {
   }
 }
 
-const KNOWN_ADMINS = new Set(['DEV-253', 'DEV-183', 'DEV-251', 'DEV-213', 'LEARN-10000', 'ADMIN', 'DEVELOPER'])
+const KNOWN_ADMINS = new Set(['DEV-253', 'DEV-183', 'DEV-251', 'LEARN-10000', 'ADMIN', 'DEVELOPER'])
 
 export async function isCurrentUserInAdminList(username?: string): Promise<boolean> {
   const effectiveUser = username || getCredentials()?.username || ''
@@ -165,16 +180,35 @@ export async function getTablePermissions(username: string, tableName: string): 
   if (!normalizedUsername || !normalizedTable) return FULL_TABLE_PERMISSION
 
   try {
-    // CanUpload is not exposed by the current ZSB_AUTH_ADMIN_V2 service.
     // Upload permission is derived from the mutation permissions below.
     const select = 'CanView,CanCreate,CanUpdate,CanDelete,Update_mc,Delete_mc'
     const userRes = await authAdminApi.get('/UserPermissions', {
       params: {
-        '$select': `Username,TableName,${select}`,
-        '$filter': `Username eq '${escapeODataString(normalizedUsername)}' and TableName eq '${escapeODataString(normalizedTable)}'`
+        '$select': `Username,TableName,${select}`
       }
     })
-    const userRow = (readRows(userRes.data) as PermissionRow[])[0]
+    let userRow = (readRows(userRes.data) as PermissionRow[]).find(row =>
+      normalizeSapUsername(readPermissionValue(row, 'Username') as string) === normalizedUsername &&
+      normalizeSapUsername(readPermissionValue(row, 'TableName') as string) === normalizedTable
+    )
+    if (!userRow) {
+      try {
+        const directRes = await authAdminApi.get(
+          `/UserPermissions(Username='${escapeODataString(normalizedUsername)}',TableName='${escapeODataString(normalizedTable)}')`,
+          { params: { '$select': `Username,TableName,${select}` } }
+        )
+        const directRow = readEntity(directRes.data) as PermissionRow | null
+        if (
+          directRow &&
+          normalizeSapUsername(readPermissionValue(directRow, 'Username') as string) === normalizedUsername &&
+          normalizeSapUsername(readPermissionValue(directRow, 'TableName') as string) === normalizedTable
+        ) {
+          userRow = directRow
+        }
+      } catch (error: any) {
+        if (error?.response?.status !== 404) throw error
+      }
+    }
     if (userRow) return permissionFromRow(userRow)
 
     const tableRes = await authAdminApi.get('/TablePermissions', {
@@ -184,6 +218,8 @@ export async function getTablePermissions(username: string, tableName: string): 
       }
     })
     const tableRow = (readRows(tableRes.data) as PermissionRow[])[0]
+    // If neither a user-specific nor a table-default assignment exists, keep
+    // the legacy default for tables that are not managed by the auth service.
     return tableRow ? permissionFromRow(tableRow) : FULL_TABLE_PERMISSION
   } catch (e) {
     console.warn('getTablePermissions error, denying table access:', e)
