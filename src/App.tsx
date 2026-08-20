@@ -94,7 +94,8 @@ export default function App({ credentials, onLogout }: AppProps) {
       })
     } catch (error) {
       setTables([])
-      setAppError(`Cannot load available tables. ${getFriendlyErrorMessage(error)}`)
+      const message = `Cannot load available tables. ${getFriendlyErrorMessage(error)}`
+      setAppError(message)
     } finally {
       setLoading(false)
     }

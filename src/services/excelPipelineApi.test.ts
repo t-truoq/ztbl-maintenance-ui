@@ -177,6 +177,19 @@ describe('excelPipelineApi diff helpers', () => {
     })).toBe(false)
   })
 
+  it('treats an all-skipped approval submission as waiting for approval', () => {
+    expect(isExcelConfirmFailure({
+      id: 'X',
+      inserted_count: 0,
+      updated_count: 0,
+      deleted_count: 0,
+      unchanged_count: 0,
+      skipped_count: 1,
+      error_count: 0,
+      message: 'Submitted for approval: created 0, updated/deleted 0, errors 0. Waiting for ADMIN approval.'
+    })).toBe(false)
+  })
+
   it('marks no-valid-row confirm results as failures and translates skipped approval locks', () => {
     const result = normalizeExcelConfirmResult({
       id: 'X',

@@ -23,6 +23,7 @@ vi.mock('./apiClient', () => ({
 
 import {
   FULL_TABLE_PERMISSION,
+  NO_TABLE_PERMISSION,
   getActiveAdminUsers,
   getTablePermissions,
   isCurrentUserInAdminList
@@ -95,7 +96,6 @@ describe('authAdminApi table permissions', () => {
             CanCreate: '',
             CanUpdate: 'X',
             CanDelete: '',
-            CanUpload: 'X',
             Update_mc: true,
             Delete_mc: false
           }
@@ -113,13 +113,13 @@ describe('authAdminApi table permissions', () => {
       deleteEnabled: false
     })
     expect(mockGet).toHaveBeenCalledTimes(1)
-    expect(mockGet.mock.calls[0][1].params.$filter).toContain("Username eq 'DEV-213'")
-    expect(mockGet.mock.calls[0][1].params.$filter).toContain("TableName eq 'Z251_SCHEDULE'")
+    expect(mockGet.mock.calls[0][1].params.$filter).toBeUndefined()
   })
 
   it('falls back to table permissions when user permission is missing', async () => {
     mockGet
       .mockResolvedValueOnce({ data: { value: [] } })
+      .mockRejectedValueOnce({ response: { status: 404 } })
       .mockResolvedValueOnce({
         data: {
           value: [
@@ -129,7 +129,6 @@ describe('authAdminApi table permissions', () => {
               CanCreate: 'X',
               CanUpdate: '',
               CanDelete: 'X',
-              CanUpload: '',
               Update_mc: true,
               Delete_mc: true
             }
@@ -142,13 +141,67 @@ describe('authAdminApi table permissions', () => {
       canCreate: true,
       canUpdate: false,
       canDelete: true,
-      canUpload: false,
+      canUpload: true,
       updateEnabled: true,
       deleteEnabled: true
     })
   })
 
-  it('does not grant upload when a legacy permission row has no mutation rights', async () => {
+  it('accepts Enabled/Disabled permission values from the admin UI service', async () => {
+    mockGet.mockResolvedValueOnce({
+      data: {
+        value: [{
+          Username: 'DEV-213',
+          TableName: 'ZTPC_HEADER',
+          CanView: 'Enabled',
+          CanCreate: 'Disabled',
+          CanUpdate: 'Disabled',
+          CanDelete: 'Disabled'
+        }]
+      }
+    })
+
+    await expect(getTablePermissions('DEV-213', 'ZTPC_HEADER')).resolves.toMatchObject({
+      canView: true,
+      canCreate: false,
+      canUpdate: false,
+      canDelete: false,
+      canUpload: false
+    })
+  })
+
+  it('loads a user permission by composite key when the collection is empty', async () => {
+    mockGet
+      .mockResolvedValueOnce({ data: { d: { results: [] } } })
+      .mockResolvedValueOnce({
+        data: {
+          d: {
+            Username: 'DEV-011',
+            TableName: 'Z253_CAT',
+            CanView: true,
+            CanCreate: false,
+            CanUpdate: false,
+            CanDelete: false,
+            Update_mc: true,
+            Delete_mc: true
+          }
+        }
+      })
+
+    await expect(getTablePermissions('DEV-011', 'Z253_CAT')).resolves.toEqual({
+      canView: true,
+      canCreate: false,
+      canUpdate: false,
+      canDelete: false,
+      canUpload: false,
+      updateEnabled: true,
+      deleteEnabled: true
+    })
+    expect(mockGet.mock.calls[1][0]).toContain("Username='DEV-011'")
+    expect(mockGet.mock.calls[1][0]).toContain("TableName='Z253_CAT'")
+  })
+
+  it('blocks Excel import when a permission row is view-only', async () => {
     mockGet.mockResolvedValueOnce({
       data: {
         value: [{
@@ -168,9 +221,10 @@ describe('authAdminApi table permissions', () => {
     })
   })
 
-  it('returns full permission when no permission row exists', async () => {
+  it('keeps default access when no permission row exists', async () => {
     mockGet
       .mockResolvedValueOnce({ data: { value: [] } })
+      .mockRejectedValueOnce({ response: { status: 404 } })
       .mockResolvedValueOnce({ data: { value: [] } })
 
     await expect(getTablePermissions('DEV-213', 'UNKNOWN_TABLE')).resolves.toEqual(FULL_TABLE_PERMISSION)
@@ -196,11 +250,12 @@ describe('authAdminApi table permissions', () => {
   it('escapes single quotes in permission filters', async () => {
     mockGet
       .mockResolvedValueOnce({ data: { value: [] } })
+      .mockRejectedValueOnce({ response: { status: 404 } })
       .mockResolvedValueOnce({ data: { value: [] } })
 
     await getTablePermissions("DEV'213", "ZTAB'1")
 
-    expect(mockGet.mock.calls[0][1].params.$filter).toContain("DEV''213")
-    expect(mockGet.mock.calls[0][1].params.$filter).toContain("ZTAB''1")
+    expect(mockGet.mock.calls[1][0]).toContain("Username='DEV''213'")
+    expect(mockGet.mock.calls[2][1].params.$filter).toContain("ZTAB''1")
   })
 })

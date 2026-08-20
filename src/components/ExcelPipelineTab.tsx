@@ -6,7 +6,6 @@ import {
   Icon,
   MessageStrip,
   ObjectStatus,
-  Toast,
   Text,
   Title
 } from '@ui5/webcomponents-react'
@@ -82,7 +81,7 @@ export default function ExcelPipelineTab({
   const [diffDialogOpen, setDiffDialogOpen] = useState(false)
   const [errorDialogOpen, setErrorDialogOpen] = useState(false)
   const [dragActive, setDragActive] = useState(false)
-  const [permissionNotice, setPermissionNotice] = useState('')
+  const [backendPermissionDenied, setBackendPermissionDenied] = useState(false)
 
   const visibleRows = useMemo(
     () => diffRows.filter(row => row.row_no !== 0 && shouldShowReviewDiffRow(row)),
@@ -131,14 +130,34 @@ export default function ExcelPipelineTab({
     setConfirmResult(null)
     setDiffDialogOpen(false)
     setErrorDialogOpen(false)
-    setPermissionNotice('')
+    setBackendPermissionDenied(false)
   }, [tableName])
+
+  const uploadAllowed = canUpload && !backendPermissionDenied
+
+  useEffect(() => {
+    if (canUpload) return
+    setDiffRows([])
+    setFeedback(null)
+    setError('')
+    setConfirmResult(null)
+    setSelectedFileName('')
+    setUploadedFieldOrder([])
+    setDiffDialogOpen(false)
+  }, [canUpload])
+
+  useEffect(() => {
+    if (!backendPermissionDenied) return
+    setDiffRows([])
+    setSelectedFileName('')
+    setUploadedFieldOrder([])
+    setDiffDialogOpen(false)
+  }, [backendPermissionDenied])
 
   function resetFeedback() {
     setError('')
     setFeedback(null)
     setConfirmResult(null)
-    setPermissionNotice('')
   }
 
   async function handleDownload(templateOnly: boolean) {
@@ -169,10 +188,9 @@ export default function ExcelPipelineTab({
 
   async function processFile(file: File) {
     if (uploadInFlightRef.current) return
-    if (!canUpload) {
+    if (!uploadAllowed) {
       const message = 'You do not have permission to upload data.'
       setError(message)
-      setPermissionNotice(message)
       return
     }
     uploadInFlightRef.current = true
@@ -219,7 +237,7 @@ export default function ExcelPipelineTab({
       const errorCount = countDistinctRecords(rows.filter(row => row.status === 'ERROR'))
       const permissionError = rows.find(row => isPermissionMessage(row.message))
       if (permissionError) {
-        setPermissionNotice(`Permission denied. ${permissionError.message}`)
+        setBackendPermissionDenied(true)
       }
       const warningCount = rows.filter(row => row.status === 'WARNING').length
       const unchangedCount = rows.filter(row => row.status === 'UNCHANGED').length
@@ -261,6 +279,7 @@ export default function ExcelPipelineTab({
       })
     } catch (e: any) {
       const msg = e?.message || getExcelErrorMessage(e)
+      if (isPermissionMessage(msg)) setBackendPermissionDenied(true)
       console.error('[ExcelPipeline] upload failed', e)
       setError(msg)
     } finally {
@@ -279,7 +298,7 @@ export default function ExcelPipelineTab({
   }
 
   function openFilePicker() {
-    if (busy || !canUpload || uploadInFlightRef.current) return
+    if (busy || !uploadAllowed || uploadInFlightRef.current) return
     fileInputRef.current?.click()
   }
 
@@ -293,16 +312,15 @@ export default function ExcelPipelineTab({
     event.preventDefault()
     setDragActive(false)
     const file = event.dataTransfer.files?.[0]
-    if (file && !busy) {
+    if (file && !busy && uploadAllowed) {
       processFile(file)
     }
   }
 
   async function handleConfirm() {
-    if (!canUpload) {
+    if (!uploadAllowed) {
       const message = 'You do not have permission to upload data.'
       setError(message)
-      setPermissionNotice(message)
       return
     }
     resetFeedback()
@@ -313,7 +331,7 @@ export default function ExcelPipelineTab({
       const result = await confirmImport(tableName, diffRows)
       const confirmFailed = isExcelConfirmFailure(result)
       if (isPermissionMessage(result.message)) {
-        setPermissionNotice(`Permission denied. ${result.message}`)
+        setBackendPermissionDenied(true)
       }
       setConfirmResult(result)
       setFeedback({
@@ -335,6 +353,7 @@ export default function ExcelPipelineTab({
         })
     } catch (e: any) {
       const msg = getExcelErrorMessage(e)
+      if (isPermissionMessage(msg)) setBackendPermissionDenied(true)
       console.error('[ExcelPipeline] confirm failed', e)
       setError(msg)
       setDiffDialogOpen(false)
@@ -350,8 +369,8 @@ export default function ExcelPipelineTab({
   }
 
   const busy = !!busyStep
-  const canReview = visibleRows.length > 0 && !busy && !confirmResult
-  const canConfirm = canUpload && commitRows.length > 0 && !busy && !confirmResult
+  const canReview = uploadAllowed && visibleRows.length > 0 && !busy && !confirmResult
+  const canConfirm = uploadAllowed && commitRows.length > 0 && !busy && !confirmResult
   const hasErrors = errorRecordCount > 0
   const noChangesDetected = visibleRows.length > 0 && commitRows.length === 0 && !hasErrors
   const confirmLabel = noChangesDetected ? 'Nothing to Import' : `Confirm Import (${commitRecordCount})`
@@ -415,7 +434,7 @@ export default function ExcelPipelineTab({
       />
 
       <section className="excel-action-grid">
-        {!canUpload && (
+        {!uploadAllowed && (
           <MessageStrip design="Negative" hideCloseButton className="excel-permission-message">
             You do not have permission to upload data.
           </MessageStrip>
@@ -424,14 +443,15 @@ export default function ExcelPipelineTab({
           className={`excel-dropzone${dragActive ? ' excel-dropzone--active' : ''}`}
           onDragOver={event => {
             event.preventDefault()
-            if (!busy && canUpload) setDragActive(true)
+            if (!busy && uploadAllowed) setDragActive(true)
           }}
           onDragLeave={() => setDragActive(false)}
           onDrop={handleDrop}
           role="button"
-          tabIndex={0}
+          tabIndex={uploadAllowed ? 0 : -1}
+          aria-disabled={!uploadAllowed}
           onKeyDown={event => {
-            if ((event.key === 'Enter' || event.key === ' ') && !busy && canUpload) {
+            if ((event.key === 'Enter' || event.key === ' ') && !busy && uploadAllowed) {
               openFilePicker()
             }
           }}
@@ -446,7 +466,7 @@ export default function ExcelPipelineTab({
           <Button
             design="Transparent"
             icon={'upload' as any}
-            disabled={busy || !canUpload}
+            disabled={busy || !uploadAllowed}
             onClick={handleBrowseClick}
           >
             Browse
@@ -627,15 +647,6 @@ export default function ExcelPipelineTab({
         </FlexBox>
       </ModernModal>
 
-      <Toast
-        open={!!permissionNotice}
-        onClose={() => setPermissionNotice('')}
-        duration={7000}
-      >
-        <div style={{ wordBreak: 'break-word', whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
-          {permissionNotice}
-        </div>
-      </Toast>
     </div>
   )
 }
@@ -685,10 +696,10 @@ function buildConfirmFeedbackText(result: ExcelConfirmResult): string {
   const hasErrors = isExcelConfirmFailure(result)
   const pendingApproval = isApprovalPendingResult(result)
   if (hasErrors) {
-    return 'Import failed. Review the result details.'
+    return result.message || 'Import failed. Review the result details.'
   }
   if (pendingApproval) {
-    return 'Import submitted for approval. Waiting for ADMIN approval.'
+    return 'Approval request submitted successfully. Waiting for ADMIN approval.'
   }
   return `Import completed. Inserted: ${result.inserted_count ?? 0}, updated: ${result.updated_count ?? 0}, deleted: ${result.deleted_count ?? 0}, skipped: ${result.skipped_count ?? 0}.`
 }

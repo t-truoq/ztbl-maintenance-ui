@@ -267,6 +267,13 @@ export function isExcelConfirmFailure(result: ExcelConfirmResult | null | undefi
   const skipped = result.skipped_count ?? 0
   const errors = result.error_count ?? 0
   const message = String(result.message || '')
+  const submittedForApproval = /request submitted for approval|submitted for approval|waiting for(?: ADMIN)? approval/i.test(message)
+
+  if (/no valid excel row|cannot create a new request/i.test(message)) return true
+
+  // Approval workflows can legitimately report skipped rows because the
+  // actual mutation is deferred to ADMIN. Do not classify that as failure.
+  if (submittedForApproval && errors === 0) return false
 
   return errors > 0 ||
     /no valid excel row/i.test(message) ||
