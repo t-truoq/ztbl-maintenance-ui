@@ -148,12 +148,43 @@ describe('authAdminApi table permissions', () => {
     })
   })
 
+  it('does not grant upload when a legacy permission row has no mutation rights', async () => {
+    mockGet.mockResolvedValueOnce({
+      data: {
+        value: [{
+          Username: 'DEV-213',
+          TableName: 'ZTPC_HEADER',
+          CanView: 'X',
+          CanCreate: '',
+          CanUpdate: '',
+          CanDelete: ''
+        }]
+      }
+    })
+
+    await expect(getTablePermissions('DEV-213', 'ZTPC_HEADER')).resolves.toMatchObject({
+      canView: true,
+      canUpload: false
+    })
+  })
+
   it('returns full permission when no permission row exists', async () => {
     mockGet
       .mockResolvedValueOnce({ data: { value: [] } })
       .mockResolvedValueOnce({ data: { value: [] } })
 
     await expect(getTablePermissions('DEV-213', 'UNKNOWN_TABLE')).resolves.toEqual(FULL_TABLE_PERMISSION)
+  })
+
+  it('rejects when the authorization service fails', async () => {
+    mockGet.mockRejectedValueOnce({
+      response: { status: 403, data: {} },
+      message: 'Forbidden'
+    })
+
+    await expect(getTablePermissions('DEV-213', 'Z251_SCHEDULE')).rejects.toMatchObject({
+      response: { status: 403 }
+    })
   })
 
   it('returns full permission when username or table name is missing', async () => {

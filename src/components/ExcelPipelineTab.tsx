@@ -6,6 +6,7 @@ import {
   Icon,
   MessageStrip,
   ObjectStatus,
+  Toast,
   Text,
   Title
 } from '@ui5/webcomponents-react'
@@ -81,6 +82,7 @@ export default function ExcelPipelineTab({
   const [diffDialogOpen, setDiffDialogOpen] = useState(false)
   const [errorDialogOpen, setErrorDialogOpen] = useState(false)
   const [dragActive, setDragActive] = useState(false)
+  const [permissionNotice, setPermissionNotice] = useState('')
 
   const visibleRows = useMemo(
     () => diffRows.filter(row => row.row_no !== 0 && shouldShowReviewDiffRow(row)),
@@ -129,12 +131,14 @@ export default function ExcelPipelineTab({
     setConfirmResult(null)
     setDiffDialogOpen(false)
     setErrorDialogOpen(false)
+    setPermissionNotice('')
   }, [tableName])
 
   function resetFeedback() {
     setError('')
     setFeedback(null)
     setConfirmResult(null)
+    setPermissionNotice('')
   }
 
   async function handleDownload(templateOnly: boolean) {
@@ -166,7 +170,9 @@ export default function ExcelPipelineTab({
   async function processFile(file: File) {
     if (uploadInFlightRef.current) return
     if (!canUpload) {
-      setError('You do not have permission to upload data.')
+      const message = 'You do not have permission to upload data.'
+      setError(message)
+      setPermissionNotice(message)
       return
     }
     uploadInFlightRef.current = true
@@ -211,6 +217,10 @@ export default function ExcelPipelineTab({
       const visibleCount = visibleRows.length
       const visibleRecordCount = countDistinctRecords(visibleRows)
       const errorCount = countDistinctRecords(rows.filter(row => row.status === 'ERROR'))
+      const permissionError = rows.find(row => isPermissionMessage(row.message))
+      if (permissionError) {
+        setPermissionNotice(`Permission denied. ${permissionError.message}`)
+      }
       const warningCount = rows.filter(row => row.status === 'WARNING').length
       const unchangedCount = rows.filter(row => row.status === 'UNCHANGED').length
       setDiffRows(compactRowsForUi(rows))
@@ -290,7 +300,9 @@ export default function ExcelPipelineTab({
 
   async function handleConfirm() {
     if (!canUpload) {
-      setError('You do not have permission to upload data.')
+      const message = 'You do not have permission to upload data.'
+      setError(message)
+      setPermissionNotice(message)
       return
     }
     resetFeedback()
@@ -300,6 +312,9 @@ export default function ExcelPipelineTab({
       const confirmStartedAt = performance.now()
       const result = await confirmImport(tableName, diffRows)
       const confirmFailed = isExcelConfirmFailure(result)
+      if (isPermissionMessage(result.message)) {
+        setPermissionNotice(`Permission denied. ${result.message}`)
+      }
       setConfirmResult(result)
       setFeedback({
         text: buildConfirmFeedbackText(result),
@@ -611,6 +626,16 @@ export default function ExcelPipelineTab({
           </Text>
         </FlexBox>
       </ModernModal>
+
+      <Toast
+        open={!!permissionNotice}
+        onClose={() => setPermissionNotice('')}
+        duration={7000}
+      >
+        <div style={{ wordBreak: 'break-word', whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
+          {permissionNotice}
+        </div>
+      </Toast>
     </div>
   )
 }
@@ -1442,6 +1467,12 @@ function DeletedRecordGroup({ row }: { row: ExcelDiffRow }) {
 function diffRowClass(status: string): string {
   const normalized = normalizeDiffStatus(status)
   return DIFF_STATUS_META[normalized]?.className || ''
+}
+
+function isPermissionMessage(message: unknown): boolean {
+  return /not allowed|does not have permission|do not have permission|permission denied|unauthorized/i.test(
+    String(message || '')
+  )
 }
 
 function getDiffFieldLabel(row: ExcelDiffRow): string {

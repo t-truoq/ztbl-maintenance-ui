@@ -970,8 +970,15 @@ export async function rollbackAudit(auditId: string): Promise<{ success: boolean
       : '') ||
     'Rollback completed'
 
+  // Some RAP actions return HTTP 200 and leave `success` unset even when the
+  // business operation was blocked. Treat the backend message as authoritative
+  // so the UI does not show a false success or imply that a rollback audit was created.
+  const rollbackWasBlocked = /rollback\s+blocked|rollback\s+failed|record\s+no\s+longer\s+exists|not\s+allowed|permission\s+denied/i.test(
+    String(message)
+  )
+
   return {
-    success: data?.success !== false,
+    success: data?.success !== false && !rollbackWasBlocked,
     message
   }
 }
