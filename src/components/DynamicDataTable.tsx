@@ -12,6 +12,8 @@ import {
   Title,
   FlexBox,
   Icon,
+  Option,
+  Select,
 } from '@ui5/webcomponents-react'
 import CellEditControl from './CellEditControl'
 import { formatHeaderLabel } from '../utils/tableHelpers'
@@ -20,6 +22,8 @@ import { buildRecordKeyString, normalizeRecordKeyString } from '../utils/recordH
 import AppLoadingState from './AppLoadingState'
 
 import { AiDescriptionMap, FieldMeta, PendingApprovalRecord, TableConfig, TableRowData } from '../types'
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 
 interface DynamicDataTableProps {
   selectedTable: TableConfig
@@ -86,6 +90,8 @@ export default function DynamicDataTable({
   const [sortField, setSortField] = useState<string>('')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | ''>('')
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({})
+  const [pageIndex, setPageIndex] = useState(0)
+  const [pageSize, setPageSize] = useState(10)
 
   const handleHeaderSort = (fieldName: string) => {
     if (isEditingTable) return
@@ -155,6 +161,23 @@ export default function DynamicDataTable({
       return sortDirection === 'asc' ? cmp : -cmp
     })
   }, [filteredData, sortField, sortDirection, fields])
+
+  const totalPages = Math.max(1, Math.ceil(sortedData.length / pageSize))
+  const safePageIndex = Math.min(pageIndex, totalPages - 1)
+  const pageStart = sortedData.length === 0 ? 0 : safePageIndex * pageSize + 1
+  const pageEnd = Math.min((safePageIndex + 1) * pageSize, sortedData.length)
+  const pagedData = useMemo(
+    () => sortedData.slice(safePageIndex * pageSize, (safePageIndex + 1) * pageSize),
+    [sortedData, safePageIndex, pageSize]
+  )
+
+  useEffect(() => {
+    setPageIndex(0)
+  }, [filteredData.length, pageSize, selectedTable.ConfigUuid])
+
+  useEffect(() => {
+    if (safePageIndex !== pageIndex) setPageIndex(safePageIndex)
+  }, [safePageIndex, pageIndex])
 
   const getDuplicateHeaderLabel = (headerLabel: string, technicalName: string) => {
     const normalizedName = technicalName.toUpperCase()
@@ -712,17 +735,18 @@ export default function DynamicDataTable({
             </TableRow>
           ) : (
             /* ── Read-only rows ───────────────────────────────────────── */
-            sortedData.map((row, i) => {
-              const pendingApproval = isRowPending(row, i)
+            pagedData.map((row, i) => {
+              const rowIndex = safePageIndex * pageSize + i
+              const pendingApproval = isRowPending(row, rowIndex)
               return (
                 <TableRow
-                  className={`dynamic-table-data-row${selectedRowKeys.has(getRowKey(row, i)) ? ' dynamic-table-data-row--selected' : ''}${pendingApproval ? ' dynamic-table-data-row--pending' : ''}`}
-                  key={i}
+                  className={`dynamic-table-data-row${selectedRowKeys.has(getRowKey(row, rowIndex)) ? ' dynamic-table-data-row--selected' : ''}${pendingApproval ? ' dynamic-table-data-row--pending' : ''}`}
+                  key={rowIndex}
                   interactive={!activeTableLock && !pendingApproval}
                   title={pendingApproval ? 'This record is waiting for ADMIN approval.' : undefined}
                   onClick={() => {
                     if (activeTableLock || pendingApproval) return
-                    toggleRowSelection(getRowKey(row, i), !selectedRowKeys.has(getRowKey(row, i)))
+                    toggleRowSelection(getRowKey(row, rowIndex), !selectedRowKeys.has(getRowKey(row, rowIndex)))
                   }}
                   style={{
                     gridTemplateColumns: columnsStyle,
@@ -735,11 +759,11 @@ export default function DynamicDataTable({
                     onClick={(e: any) => e.stopPropagation()}
                   >
                     <CheckBox
-                      checked={selectedRowKeys.has(getRowKey(row, i))}
+                      checked={selectedRowKeys.has(getRowKey(row, rowIndex))}
                       disabled={!!activeTableLock || pendingApproval}
                       onChange={(e: any) => {
                         e.stopPropagation()
-                        toggleRowSelection(getRowKey(row, i), e.target.checked)
+                        toggleRowSelection(getRowKey(row, rowIndex), e.target.checked)
                       }}
                     />
                     {pendingApproval && (
@@ -797,6 +821,35 @@ export default function DynamicDataTable({
           )}
         </Table>
       </div>}
+      {!isEditingTable && (
+        <div className="audit-pagination-bar">
+          <Text className="audit-count">Showing {pageStart}-{pageEnd} of {sortedData.length}</Text>
+          <div className="audit-pagination-actions">
+            <Label>Rows</Label>
+            <Select
+              value={String(pageSize)}
+              onChange={(event: any) => setPageSize(Number(event.detail.selectedOption.value))}
+            >
+              {PAGE_SIZE_OPTIONS.map(size => (
+                <Option key={size} value={String(size)}>{size}</Option>
+              ))}
+            </Select>
+            <Button
+              design="Transparent"
+              icon={'navigation-left-arrow' as any}
+              disabled={safePageIndex === 0}
+              onClick={() => setPageIndex(prev => Math.max(0, prev - 1))}
+            >Previous</Button>
+            <Text className="audit-page-label">Page {safePageIndex + 1} / {totalPages}</Text>
+            <Button
+              design="Transparent"
+              icon={'navigation-right-arrow' as any}
+              disabled={safePageIndex >= totalPages - 1}
+              onClick={() => setPageIndex(prev => Math.min(totalPages - 1, prev + 1))}
+            >Next</Button>
+          </div>
+        </div>
+      )}
       {activeAiTooltip && (
         <div
           className="ai-field-popover"
