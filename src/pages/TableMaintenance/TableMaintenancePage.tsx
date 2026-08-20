@@ -32,9 +32,10 @@ import FKErrorDialog from '../../components/dialogs/FKErrorDialog'
 import ApprovalSuccessDialog from '../../components/dialogs/ApprovalSuccessDialog'
 import AppLoadingState from '../../components/AppLoadingState'
 import { getAiDescription } from '../../services/tableConfigApi'
-import { getCredentials } from '../../services/apiClient'
+import { getCredentials, getFriendlyErrorMessage } from '../../services/apiClient'
 import {
   FULL_TABLE_PERMISSION,
+  NO_TABLE_PERMISSION,
   TablePermissionState,
   getTablePermissions,
   isCurrentUserInAdminList
@@ -159,8 +160,9 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
           console.warn('Cannot load authorization settings:', error)
           const isKnownAdmin = ['DEV-253', 'DEV-183', 'DEV-251', 'DEV-213', 'LEARN-10000', 'ADMIN', 'DEVELOPER'].includes(effectiveUsername.toUpperCase())
           setCanRollbackAudit(isKnownAdmin)
-          setTablePermission(FULL_TABLE_PERMISSION)
+          setTablePermission(NO_TABLE_PERMISSION)
           setPermissionTableName(tableNameForPermission)
+          setError(`Cannot load table authorization. ${getFriendlyErrorMessage(error)}`)
         }
       })
       .finally(() => {

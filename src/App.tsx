@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getTables, normalizeConfigUuid } from './services/tableConfigApi'
-import { clearCredentials, isDeployedOnSAP } from './services/apiClient'
+import { clearCredentials, getFriendlyErrorMessage, isDeployedOnSAP } from './services/apiClient'
 import { clearDomainCache } from './services/domainCache'
 import AppLayout from './components/AppLayout'
 import TableMaintenancePage from './pages/TableMaintenance/TableMaintenancePage'
@@ -41,6 +41,7 @@ export default function App({ credentials, onLogout }: AppProps) {
 
   /** Trang thai dang tai danh sach bang tu SAP Backend */
   const [loading, setLoading] = useState(false)
+  const [appError, setAppError] = useState('')
 
   /* ============================================================================
    * PHAN 3: VONG DOI COMPONENT (LIFECYCLE & EFFECTS)
@@ -81,6 +82,7 @@ export default function App({ credentials, onLogout }: AppProps) {
   async function loadTables() {
     try {
       setLoading(true)
+      setAppError('')
       const result = await getTables()
       setTables(result)
       setSelectedTable(current => {
@@ -90,9 +92,9 @@ export default function App({ credentials, onLogout }: AppProps) {
         if (JSON.stringify(current) === JSON.stringify(refreshed)) return current
         return refreshed
       })
-    } catch {
-      // Xu ly im lang o cap do khung shell, loi chi tiet se duoc TableMaintenancePage hien thi
+    } catch (error) {
       setTables([])
+      setAppError(`Cannot load available tables. ${getFriendlyErrorMessage(error)}`)
     } finally {
       setLoading(false)
     }
@@ -157,6 +159,8 @@ export default function App({ credentials, onLogout }: AppProps) {
       username={credentials?.username || ''}
       onSelectTable={handleSelectTable}
       onLogout={handleLogout}
+      appError={appError}
+      onDismissAppError={() => setAppError('')}
     >
       {/* Man hinh noi dung chinh chua toan bo bang du lieu, cac tab chuc nang va thao tac CRUD */}
       <TableMaintenancePage

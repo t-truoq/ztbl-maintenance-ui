@@ -42,6 +42,16 @@ export const FULL_TABLE_PERMISSION: TablePermissionState = {
   deleteEnabled: true
 }
 
+export const NO_TABLE_PERMISSION: TablePermissionState = {
+  canView: false,
+  canCreate: false,
+  canUpdate: false,
+  canDelete: false,
+  canUpload: false,
+  updateEnabled: false,
+  deleteEnabled: false
+}
+
 const authAdminApi = axios.create({
   baseURL: SAP_AUTH_ADMIN_SERVICE,
   params: {
@@ -81,12 +91,19 @@ function flagEnabled(value: unknown, fallback = false): boolean {
 }
 
 function permissionFromRow(row: PermissionRow): TablePermissionState {
+  const canCreate = flagEnabled(row.CanCreate)
+  const canUpdate = flagEnabled(row.CanUpdate)
+  const canDelete = flagEnabled(row.CanDelete)
   return {
     canView: flagEnabled(row.CanView),
-    canCreate: flagEnabled(row.CanCreate),
-    canUpdate: flagEnabled(row.CanUpdate),
-    canDelete: flagEnabled(row.CanDelete),
-    canUpload: row.CanUpload !== undefined ? flagEnabled(row.CanUpload) : true,
+    canCreate,
+    canUpdate,
+    canDelete,
+    // Older auth services do not expose CanUpload. In that case importing
+    // requires at least one mutation permission; never default it to true.
+    canUpload: row.CanUpload !== undefined
+      ? flagEnabled(row.CanUpload)
+      : canCreate || canUpdate || canDelete,
     updateEnabled: row.Update_mc !== false,
     deleteEnabled: row.Delete_mc !== false
   }
@@ -148,6 +165,8 @@ export async function getTablePermissions(username: string, tableName: string): 
   if (!normalizedUsername || !normalizedTable) return FULL_TABLE_PERMISSION
 
   try {
+    // CanUpload is not exposed by the current ZSB_AUTH_ADMIN_V2 service.
+    // Upload permission is derived from the mutation permissions below.
     const select = 'CanView,CanCreate,CanUpdate,CanDelete,Update_mc,Delete_mc'
     const userRes = await authAdminApi.get('/UserPermissions', {
       params: {
@@ -167,7 +186,9 @@ export async function getTablePermissions(username: string, tableName: string): 
     const tableRow = (readRows(tableRes.data) as PermissionRow[])[0]
     return tableRow ? permissionFromRow(tableRow) : FULL_TABLE_PERMISSION
   } catch (e) {
-    console.warn('getTablePermissions error, fallback to FULL_TABLE_PERMISSION:', e)
-    return FULL_TABLE_PERMISSION
+    console.warn('getTablePermissions error, denying table access:', e)
+    // A failed authorization request must never grant access by accident.
+    // Let the page surface the reason while it renders the table as denied.
+    throw e
   }
 }

@@ -20,6 +20,7 @@ import {
   Label,
   Input,
   Icon,
+  MessageStrip,
 } from '@ui5/webcomponents-react'
 import { isDeployedOnSAP } from '../services/apiClient'
 import { TableConfig } from '../types'
@@ -44,6 +45,8 @@ interface AppLayoutProps {
   onLogout: () => void;
   /** Component con duoc nhung vao vung noi dung chinh (TableMaintenancePage) */
   children: React.ReactNode;
+  appError?: string;
+  onDismissAppError?: () => void;
 }
 
 export default function AppLayout({
@@ -53,7 +56,9 @@ export default function AppLayout({
   username: _username,
   onSelectTable,
   onLogout: _onLogout,
-  children
+  children,
+  appError = '',
+  onDismissAppError
 }: AppLayoutProps) {
   /* ============================================================================
    * PHAN 2: STATE VA REFS QUAN LY TRANG THAI GIAO DIEN
@@ -279,6 +284,13 @@ export default function AppLayout({
             background: '#f5f6f7'
           }}
         >
+          {appError && (
+            <div style={{ padding: '1rem 1rem 0' }}>
+              <MessageStrip design="Negative" onClose={onDismissAppError}>
+                {appError}
+              </MessageStrip>
+            </div>
+          )}
           {children}
         </div>
       </div>

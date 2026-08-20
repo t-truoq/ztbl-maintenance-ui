@@ -42,6 +42,7 @@ import {
   parseBulkActionResults,
   parseFKErrorMessage,
   parseTableDataJson,
+  rollbackAudit,
   sanitizeApprovalLockMessage,
   updateRecord
 } from './tableConfigApi'
@@ -326,5 +327,25 @@ describe('tableConfigApi CRUD payloads', () => {
     expect(JSON.parse(mockPostWithCsrf.mock.calls[1][1].records_data)).toEqual([
       { COURSE_ID: 'C001' }
     ])
+  })
+})
+
+describe('tableConfigApi rollback results', () => {
+  beforeEach(() => {
+    mockPostWithCsrf.mockReset()
+  })
+
+  it('treats a blocked business response as a rollback failure even with HTTP 200', async () => {
+    mockPostWithCsrf.mockResolvedValueOnce({
+      data: {
+        success: true,
+        message: 'Rollback blocked for {"ENTITY_ID":"123"}: record no longer exists.'
+      }
+    })
+
+    await expect(rollbackAudit('AUDIT-1')).resolves.toEqual({
+      success: false,
+      message: 'Rollback blocked for {"ENTITY_ID":"123"}: record no longer exists.'
+    })
   })
 })
