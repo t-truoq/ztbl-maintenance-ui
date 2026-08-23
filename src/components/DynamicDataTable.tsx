@@ -25,32 +25,58 @@ import { AiDescriptionMap, FieldMeta, PendingApprovalRecord, TableConfig, TableR
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 
+/* ============================================================================
+ * PHAN 1: KHAI BAO INTERFACES VA PROPS CUA DYNAMICDATATABLE
+ * ============================================================================ */
+
 interface DynamicDataTableProps {
+  /** Thong tin cau hinh bang hien tai */
   selectedTable: TableConfig
+  /** Danh sach metadata cac cot duoc parse boi fieldMeta.ts */
   fields: FieldMeta[]
+  /** Mang du lieu dong da qua bo loc tim kiem */
   filteredData: TableRowData[]
+  /** Co dang tai du lieu tu SAP OData */
   dataLoading: boolean
+  /** Trang thai co dang bat che do chinh sua Inline hay khong */
   isEditingTable: boolean
+  /** Mang du lieu dang duoc chinh sua tam thoi */
   editedData: TableRowData[]
+  /** Danh sach loi validate truc tiep tren tung o nhap lieu */
   inlineErrors: Record<number, Record<string, string>>
+  /** Thong tin nguoi dung khac dang giu khoa bang (neu co) */
   activeTableLock: { lockedBy: string } | null
+  /** Danh sach cac dong dang cho ADMIN phe duyet (Status = PENDING) */
   pendingApprovalRecords?: PendingApprovalRecord[]
+  /** Callback khi gia tri cua 1 o thay doi */
   onCellChange: (rowIndex: number, fieldName: string, newValue: any) => void
+  /** Callback them 1 dong moi vao bang */
   onAddRow: () => void
+  /** Callback xoa 1 dong moi tao chua luu */
   onRemoveNewRow: (rowIndex: number) => void
+  /** Callback luu cac thay doi xuong SAP RAP Backend */
   onSaveInlineEdits: () => void
+  /** Callback huy che do chinh sua */
   onCancelInlineEdits: () => void
+  /** Callback bat dau che do chinh sua cac dong da chon */
   onStartEditing: () => void
+  /** Callback bat dau che do tao moi ban ghi */
   onStartCreating: () => void
+  /** Callback tai lai du lieu bang */
   onRefresh: () => void
+  /** Callback xoa cac dong da chon */
   onDeleteRows: (rows: TableRowData[]) => void
+  /** Quyen han cua user hien tai (Create, Update, Delete) */
   permissions?: {
     canCreate: boolean
     canUpdate: boolean
     canDelete: boolean
   }
+  /** Ban do luu mo ta AI cho tung truong */
   aiDescriptions?: AiDescriptionMap
+  /** Co dang tai mo ta AI */
   aiLoading?: boolean
+  /** Callback yeu cau Backend sinh mo ta AI */
   onRequestAiDescriptions?: () => Promise<void> | void
 }
 
@@ -78,8 +104,15 @@ export default function DynamicDataTable({
   aiLoading = false,
   onRequestAiDescriptions,
 }: DynamicDataTableProps) {
+  /* ============================================================================
+   * PHAN 2: STATE QUAN LY SELECTION, SORTING, PAGINATION VA RESIZE COT
+   * ============================================================================ */
+
+  /** Tap hop RecordKey cua cac dong dang duoc chon boi Checkbox */
   const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(new Set())
+  /** Key cua o vua duoc bam nut Copy thanh cong */
   const [copiedCellKey, setCopiedCellKey] = useState('')
+  /** State dieu khien popover giai thich y nghia truong bang AI */
   const [activeAiTooltip, setActiveAiTooltip] = useState<{
     fieldName: string
     label: string
@@ -87,12 +120,23 @@ export default function DynamicDataTable({
     y: number
   } | null>(null)
   const [aiTooltipLoadingField, setAiTooltipLoadingField] = useState('')
+
+  /** Truong dang duoc sap xep va chieu sap xep (asc/desc) */
   const [sortField, setSortField] = useState<string>('')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | ''>('')
+
+  /** Luu tru do rong tuy chinh khi nguoi dung keo dan cot bang chuot */
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({})
+
+  /** State quan ly phan trang (Trang hien tai va so dong tren 1 trang) */
   const [pageIndex, setPageIndex] = useState(0)
   const [pageSize, setPageSize] = useState(10)
 
+  /* ============================================================================
+   * PHAN 3: XU LY SAP XEP DU LIEU (SORTING) VA KEO GIAN COT (RESIZING)
+   * ============================================================================ */
+
+  /** Xu ly khi click vao tieu de cot de sap xep: Chua sap xep -> Tang dan -> Giam dan -> Mac dinh */
   const handleHeaderSort = (fieldName: string) => {
     if (isEditingTable) return
     if (sortField !== fieldName) {
@@ -106,6 +150,7 @@ export default function DynamicDataTable({
     }
   }
 
+  /** Xu ly bat dau keo chuot de thay doi do rong cot (Resize handle) */
   const handleResizeStart = (technicalName: string, startWidth: number, e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -132,6 +177,7 @@ export default function DynamicDataTable({
     window.addEventListener('mouseup', onMouseUp)
   }
 
+  /** Du lieu sau khi duoc sap xep theo cot va kieu du lieu tuong ung */
   const sortedData = useMemo(() => {
     if (!sortField || !sortDirection) return filteredData
 
@@ -162,13 +208,22 @@ export default function DynamicDataTable({
     })
   }, [filteredData, sortField, sortDirection, fields])
 
-  const totalPages = Math.max(1, Math.ceil(sortedData.length / pageSize))
+  /* ============================================================================
+   * PHAN 4: TINH TOAN PHAN TRANG (PAGINATION)
+   * ============================================================================ */
+
+  const currentRecords = isEditingTable ? editedData : sortedData
+  const totalPages = Math.max(1, Math.ceil(currentRecords.length / pageSize))
   const safePageIndex = Math.min(pageIndex, totalPages - 1)
-  const pageStart = sortedData.length === 0 ? 0 : safePageIndex * pageSize + 1
-  const pageEnd = Math.min((safePageIndex + 1) * pageSize, sortedData.length)
+  const pageStart = currentRecords.length === 0 ? 0 : safePageIndex * pageSize + 1
+  const pageEnd = Math.min((safePageIndex + 1) * pageSize, currentRecords.length)
   const pagedData = useMemo(
     () => sortedData.slice(safePageIndex * pageSize, (safePageIndex + 1) * pageSize),
     [sortedData, safePageIndex, pageSize]
+  )
+  const pagedEditedData = useMemo(
+    () => editedData.slice(safePageIndex * pageSize, (safePageIndex + 1) * pageSize),
+    [editedData, safePageIndex, pageSize]
   )
 
   useEffect(() => {
@@ -178,6 +233,10 @@ export default function DynamicDataTable({
   useEffect(() => {
     if (safePageIndex !== pageIndex) setPageIndex(safePageIndex)
   }, [safePageIndex, pageIndex])
+
+  /* ============================================================================
+   * PHAN 5: TINH TOAN DO RONG COT VA CSS GRID COLUMNS STYLE
+   * ============================================================================ */
 
   const getDuplicateHeaderLabel = (headerLabel: string, technicalName: string) => {
     const normalizedName = technicalName.toUpperCase()
@@ -194,6 +253,10 @@ export default function DynamicDataTable({
     return counts
   }, {})
 
+  /**
+   * Tinh toan do rong minColWidth cho tung cot dua vao: do dai chuoi label,
+   * kieu du lieu (Date: 225px, Domain: 200px, Text: 180px), va icon Khoa is_key (+18px).
+   */
   const fieldsWithWidths = fields.map(f => {
     const technicalName = f.field_name || f.FieldName
     const baseHeaderLabel = formatHeaderLabel(f)
@@ -212,6 +275,10 @@ export default function DynamicDataTable({
     return { field: f, minColWidth, headerLabel, technicalName }
   })
 
+  /* ============================================================================
+   * PHAN 6: QUAN LY KHOA DONG DANG CHO DUYET (PENDING APPROVAL) VA SELECTION
+   * ============================================================================ */
+
   const getRowKey = (row: TableRowData, fallbackIndex: number) => {
     if (row._isNew) return `new-${fallbackIndex}`
     try {
@@ -223,13 +290,12 @@ export default function DynamicDataTable({
 
   const pendingRecordKeySet = useMemo(() => new Set(
     pendingApprovalRecords
-      // Create requests do not have a row in the active table yet. Update and
-      // delete requests must lock the existing row until ADMIN decides.
       .filter(record => !['C', 'CREATE'].includes(String(record.ActionType || '').trim().toUpperCase()))
       .map(record => normalizeRecordKeyString(record.RecordKey))
       .filter(Boolean)
   ), [pendingApprovalRecords])
 
+  /** Kiem tra dong nay co dang bi khoa vi co yeu cau Update/Delete dang cho ADMIN duyet */
   const isRowPending = (row: TableRowData, fallbackIndex: number) =>
     pendingRecordKeySet.has(normalizeRecordKeyString(getRowKey(row, fallbackIndex)))
 
@@ -394,6 +460,7 @@ export default function DynamicDataTable({
   const startCreatingNewRow = () => {
     if (createDenied) return
     setSelectedRowKeys(new Set())
+    setPageIndex(0)
     onStartCreating()
   }
 
@@ -403,6 +470,7 @@ export default function DynamicDataTable({
   }
 
   const selectionColumnWidth = 44
+  /** Chuoi CSS Grid tinh toan tong hop toan bo do rong cac cot */
   const columnsStyle =
     `${selectionColumnWidth}px ${fieldsWithWidths
       .map(item => `${item.minColWidth}px`)
@@ -418,8 +486,13 @@ export default function DynamicDataTable({
     overflow: 'hidden',
   } as const
 
+  /* ============================================================================
+   * PHAN 7: RENDER GIAO DIEN - TOOLBAR VA BANG DU LIEU DONG
+   * ============================================================================ */
+
   return (
     <div className="tab-panel-form table-data-panel">
+      {/* ── Header cua Panel: Tieu de so ban ghi va cac nut thao tac CRUD ── */}
       <div className="tab-panel-header">
         <div className="tab-panel-title-block">
           <Title level="H4" className="tab-panel-title">
@@ -458,7 +531,14 @@ export default function DynamicDataTable({
               <Button design="Transparent" icon={'decline' as any} onClick={cancelInlineEditing}>
                 Cancel
               </Button>
-              <Button design="Transparent" icon={'add' as any} onClick={onAddRow}>
+              <Button
+                design="Transparent"
+                icon={'add' as any}
+                onClick={() => {
+                  setPageIndex(0)
+                  onAddRow()
+                }}
+              >
                 Add Row
               </Button>
             </>
@@ -509,7 +589,7 @@ export default function DynamicDataTable({
         <AppLoadingState label="Loading table data..." />
       )}
 
-      {/* ── Scrollable Table Wrapper: Đồng bộ CSS Grid với các ô table ── */}
+      {/* ── Scrollable Table Wrapper: Dong bo CSS Grid voi cac o table ── */}
       {!dataLoading && <div
         className={`dynamic-table-scroll dynamic-table-surface${isEditingTable ? ' dynamic-table-scroll--editing' : ''}`}
         style={{ ['--dynamic-table-grid-columns' as any]: columnsStyle }}
@@ -538,9 +618,7 @@ export default function DynamicDataTable({
                   onChange={(e: any) => toggleAllVisibleRows(e.target.checked)}
                 />
               </TableHeaderCell>
-              {/* ========================================================================= */}
-              {/* 🎨 [DYNAMIC RENDER 1] SINH TIÊU ĐỀ CỘT ĐỘNG (DUYỆT MẢNG FIELDS)         */}
-              {/* ========================================================================= */}
+              {/* [DYNAMIC RENDER 1] SINH TIEU DE COT DONG (DUYET MANG FIELDS) */}
               {fieldsWithWidths.map(({ field: f, minColWidth, headerLabel }) => {
                 const technicalName = f.field_name || f.FieldName
                 const isSorted = sortField === technicalName
@@ -575,14 +653,14 @@ export default function DynamicDataTable({
                       >
                         {headerLabel}
                       </Label>
-                      {/* Thêm biểu tượng Khóa Vàng nếu trường này là Khóa chính (Key Field) */}
+                      {/* Bieu tuong Khoa vang neu truong nay la Primary Key (is_key) */}
                       {(f.is_key || f.IsKeyField === 'X') && (
                         <Icon
                           name="key"
                           style={{ minWidth: '12px', width: '12px', height: '12px', color: '#e09d00' }}
                         />
                       )}
-                      {/* Biểu tượng Sắp xếp Tăng / Giảm dần */}
+                      {/* Bieu tuong Sap xep Tang / Giam dan */}
                       {isSorted && sortDirection ? (
                         <Icon
                           name={sortDirection === 'asc' ? 'sort-ascending' : 'sort-descending'}
@@ -594,6 +672,7 @@ export default function DynamicDataTable({
                           style={{ minWidth: '12px', width: '12px', height: '12px', color: '#8c8c8c', opacity: 0.3 }}
                         />
                       )}
+                      {/* Nut (?) goi y giai thich y nghia truong bang AI (BP-09) */}
                       {onRequestAiDescriptions && (
                         <button
                           type="button"
@@ -607,10 +686,10 @@ export default function DynamicDataTable({
                           ?
                         </button>
                       )}
-                      {/* Thanh gạch đứng kéo dãn độ rộng cột động */}
+                      {/* Thanh gach dung keo dan do rong cot dong */}
                       <div
                         className="column-resize-handle-inline"
-                        title="Kéo để thay đổi độ rộng cột"
+                        title="Keo de thay doi do rong cot"
                         onMouseDown={(e) => handleResizeStart(technicalName, minColWidth, e)}
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -628,9 +707,7 @@ export default function DynamicDataTable({
             </TableHeaderRow>
           }
         >
-          {/* ========================================================================= */}
-          {/* ✏️ [INLINE CUD 1] CHẾ ĐỘ CHỈNH SỬA TẠI CHỖ (INLINE EDIT MODE)            */}
-          {/* ========================================================================= */}
+          {/* [INLINE CUD 1] CHE DO CHINH SUA TAI CHO (INLINE EDIT MODE) */}
           {isEditingTable ? (
             editedData.length === 0 ? (
               <TableRow className="dynamic-table-empty-row" style={{ gridTemplateColumns: '1fr' }}>
@@ -641,88 +718,91 @@ export default function DynamicDataTable({
                 </TableCell>
               </TableRow>
             ) : (
-              editedData.map((row, i) => (
-                <TableRow
-                  className={`dynamic-table-data-row${row._isNew ? ' dynamic-table-data-row--new' : ''}`}
-                  key={i}
-                  style={{
-                    gridTemplateColumns: columnsStyle,
-                    ['--ui5-table-grid-columns' as any]: columnsStyle
-                  }}
-                >
-                  <TableCell className="dynamic-table-selection-cell" style={selectionCellStyle}>
-                    <CheckBox checked={row._isNew || selectedRowKeys.has(getRowKey(row, i))} disabled />
-                  </TableCell>
-                  {/* Duyệt mảng fields để sinh các ô chỉnh sửa/hiển thị tương ứng */}
-                  {fieldsWithWidths.map(({ field: f, minColWidth }) => {
-                    const name = f.field_name || f.FieldName
-                    const feType = f.fe_type || f.FeType
-                    const rowSelected = row._isNew || selectedRowKeys.has(getRowKey(row, i))
-                    const singleLine = shouldKeepCellSingleLine(f, row[name])
-                    return (
-                      <TableCell
-                        key={name}
-                        minWidth={`${minColWidth}px`}
-                        style={{
-                          minWidth: `${minColWidth}px`,
-                        }}
-                      >
-                        {rowSelected ? (
-                          <div style={{ width: '100%', minWidth: 0 }}>
-                            <CellEditControl
-                              row={row}
-                              rowIndex={i}
-                              field={f}
-                              inlineErrors={inlineErrors}
-                              configUuid={selectedTable.ConfigUuid}
-                              tableName={selectedTable.TableName}
-                              onCellChange={onCellChange}
-                            />
-                          </div>
-                        ) : (
-                          <FlexBox alignItems="Center" gap="4px" style={{ width: '100%', minWidth: 0 }}>
-                            <Text
-                              title={String(row[name] ?? '')}
-                              style={{
-                                color: '#32363a',
-                                overflow: singleLine ? 'hidden' : 'visible',
-                                textOverflow: singleLine ? 'ellipsis' : undefined,
-                                whiteSpace: singleLine ? 'nowrap' : 'normal',
-                                overflowWrap: 'normal',
-                                wordBreak: 'normal',
-                                minWidth: 0,
-                              }}
-                            >
-                              {formatCellValue(f, row[name])}
-                            </Text>
-                            {shouldShowCopyButton(f, row[name]) && (
-                              <Button
-                                design="Transparent"
-                                icon={'copy' as any}
-                                accessibleName="Copy full value"
-                                title={copiedCellKey === `${i}-${name}` ? 'Copied' : 'Copy full value'}
-                                onClick={(e: any) => copyCellValue(row[name], `${i}-${name}`, e)}
-                              />
-                            )}
-                          </FlexBox>
-                        )}
-                      </TableCell>
-                    )
-                  })}
-                  {hasNewRows && (
-                    <TableCell>
-                      {row._isNew ? (
-                        <Button
-                          design="Transparent"
-                          icon={'delete' as any}
-                          accessibleName="Remove new record"
-                          onClick={() => onRemoveNewRow(i)}
-                        />
-                      ) : null}
+              pagedEditedData.map((row, i) => {
+                const actualIndex = safePageIndex * pageSize + i
+                return (
+                  <TableRow
+                    className={`dynamic-table-data-row${row._isNew ? ' dynamic-table-data-row--new' : ''}`}
+                    key={actualIndex}
+                    style={{
+                      gridTemplateColumns: columnsStyle,
+                      ['--ui5-table-grid-columns' as any]: columnsStyle
+                    }}
+                  >
+                    <TableCell className="dynamic-table-selection-cell" style={selectionCellStyle}>
+                      <CheckBox checked={row._isNew || selectedRowKeys.has(getRowKey(row, actualIndex))} disabled />
                     </TableCell>
-                  )}
-                </TableRow>
-              ))
+                    {/* Duyet mang fields de sinh cac o chinh sua/hien thi tuong ung */}
+                    {fieldsWithWidths.map(({ field: f, minColWidth }) => {
+                      const name = f.field_name || f.FieldName
+                      const feType = f.fe_type || f.FeType
+                      const rowSelected = row._isNew || selectedRowKeys.has(getRowKey(row, actualIndex))
+                      const singleLine = shouldKeepCellSingleLine(f, row[name])
+                      return (
+                        <TableCell
+                          key={name}
+                          minWidth={`${minColWidth}px`}
+                          style={{
+                            minWidth: `${minColWidth}px`,
+                          }}
+                        >
+                          {rowSelected ? (
+                            <div style={{ width: '100%', minWidth: 0 }}>
+                              <CellEditControl
+                                row={row}
+                                rowIndex={actualIndex}
+                                field={f}
+                                inlineErrors={inlineErrors}
+                                configUuid={selectedTable.ConfigUuid}
+                                tableName={selectedTable.TableName}
+                                onCellChange={onCellChange}
+                              />
+                            </div>
+                          ) : (
+                            <FlexBox alignItems="Center" gap="4px" style={{ width: '100%', minWidth: 0 }}>
+                              <Text
+                                title={String(row[name] ?? '')}
+                                style={{
+                                  color: '#32363a',
+                                  overflow: singleLine ? 'hidden' : 'visible',
+                                  textOverflow: singleLine ? 'ellipsis' : undefined,
+                                  whiteSpace: singleLine ? 'nowrap' : 'normal',
+                                  overflowWrap: 'normal',
+                                  wordBreak: 'normal',
+                                  minWidth: 0,
+                                }}
+                              >
+                                {formatCellValue(f, row[name])}
+                              </Text>
+                              {shouldShowCopyButton(f, row[name]) && (
+                                <Button
+                                  design="Transparent"
+                                  icon={'copy' as any}
+                                  accessibleName="Copy full value"
+                                  title={copiedCellKey === `${actualIndex}-${name}` ? 'Copied' : 'Copy full value'}
+                                  onClick={(e: any) => copyCellValue(row[name], `${actualIndex}-${name}`, e)}
+                                />
+                              )}
+                            </FlexBox>
+                          )}
+                        </TableCell>
+                      )
+                    })}
+                    {hasNewRows && (
+                      <TableCell>
+                        {row._isNew ? (
+                          <Button
+                            design="Transparent"
+                            icon={'delete' as any}
+                            accessibleName="Remove new record"
+                            onClick={() => onRemoveNewRow(actualIndex)}
+                          />
+                        ) : null}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                )
+              })
             )
           ) : sortedData.length === 0 ? (
             /* ── Read-only empty state ────────────────────────────────── */
@@ -821,35 +901,35 @@ export default function DynamicDataTable({
           )}
         </Table>
       </div>}
-      {!isEditingTable && (
-        <div className="audit-pagination-bar">
-          <Text className="audit-count">Showing {pageStart}-{pageEnd} of {sortedData.length}</Text>
-          <div className="audit-pagination-actions">
-            <Label>Rows</Label>
-            <Select
-              value={String(pageSize)}
-              onChange={(event: any) => setPageSize(Number(event.detail.selectedOption.value))}
-            >
-              {PAGE_SIZE_OPTIONS.map(size => (
-                <Option key={size} value={String(size)}>{size}</Option>
-              ))}
-            </Select>
-            <Button
-              design="Transparent"
-              icon={'navigation-left-arrow' as any}
-              disabled={safePageIndex === 0}
-              onClick={() => setPageIndex(prev => Math.max(0, prev - 1))}
-            >Previous</Button>
-            <Text className="audit-page-label">Page {safePageIndex + 1} / {totalPages}</Text>
-            <Button
-              design="Transparent"
-              icon={'navigation-right-arrow' as any}
-              disabled={safePageIndex >= totalPages - 1}
-              onClick={() => setPageIndex(prev => Math.min(totalPages - 1, prev + 1))}
-            >Next</Button>
-          </div>
+      {/* ── Thanh phan trang (Pagination bar) ────────────────────────── */}
+      <div className="audit-pagination-bar">
+        <Text className="audit-count">Showing {pageStart}-{pageEnd} of {currentRecords.length}</Text>
+        <div className="audit-pagination-actions">
+          <Label>Rows</Label>
+          <Select
+            value={String(pageSize)}
+            onChange={(event: any) => setPageSize(Number(event.detail.selectedOption.value))}
+          >
+            {PAGE_SIZE_OPTIONS.map(size => (
+              <Option key={size} value={String(size)}>{size}</Option>
+            ))}
+          </Select>
+          <Button
+            design="Transparent"
+            icon={'navigation-left-arrow' as any}
+            disabled={safePageIndex === 0}
+            onClick={() => setPageIndex(prev => Math.max(0, prev - 1))}
+          >Previous</Button>
+          <Text className="audit-page-label">Page {safePageIndex + 1} / {totalPages}</Text>
+          <Button
+            design="Transparent"
+            icon={'navigation-right-arrow' as any}
+            disabled={safePageIndex >= totalPages - 1}
+            onClick={() => setPageIndex(prev => Math.min(totalPages - 1, prev + 1))}
+          >Next</Button>
         </div>
-      )}
+      </div>
+      {/* ── Popover giai thich y nghia truong du lieu bang AI ────────── */}
       {activeAiTooltip && (
         <div
           className="ai-field-popover"

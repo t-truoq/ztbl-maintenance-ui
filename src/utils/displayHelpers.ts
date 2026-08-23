@@ -1,5 +1,9 @@
 import { FieldMeta } from '../types'
 
+/* ============================================================================
+ * PHAN 1: HAM DINH DANG GIA TRI TONG HOP CHO CAC O CELL (formatCellValue)
+ * ============================================================================ */
+
 export function formatCellValue(field?: FieldMeta | null, value?: any): string {
   if (value === undefined || value === null || value === '') return ''
 
@@ -11,19 +15,23 @@ export function formatCellValue(field?: FieldMeta | null, value?: any): string {
   const fieldType = field.FieldType || ''
   const timestampField = isTimestampFieldName(fieldName) || fieldType === 'TIMESTAMP'
 
+  // Truong hop timestamp la '0' -> khong hien thi
   if (timestampField && str.trim() === '0') {
     return ''
   }
 
+  // Truong hop Boolean / Checkbox: 'X' -> 'Yes'
   if (feType === 'boolean' || fieldType === 'CHECK') {
     return str === 'X' ? 'Yes' : ''
   }
 
+  // Truong hop UUID: Giu nguyen de hien thi day du
   const hex = str.replace(/-/g, '')
   if (feType === 'uuid' || fieldType === 'UUID' || /^[0-9A-F]{32}$/i.test(hex)) {
     return str
   }
 
+  // Truong hop Timestamp: Dinh dang gio phut giay than thien
   const formattedTimestamp = formatTimestampValue(str, fieldName)
   if (formattedTimestamp) {
     return formattedTimestamp
@@ -36,6 +44,10 @@ export function formatCellValue(field?: FieldMeta | null, value?: any): string {
   return str
 }
 
+/* ============================================================================
+ * PHAN 2: HAM DINH DANG CHUOI THOI GIAN TIMESTAMP (formatTimestampValue)
+ * ============================================================================ */
+
 export function formatTimestampValue(value: any, fieldName = ''): string {
   if (value === undefined || value === null || value === '') return ''
 
@@ -44,9 +56,10 @@ export function formatTimestampValue(value: any, fieldName = ''): string {
 
   const isTimestampField = isTimestampFieldName(fieldName)
 
+  // Mau 1: ABAP Timestamp 14 chu so (YYYYMMDDhhmmss) kem phan le fraction tuy chon
   const abapMatch = raw.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\.(\d+))?$/)
   if (abapMatch && (isTimestampField || raw.length >= 14)) {
-    const [, year, month, day, hour, minute, second, fraction = ''] = abapMatch
+    const [, year, month, day, hour, minute, second] = abapMatch
     const date = new Date(
       Number(year),
       Number(month) - 1,
@@ -67,6 +80,7 @@ export function formatTimestampValue(value: any, fieldName = ''): string {
     }
   }
 
+  // Mau 2: ABAP Timestamp rut gon 10 chu so (YYYYMMDDhh)
   const shortTsMatch = raw.match(/^(\d{4})(\d{2})(\d{2})(\d{2})$/)
   if (shortTsMatch && (isTimestampField || raw.length === 10)) {
     const [, year, month, day, hour] = shortTsMatch
@@ -82,6 +96,7 @@ export function formatTimestampValue(value: any, fieldName = ''): string {
     }
   }
 
+  // Mau 3: Dinh dang ISO Date Time (YYYY-MM-DD HH:MM:SS)
   const isoLikeMatch = raw.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d+))?/)
   if (isoLikeMatch && isTimestampField) {
     const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T')
@@ -101,6 +116,11 @@ export function formatTimestampValue(value: any, fieldName = ''): string {
   return ''
 }
 
+/* ============================================================================
+ * PHAN 3: CAC HAM TIEN ICH KIEM TRA VA CHUAN HOA NGAY THANG
+ * ============================================================================ */
+
+/** Kiem tra ten cot co phai la truong Timestamp he thong hay khong */
 export function isTimestampFieldName(fieldName?: string | null): boolean {
   if (!fieldName) return false
   const normalizedField = String(fieldName).trim().toUpperCase()
@@ -113,10 +133,12 @@ export function isTimestampFieldName(fieldName?: string | null): boolean {
   )
 }
 
+/** Kiem tra chuoi co cau truc giong Timestamp ISO */
 function looksLikeTimestamp(str: string): boolean {
   return /^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}/.test(str)
 }
 
+/** Chuan hoa gia tri ngay ve dang YYYY-MM-DD cho SAP */
 export function formatDateForSap(value: any): string {
   if (!value) return ''
   const match = String(value).match(/(\d{4}-\d{2}-\d{2})/)

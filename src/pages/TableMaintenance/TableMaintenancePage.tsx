@@ -423,7 +423,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
                     setIsEditingTable(true)
                     const newRec = initFormValues(allFields, null)
                     newRec._isNew = true
-                    setEditedData([...filteredData, newRec])
+                    setEditedData([newRec, ...filteredData])
                   }
                 }}
                 onRefresh={() => loadTable(selectedTable)}

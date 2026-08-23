@@ -1,22 +1,37 @@
 /**
- * SM30-style field metadata + payload formatting (FE contract with BE).
+ * ============================================================================
+ * FILE: src/utils/fieldMeta.ts
+ * ----------------------------------------------------------------------------
+ * VAI TRO: Bo nao xu ly Metadata va chuyen doi kieu du lieu cua toan bo Frontend.
+ * ----------------------------------------------------------------------------
+ * CAC NHIEM VU CHINH:
+ *   - 1. Chuyen doi kieu du lieu ABAP/DDIC sang kieu Frontend (fe_type: date, boolean, uuid, domain, fk_select,...).
+ *   - 2. Parse chuoi JSON metadata tra ve tu SAP RAP Action getFieldMeta.
+ *   - 3. Parse du lieu dong (parseTableData) thanh mang doi tuong TableRowData.
+ *   - 4. Dong goi va chuan hoa JSON payload khi Create/Update, tu dong loai bo System Audit Fields.
+ * ============================================================================
  */
 
 import { fromAbapDate, toAbapDate, toAbapUuid } from './abapFormatter'
 import { FieldMeta, FeType, TableRowData } from '../types'
 
+/* ============================================================================
+ * PHAN 1: CHUYEN DOI NGAY THANG & PARSE METADATA JSON TU SAP BACKEND
+ * ============================================================================ */
+
+/** Chuyen doi chuoi ngay ABAP (YYYYMMDD) sang ISO (YYYY-MM-DD) cho UI */
 export function abapToIso(abapDate: string): string {
   return fromAbapDate(abapDate)
 }
 
+/** Ham bi danh cua abapToIso */
 export function isoFromAbap(abapDate: string): string {
   return fromAbapDate(abapDate)
 }
 
 /**
- * Parse getfieldmeta meta_json; sort by display_order.
- * @param {string} metaJson
- * @returns {FieldMeta[]}
+ * [HAM parseFieldMetaJson]: Doc chuoi JSON tra ve tu Action getFieldMeta cua SAP.
+ * Chuan hoa tung cot va sap xep theo thu tu display_order do Admin cau hinh trong ZFLD_CONFIG.
  */
 export function parseFieldMetaJson(metaJson: string): FieldMeta[] {
   if (!metaJson?.trim()) return []
@@ -32,6 +47,7 @@ export function parseFieldMetaJson(metaJson: string): FieldMeta[] {
   }
 }
 
+/** Kiem tra co gia tri dung (true, 'X', 'TRUE', '1', 'YES') */
 export function isTruthyFlag(value: any): boolean {
   if (value === true || value === 1) return true
   if (typeof value === 'string') {
@@ -41,7 +57,13 @@ export function isTruthyFlag(value: any): boolean {
   return false
 }
 
-/** Infer fe_type when getFieldMeta unavailable — uses field_list + sample row */
+/* ============================================================================
+ * PHAN 2: SUY DIEN KIEU DU LIEU & DU PHONG METADATA (FALLBACK)
+ * ============================================================================ */
+
+/**
+ * Suy doan kieu fe_type dua vao ten cot va gia tri mau (Dung khi backend chua cau hinh ZFLD_CONFIG)
+ */
 export function inferFeTypeFromNameAndValue(fieldName: string, sampleValue: any): FeType {
   const name = (fieldName || '').toUpperCase()
   const str = sampleValue === undefined || sampleValue === null ? '' : String(sampleValue).trim()
@@ -61,10 +83,7 @@ export function inferFeTypeFromNameAndValue(fieldName: string, sampleValue: any)
 }
 
 /**
- * Fallback metadata from getTableData.field_list (+ optional data_json sample).
- * @param {string} fieldList comma-separated
- * @param {string} [dataJson]
- * @param {(s: string) => string} [fixJsonFn]
+ * Tao nhanh danh sach FieldMeta tu chuoi field_list phan cach bang dau phay khi thieu metadata chinh thuc
  */
 export function buildFieldMetaFromFieldList(
   fieldList: string,
@@ -82,7 +101,7 @@ export function buildFieldMetaFromFieldList(
       const rows = JSON.parse(fixed)
       sample = Array.isArray(rows) ? rows[0] || {} : rows
     } catch {
-      /* ignore malformed sample */
+      /* Bo qua sample loi */
     }
   }
 
@@ -99,7 +118,14 @@ export function buildFieldMetaFromFieldList(
   )
 }
 
-/** @param {Record<string, any>} raw */
+/* ============================================================================
+ * PHAN 3: CHUAN HOA FIELD METADATA & MAPPING KIEU ABAP SANG FRONTEND
+ * ============================================================================ */
+
+/**
+ * [HAM normalizeFieldMetaRow]: Chuan hoa 1 ban ghi metadata tu Backend ve dinh dang FieldMeta tieu chuan.
+ * Xu ly thong minh cac kieu RAW16 (UUID), Date, Time, Domain, Checkbox Boolean va Foreign Key.
+ */
 export function normalizeFieldMetaRow(raw: Record<string, any>): FieldMeta {
   const fieldName = String(raw.field_name ?? raw.FieldName ?? raw.FIELD_NAME ?? '')
   let feType = normalizeFeType(raw.fe_type ?? raw.FeType ?? raw.FieldType ?? raw.FE_TYPE)
@@ -116,7 +142,7 @@ export function normalizeFieldMetaRow(raw: Record<string, any>): FieldMeta {
     ''
   )
 
-  // Smart refinement for ABAP types (X = Hexadecimal/RAW/UUID, P = Timestamp/Packed Decimal)
+  // Tinh chinh thong minh kieu du lieu dua vao ten cot va kieu ABAP (X = RAW/UUID, P = Timestamp/Dec)
   const upperName = fieldName.toUpperCase()
   const upperAbap = abapType.toUpperCase()
   if (feType === 'text' || feType === 'decimal') {
@@ -162,7 +188,7 @@ export function normalizeFieldMetaRow(raw: Record<string, any>): FieldMeta {
     fk_ref_table: fkRefTable,
     is_readonly: isReadonly,
     ReadonlyFlag: isReadonly ? 'X' : '',
-    /** Legacy aliases for existing UI helpers */
+    /** Cac truong alias tuong thich nguoc voi Fiori Elements va UI Helpers */
     FieldName: fieldName,
     FeType: feType,
     FieldType: feTypeToLegacyFieldType(feType),
@@ -181,7 +207,7 @@ export function normalizeFieldMetaRow(raw: Record<string, any>): FieldMeta {
   }
 }
 
-/** @param {unknown} value */
+/** Chuyen doi cac chuoi mo ta kieu cua SAP thanh FeType tieu chuan */
 function normalizeFeType(value: any): FeType {
   const t = String(value ?? 'text').toLowerCase()
   const map: Record<string, FeType> = {
@@ -226,7 +252,7 @@ function normalizeFeType(value: any): FeType {
   return map[t] || 'text'
 }
 
-/** @param {FeType} feType */
+/** Chuyen FeType sang FieldType cu cua Fiori/SM30 */
 function feTypeToLegacyFieldType(feType: FeType): string {
   switch (feType) {
     case 'date':
@@ -250,6 +276,7 @@ function feTypeToLegacyFieldType(feType: FeType): string {
   }
 }
 
+/** Kiem tra truong co phai la khoa ngoai (Foreign Key) hay khong */
 function isFkKeyField(field: FieldMeta): boolean {
   const raw = field._raw || {}
   return (
@@ -264,14 +291,18 @@ function isFkKeyField(field: FieldMeta): boolean {
   )
 }
 
+/** Kiem tra truong khoa co phai la kieu UUID tu dong sinh (khong phai nhap tay) */
 function isGeneratedUuidCreateKey(field: FieldMeta): boolean {
   return !!(field.is_key || field.IsKeyField === 'X') && field.fe_type === 'uuid' && !isFkKeyField(field)
 }
 
+/* ============================================================================
+ * PHAN 4: PARSE DU LIEU DONG TU SAP (parseTableData & normalizeUuidFromBe)
+ * ============================================================================ */
+
 /**
- * @param {string} dataJson
- * @param {FieldMeta[]} meta
- * @returns {Record<string, unknown>[]}
+ * [HAM parseTableData]: Chuyen doi mang du lieu tho tu SAP thanh mang doi tuong du lieu hien thi tren UI.
+ * Ap dung dung quy tac format cho tung kieu (Date, Boolean X='', UUID, Timestamp).
  */
 export function parseTableData(dataJson: string, meta: FieldMeta[]): TableRowData[] {
   if (!dataJson || dataJson.trim() === '[]') return []
@@ -298,6 +329,7 @@ export function parseTableData(dataJson: string, meta: FieldMeta[]): TableRowDat
           if (!s) {
             parsed[key] = ''
           } else if (isTs) {
+            // Giu nguyen gia tri goc neu la cot Timestamp de tranh bi cat cut gio phut giay
             parsed[key] = s
           } else if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
             parsed[key] = s.substring(0, 10)
@@ -320,7 +352,7 @@ export function parseTableData(dataJson: string, meta: FieldMeta[]): TableRowDat
   })
 }
 
-/** BE returns 32-char hex; normalize legacy Base64 if present */
+/** Chuan hoa chuoi UUID tu Backend ve dang Hex 32 ky tu in hoa hoac Base64 */
 export function normalizeUuidFromBe(value: any): string {
   if (value === undefined || value === null || value === '') return ''
   const s = String(value).trim()
@@ -341,12 +373,10 @@ export function normalizeUuidFromBe(value: any): string {
   return s.toUpperCase()
 }
 
-/**
- * @param {Record<string, unknown>} formData
- * @param {FieldMeta[]} meta
- * @param {boolean} isCreate
- * @returns {string}
- */
+/* ============================================================================
+ * PHAN 5: DONG GOI PAYLOAD JSON & LOAI BO SYSTEM FIELDS (formatPayload)
+ * ============================================================================ */
+
 const SAP_CLIENT_FIELDS = new Set(['CLIENT', 'MANDT'])
 const SAP_SYSTEM_FIELDS = new Set([
   'CREATED_BY',
@@ -367,11 +397,18 @@ const SAP_SYSTEM_FIELDS = new Set([
   'LAEDA'
 ])
 
+/** Kiem tra ten cot co phai la truong he thong / Audit cua SAP hay khong */
 function isSapSystemField(fieldName: string): boolean {
   const name = String(fieldName || '').trim().toUpperCase()
   return SAP_SYSTEM_FIELDS.has(name) || /^(CREATED|CHANGED|LAST_CHANGED|LOCAL_LAST_CHANGED)_(BY|AT|ON|DATE|TIME)$/i.test(name)
 }
 
+/**
+ * [HAM formatPayload]: Chuan bi chuoi JSON de gui len SAP khi Create/Update.
+ * - Tu dong loai bo MANDT / CLIENT vi SAP tu quan ly.
+ * - Tu dong loai bo System Audit Fields de tranh loi ep kieu CX_SY_CONVERSION_NO_DATE_TIME o Backend.
+ * - Chuyen doi kieu ngay ve YYYYMMDD, cờ boolean ve 'X', so nguyen/thap phan hop le.
+ */
 export function formatPayload(formData: Record<string, any>, meta: FieldMeta[], isCreate: boolean): string {
   const payload: Record<string, any> = {}
 
@@ -379,10 +416,10 @@ export function formatPayload(formData: Record<string, any>, meta: FieldMeta[], 
     if (field.is_hidden) continue
     const keyName = (field.field_name || field.FieldName || '').toUpperCase()
 
-    // CLIENT/MANDT is always managed by SAP — never send it in any payload
+    // Khong bao gio gui truong CLIENT/MANDT trong payload
     if (SAP_CLIENT_FIELDS.has(keyName) || keyName === 'CLIENT' || keyName === 'MANDT') continue
 
-    // Audit/timestamp fields are filled by SAP.
+    // Khong gui cac truong he thong (SAP se tu dong dien)
     if (isSapSystemField(keyName)) continue
 
     const key = field.field_name || field.FieldName
@@ -422,7 +459,11 @@ export function formatPayload(formData: Record<string, any>, meta: FieldMeta[], 
   return JSON.stringify(payload)
 }
 
-/** Visible fields for form (non-hidden, non-system field). Technical IDs remain visible but read-only. */
+/* ============================================================================
+ * PHAN 6: CAC HAM TIEN ICH FORM & VALUE HELP METADATA
+ * ============================================================================ */
+
+/** Loc ra danh sach cac truong hien thi tren Form nhap lieu (bo cac truong he thong va truong an) */
 export function getFormFieldsFromMeta(meta: FieldMeta[], _mode = 'create'): FieldMeta[] {
   const SYSTEM_FIELD_NAMES = new Set([
     'CREATED_BY',
@@ -452,7 +493,7 @@ export function getFormFieldsFromMeta(meta: FieldMeta[], _mode = 'create'): Fiel
   })
 }
 
-/** @param {FieldMeta[]} formFields */
+/** Khoi tao gia tri mac dinh cho Form nhap lieu dua tren metadata */
 export function initFormValuesFromMeta(formFields: FieldMeta[], row: TableRowData | null = null): Record<string, any> {
   const values: Record<string, any> = {}
   formFields.forEach(f => {
@@ -468,10 +509,12 @@ export function initFormValuesFromMeta(formFields: FieldMeta[], row: TableRowDat
   return values
 }
 
+/** Kiem tra truong co phai la kieu Domain co gia tri co dinh (Dropdown) */
 export function isDomainFieldMeta(field: FieldMeta): boolean {
   return field.fe_type === 'domain' || field.FeType === 'domain'
 }
 
+/** Kiem tra truong co phai la kieu Khoa ngoai (Foreign Key Dialog) */
 export function isFkSelectFieldMeta(field: FieldMeta): boolean {
   return (
     field.fe_type === 'fk_select' ||
@@ -481,6 +524,7 @@ export function isFkSelectFieldMeta(field: FieldMeta): boolean {
   )
 }
 
+/** Lay khoa domain tu metadata */
 export function getDomainKeyFromMeta(field: FieldMeta): string {
   return (field.domain_name || field.field_name || '').trim()
 }

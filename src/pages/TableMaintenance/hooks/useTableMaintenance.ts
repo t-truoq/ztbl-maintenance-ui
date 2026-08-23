@@ -1,3 +1,18 @@
+/**
+ * ============================================================================
+ * FILE: src/pages/TableMaintenance/hooks/useTableMaintenance.ts
+ * ----------------------------------------------------------------------------
+ * VAI TRO: Bo nao nghiep vu CRUD, Khoa bang & Xu ly dong thoi (Custom Hook Core).
+ * ----------------------------------------------------------------------------
+ * CAC NHIEM VU CHINH:
+ *   - 1. Quan ly toan bo State: Metadata (fields), Du lieu (data), Bo loc (filters), Dialogs.
+ *   - 2. Quan ly Khoa bang (Application Lock ZTBL_LOCK) & Heartbeat dinh ky de tranh xung dot nhieu nguoi sua.
+ *   - 3. Xu ly luong Chinh sua Inline & Form Dialog (Add Row, Remove Row, Live Validation).
+ *   - 4. Thuc thi Luu du lieu (Save): Phan tach Create/Update, Bulk Create/Update va phan luong Phe duyet Approval.
+ *   - 5. Kiem soat xung dot dong thoi qua ETag (Optimistic Concurrency Control) & Xu ly loi Khoa ngoai (FK Errors).
+ * ============================================================================
+ */
+
 import { useState, useEffect, useRef, useId } from 'react'
 import {
   loadTableContext,
@@ -58,7 +73,11 @@ export function useTableMaintenance({
   username,
   onRefreshTableList
 }: TableMaintenancePageProps) {
-  // ─── Data & metadata ──────────────────────────────────────────────────────
+  /* ============================================================================
+   * PHAN 1: KHAI BAO TOAN BO STATE CUA HOOK
+   * ============================================================================ */
+
+  // ─── Du lieu & Metadata ───────────────────────────────────────────────────
   const [allFields, setAllFields] = useState<FieldMeta[]>([])
   const [fields, setFields] = useState<FieldMeta[]>([])
   const [data, setData] = useState<TableRowData[]>([])
@@ -67,38 +86,38 @@ export function useTableMaintenance({
   const [editSessionEtag, setEditSessionEtag] = useState<any>(null)
   const [pendingApprovalRecords, setPendingApprovalRecords] = useState<PendingApprovalRecord[]>([])
 
-  // ─── UI state ─────────────────────────────────────────────────────────────
+  // ─── Trang thai giao dien & Thong bao ─────────────────────────────────────
   const [dataLoading, setDataLoading] = useState(false)
   const [error, setError] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
 
-  // ─── Filters ──────────────────────────────────────────────────────────────
+  // ─── Bo loc & Tim kiem ────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('')
   const [filterValues, setFilterValues] = useState<Record<string, string>>({})
   const [appliedSearchQuery, setAppliedSearchQuery] = useState('')
   const [appliedFilterValues, setAppliedFilterValues] = useState<Record<string, string>>({})
 
-  // ─── Inline edit ──────────────────────────────────────────────────────────
+  // ─── Che do Chinh sua Inline ──────────────────────────────────────────────
   const [isEditingTable, setIsEditingTable] = useState(false)
   const [editedData, setEditedData] = useState<TableRowData[]>([])
   const [inlineErrors, setInlineErrors] = useState<Record<number, Record<string, string>>>({})
 
-  // ─── Record dialog ────────────────────────────────────────────────────────
+  // ─── Dialog Them/Sua ban ghi ──────────────────────────────────────────────
   const [recordDialogOpen, setRecordDialogOpen] = useState(false)
   const [recordDialogMode, setRecordDialogMode] = useState<'create' | 'edit'>('create')
   const [editingRow, setEditingRow] = useState<TableRowData | null>(null)
 
-  // ─── Delete dialog ────────────────────────────────────────────────────────
+  // ─── Dialog Xac nhan Xoa ──────────────────────────────────────────────────
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingRows, setDeletingRows] = useState<TableRowData[]>([])
   const [deleteLoading, setDeleteLoading] = useState(false)
 
-  // ─── Error dialogs ────────────────────────────────────────────────────────
+  // ─── Dialogs Bao loi dac thu (ETag Conflict, Khoa ngoai FK) ───────────────
   const [optimisticLockOpen, setOptimisticLockOpen] = useState(false)
   const [fkErrorOpen, setFkErrorOpen] = useState(false)
   const [fkErrorMessage, setFkErrorMessage] = useState('')
 
-  // ─── Toast & approval ─────────────────────────────────────────────────────
+  // ─── Toast thong bao & Phe duyet Approval ────────────────────────────────
   const [toastMessage, setToastMessage] = useState('')
   const [toastOpen, setToastOpen] = useState(false)
   const [approvalInfo, setApprovalInfo] = useState<{
@@ -106,18 +125,14 @@ export function useTableMaintenance({
     action: 'create' | 'update' | 'delete' | 'save'
   } | null>(null)
 
-  // ─── Table lock ───────────────────────────────────────────────────────────
+  // ─── Khoa bang (Application Lock ZTBL_LOCK) ───────────────────────────────
   const [activeTableLock, setActiveTableLock] = useState<{ lockedBy: string } | null>(null)
 
   const latestActiveTableUuidRef = useRef<string | null>(null)
-  // Prevent duplicate backend action calls while the same table is loading.
-  // React StrictMode re-runs effects in development; sending two concurrent
-  // getFieldMeta/getTableData actions can make SAP return a misleading 423
-  // table-configuration-lock error even though the first request succeeds.
   const loadingTableUuidRef = useRef<string | null>(null)
   const sessionId = useId()
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
+  // ─── Cac ham tro giup (Helpers) ───────────────────────────────────────────
   function showError(message: string) {
     setSuccessMsg('')
     setError(message)
@@ -187,6 +202,14 @@ export function useTableMaintenance({
     setInlineErrors({})
   }
 
+  /* ============================================================================
+   * PHAN 2: QUAN LY KHOA BANG (APPLICATION LOCK & HEARTBEAT)
+   * ============================================================================ */
+
+  /**
+   * Xin khoa bang ZTBL_LOCK khi nguoi dung bat dau bam Create hoac Edit.
+   * Neu bang dang bi nguoi khac khoa -> Tra ve false va hien thong bao chan.
+   */
   function tryStartEditingTable(): boolean {
     if (!selectedTable) return false
     const lockRes = acquireTableLock(selectedTable.TableName, username, sessionId)
@@ -204,9 +227,12 @@ export function useTableMaintenance({
     }
   }
 
-  // ─── Effects ──────────────────────────────────────────────────────────────
-
-  // Table lock polling
+  /**
+   * [Effect Polling & Heartbeat]:
+   * - Kiem tra trang thai khoa dinh ky moi 5 giay.
+   * - Neu dang o che do Edit, gui touchTableLock (Heartbeat) de duy tri thoi gian song TTL = 300s.
+   * - Khi thoat component hoac dong tab, tu dong giai phong khoa (releaseTableLock).
+   */
   useEffect(() => {
     if (!selectedTable) {
       setActiveTableLock(null)
@@ -233,7 +259,11 @@ export function useTableMaintenance({
     }
   }, [selectedTable, username, sessionId, isEditingTable, recordDialogOpen, deleteDialogOpen])
 
-  // Load table on selection change (only when selected table ConfigUuid changes)
+  /* ============================================================================
+   * PHAN 3: NAP DU LIEU BANG VA METADATA (LOAD TABLE)
+   * ============================================================================ */
+
+  // Tu dong load bang khi selectedTable thay doi
   useEffect(() => {
     if (selectedTable) {
       loadTable(selectedTable)
@@ -242,7 +272,7 @@ export function useTableMaintenance({
     }
   }, [selectedTable?.ConfigUuid])
 
-  // Keep row-level approval state current for users who leave the table open.
+  // Dinh ky cap nhat trang thai cac dong dang cho duyet (Pending Approval)
   useEffect(() => {
     if (!selectedTable || !isYesFlag(selectedTable.ApprovalRequired)) return undefined
 
@@ -265,14 +295,11 @@ export function useTableMaintenance({
     }
   }, [selectedTable?.ConfigUuid, selectedTable?.ApprovalRequired])
 
-  // Auto-clear success message
   useEffect(() => {
     if (!successMsg) return
     const timer = setTimeout(() => setSuccessMsg(''), 3000)
     return () => clearTimeout(timer)
   }, [successMsg])
-
-  // ─── Data loading ─────────────────────────────────────────────────────────
 
   async function fetchPendingApprovalState(table: TableConfig): Promise<PendingApprovalRecord[] | null> {
     if (!isYesFlag(table.ApprovalRequired)) return []
@@ -284,6 +311,10 @@ export function useTableMaintenance({
     }
   }
 
+  /**
+   * [HAM loadTable]: Goi dong thoi Action getFieldMeta va getTableData tu SAP.
+   * Xay dung danh sach fields metadata, mảng du lieu rows va ban do etagMap.
+   */
   async function loadTable(table: TableConfig) {
     const normalizedUuid = normalizeConfigUuid(table.ConfigUuid)
     if (loadingTableUuidRef.current === normalizedUuid) return
@@ -346,12 +377,10 @@ export function useTableMaintenance({
     }
   }
 
-  // ─── Inline edit handlers ─────────────────────────────────────────────────
+  /* ============================================================================
+   * PHAN 4: XU LY CHINH SUA INLINE (LIVE VALIDATION, ADD ROW, REMOVE ROW)
+   * ============================================================================ */
 
-  /**
-   * Wrapper for validateInlineField that closes over the current component state
-   * (allFields, data) so call-sites only need to pass row-specific arguments.
-   */
   function validateCell(
     rowIndex: number,
     fieldNameKey: string,
@@ -370,6 +399,10 @@ export function useTableMaintenance({
     )
   }
 
+  /**
+   * Xu ly khi user go chu hoac chon gia tri tren tung o.
+   * Tu dong chay validate thoi gian thuc va kiem tra trung khoa chinh (Duplicate Key).
+   */
   const handleCellChange = (rowIndex: number, fieldName: string, newValue: any) => {
     setEditedData(prev => {
       const updated = [...prev]
@@ -386,7 +419,7 @@ export function useTableMaintenance({
           delete rowErrors[fieldName]
         }
 
-        // Re-validate sibling key fields to update cross-row duplicate errors
+        // Re-validate sibling key fields
         const field = allFields.find(f => (f.field_name || f.FieldName) === fieldName)
         if (field && (field.is_key || field.IsKeyField === 'X') && updatedRow._isNew) {
           const otherKeys = getDuplicateCheckKeyFields(allFields).filter(
@@ -410,7 +443,7 @@ export function useTableMaintenance({
           delete nextErrors[rowIndex]
         }
 
-        // Re-validate all other new rows if a key field changed
+        // Re-validate all other new rows
         if (field && (field.is_key || field.IsKeyField === 'X') && updatedRow._isNew) {
           updated.forEach((otherRow, otherIdx) => {
             if (otherIdx === rowIndex || !otherRow._isNew) return
@@ -447,10 +480,19 @@ export function useTableMaintenance({
     })
   }
 
+  /** Them 1 dong moi len dau bang nhap lieu voi co _isNew = true */
   const handleAddRow = () => {
     const newRecord = initFormValues(allFields, null)
     newRecord._isNew = true
-    setEditedData(prev => [...prev, newRecord])
+    setEditedData(prev => [newRecord, ...prev])
+    setInlineErrors(prevErrors => {
+      const nextErrors: Record<number, Record<string, string>> = {}
+      Object.entries(prevErrors).forEach(([idxStr, errs]) => {
+        const idx = parseInt(idxStr, 10)
+        nextErrors[idx + 1] = errs
+      })
+      return nextErrors
+    })
   }
 
   const handleCancelInlineEdits = () => {
@@ -476,7 +518,6 @@ export function useTableMaintenance({
           }
         })
 
-        // Re-validate duplicate keys after row removal
         updated.forEach((row, idx) => {
           if (!row._isNew) return
           const keyFields = getDuplicateCheckKeyFields(allFields)
@@ -510,12 +551,25 @@ export function useTableMaintenance({
     })
   }
 
+  /* ============================================================================
+   * PHAN 5: LUONG LUU DU LIEU INLINE (handleSaveInlineEdits)
+   * ============================================================================ */
+
+  /**
+   * [HAM handleSaveInlineEdits]:
+   *  - 1. Validate bat buoc (Mandatory).
+   *  - 2. Loc ra danh sach dong moi (newRows) va dong bi sua (modifiedRows).
+   *  - 3. Goi createRecord / bulkCreateRecords cho dong moi.
+   *  - 4. Goi updateRecord / bulkUpdateRecords kem ETag cho dong sua.
+   *  - 5. Hien thi thong bao Phe duyet Approval hoac Luu thanh cong.
+   *  - 6. Giai phong khoa va reload lai bang.
+   */
   async function handleSaveInlineEdits() {
     if (!selectedTable) return
     setError('')
     setSuccessMsg('')
 
-    // Validation
+    // 1. Kiem tra truong bat buoc
     const validationErrors: string[] = []
     const newInlineErrors = { ...inlineErrors }
     let hasValidationError = false
@@ -548,13 +602,7 @@ export function useTableMaintenance({
     try {
       setDataLoading(true)
 
-      // =========================================================================
-      // ✏️ [INLINE CUD 2] BẬT NÚT SAVE: XỬ LÝ ĐÓNG GÓI VÀ LỌC BỘ ĐỆM NHÁP
-      // =========================================================================
-      // 1. Lọc ra các dòng MỚI được thêm trên bảng nháp (_isNew === true)
       const newRows = editedData.filter(r => r._isNew)
-
-      // 2. Lọc ra các dòng ĐÃ TỒN TẠI nhưng có ít nhất 1 ô dữ liệu bị sửa đổi
       const modifiedRows = editedData.filter(row => {
         if (row._isNew) return false
         const keyStr = buildRecordKeyString(allFields, row)
@@ -577,9 +625,7 @@ export function useTableMaintenance({
       const approvalCodes: string[] = []
       const successMessages: string[] = []
 
-      // -----------------------------------------------------------------------
-      // [C - CREATE INLINE] Thực thi tạo dòng mới dưới SAP Backend
-      // -----------------------------------------------------------------------
+      // [CREATE] Tao dong moi duoi SAP
       if (newRows.length === 1) {
         const row = newRows[0]
         const payload = buildFullRecordPayload(allFields, row, null)
@@ -590,7 +636,6 @@ export function useTableMaintenance({
         const code = extractApprovalCode(res)
         if (code && !approvalCodes.includes(code)) approvalCodes.push(code)
       } else if (newRows.length > 1) {
-        // Tạo theo lô (Bulk Create) nếu thêm từ 2 dòng trở lên cùng lúc để gom chung 1 Approval ID
         for (const chunk of chunkRecords(newRows)) {
           const records = chunk.map(row => buildFullRecord(allFields, row, null))
           const res = await bulkCreateRecords(
@@ -612,9 +657,7 @@ export function useTableMaintenance({
         }
       }
 
-      // -----------------------------------------------------------------------
-      // [U - UPDATE INLINE] Thực thi cập nhật các dòng có thay đổi kèm ETag
-      // -----------------------------------------------------------------------
+      // [UPDATE] Cap nhat dong co san kem ETag
       if (modifiedRows.length === 1) {
         const row = modifiedRows[0]
         const recordKey = buildKeyRecord(allFields, row)
@@ -636,7 +679,6 @@ export function useTableMaintenance({
         const code = extractApprovalCode(res)
         if (code && !approvalCodes.includes(code)) approvalCodes.push(code)
       } else if (modifiedRows.length > 1) {
-        // Cập nhật lô (Bulk Update) nếu sửa nhiều dòng cùng lúc
         for (const chunk of chunkRecords(modifiedRows)) {
           const records = chunk.map(row => buildInlineUpdateRecord(row))
           const res = await bulkUpdateRecords(
@@ -687,7 +729,9 @@ export function useTableMaintenance({
     }
   }
 
-  // ─── Dialog handlers ──────────────────────────────────────────────────────
+  /* ============================================================================
+   * PHAN 6: THAO TAC XOA BAN GHI VA XU LY LOI KHOA NGOAI FK
+   * ============================================================================ */
 
   function openEditDialog(row: TableRowData) {
     if (!tryStartEditingTable()) return
@@ -729,8 +773,6 @@ export function useTableMaintenance({
     }
   }
 
-  // ─── Record CRUD ──────────────────────────────────────────────────────────
-
   async function fetchRowByKey(table: TableConfig, recordKey: TableRowData) {
     const dataResult = await getTableData(table.ConfigUuid, table.TableName)
     const dataJson = dataResult.data_json || ''
@@ -758,6 +800,14 @@ export function useTableMaintenance({
     )
   }
 
+  /* ============================================================================
+   * PHAN 7: XU LY XUNG DOT DONG THOI ETAG (OPTIMISTIC CONCURRENCY)
+   * ============================================================================ */
+
+  /**
+   * Luu ban ghi co co che tu dong hop nhat (Merge) neu ETag bi lech nhe
+   * va hien thi OptimisticLockDialog neu phat hien xung dot nghiem trong.
+   */
   async function saveEditWithMerge(
     formValues: Record<string, any>,
     dirtyFieldNames: string[],
@@ -881,6 +931,10 @@ export function useTableMaintenance({
     }
   }
 
+  /**
+   * [HAM handleConfirmDelete]: Thuc thi xoa 1 hoac nhieu dong du lieu.
+   * Tu dong bat loi Khoa ngoai FK (Foreign Key Reference Error) de hien thi Dialog canh bao chi tiet.
+   */
   async function handleConfirmDelete() {
     if (deletingRows.length === 0 || !selectedTable) return
     setDeleteLoading(true)
@@ -958,8 +1012,7 @@ export function useTableMaintenance({
     }
   }
 
-  // ─── Derived state ────────────────────────────────────────────────────────
-
+  // ─── Du lieu loc duoc tinh toan tu filter ──────────────────────────────────
   const filteredData = data.filter(row => {
     const matchesSearch =
       appliedSearchQuery.trim() === '' ||
@@ -976,7 +1029,7 @@ export function useTableMaintenance({
     return matchesSearch && matchesKeys
   })
 
-  // ─── Exposed API ──────────────────────────────────────────────────────────
+  // ─── Tra ve API cong khai cho component UI su dung ────────────────────────
   return {
     // State
     allFields,
@@ -1041,7 +1094,7 @@ export function useTableMaintenance({
     handleOptimisticLockRefresh,
     releaseTableLockIfHeld,
     tryStartEditingTable,
-    // utils forwarded for convenience
+    // Utils
     isFieldReadonly,
     isSystemGeneratedField,
   }
