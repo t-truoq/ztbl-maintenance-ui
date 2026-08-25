@@ -1034,7 +1034,8 @@ export default function DynamicDataTable({
         row={detailRow}
         aiDescriptions={aiDescriptions}
         permissions={permissions}
-        disabledActions={!!activeTableLock || isEditingTable}
+        isPendingApproval={detailRow ? isRowPending(detailRow) : false}
+        disabledActions={!!activeTableLock || isEditingTable || (detailRow ? isRowPending(detailRow) : false)}
         onSaveRecord={onSaveRecord}
         onDeleteRecord={row => {
           setDetailRow(null)

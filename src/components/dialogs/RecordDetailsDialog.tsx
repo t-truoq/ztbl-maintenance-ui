@@ -31,6 +31,7 @@ interface RecordDetailsDialogProps {
     canDelete?: boolean
   }
   disabledActions?: boolean
+  isPendingApproval?: boolean
   onSaveRecord?: (formValues: Record<string, any>, dirtyFieldNames: string[], baselineRow?: TableRowData | null) => Promise<{ ok: boolean; message?: string } | void>
   onDeleteRecord?: (row: TableRowData) => void
   onClose: () => void
@@ -45,6 +46,7 @@ export default function RecordDetailsDialog({
   aiDescriptions = {},
   permissions = { canUpdate: true, canDelete: true },
   disabledActions = false,
+  isPendingApproval = false,
   onSaveRecord,
   onDeleteRecord,
   onClose,
@@ -221,7 +223,7 @@ export default function RecordDetailsDialog({
                     <Button
                       design="Default"
                       icon={'edit' as any}
-                      disabled={!permissions.canUpdate || disabledActions}
+                      disabled={!permissions.canUpdate || disabledActions || isPendingApproval}
                       onClick={handleStartEdit}
                     >
                       Edit
@@ -231,7 +233,7 @@ export default function RecordDetailsDialog({
                     <Button
                       design="Negative"
                       icon={'delete' as any}
-                      disabled={!permissions.canDelete || disabledActions}
+                      disabled={!permissions.canDelete || disabledActions || isPendingApproval}
                       onClick={() => onDeleteRecord(row)}
                     >
                       Delete
@@ -262,6 +264,13 @@ export default function RecordDetailsDialog({
       }
     >
       <div style={{ padding: '4px 0 16px 0', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {/* Warning banner if record is waiting for ADMIN approval */}
+        {isPendingApproval && (
+          <MessageStrip design="Critical" hideCloseButton>
+            This record is currently waiting for ADMIN approval. Editing and deletion are locked.
+          </MessageStrip>
+        )}
+
         {/* Error message strip if save failed or validation errors exist */}
         {saveError && (
           <MessageStrip design="Negative" onClose={() => setSaveError('')}>
