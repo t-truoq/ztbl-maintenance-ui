@@ -16,6 +16,7 @@ import {
   Select,
 } from '@ui5/webcomponents-react'
 import CellEditControl from './CellEditControl'
+import RecordDetailsDialog from './dialogs/RecordDetailsDialog'
 import { formatHeaderLabel } from '../utils/tableHelpers'
 import { formatCellValue } from '../utils/displayHelpers'
 import { buildRecordKeyString, normalizeRecordKeyString } from '../utils/recordHelpers'
@@ -66,6 +67,10 @@ interface DynamicDataTableProps {
   onRefresh: () => void
   /** Callback xoa cac dong da chon */
   onDeleteRows: (rows: TableRowData[]) => void
+  /** Callback mo form sua 1 dong cu the */
+  onEditRecord?: (row: TableRowData) => void
+  /** Callback luu ban ghi truc tiep tu hop thoai chi tiet */
+  onSaveRecord?: (values: Record<string, any>, dirtyFieldNames: string[], baselineRow?: TableRowData | null) => Promise<any>
   /** Quyen han cua user hien tai (Create, Update, Delete) */
   permissions?: {
     canCreate: boolean
@@ -99,6 +104,8 @@ export default function DynamicDataTable({
   onStartCreating,
   onRefresh,
   onDeleteRows,
+  onEditRecord,
+  onSaveRecord,
   permissions = { canCreate: true, canUpdate: true, canDelete: true },
   aiDescriptions = {},
   aiLoading = false,
@@ -110,6 +117,8 @@ export default function DynamicDataTable({
 
   /** Tap hop RecordKey cua cac dong dang duoc chon boi Checkbox */
   const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(new Set())
+  /** Dong du lieu dang duoc mo trong Hop thoai Xem chi tiet RecordDetailsDialog */
+  const [detailRow, setDetailRow] = useState<TableRowData | null>(null)
   /** Key cua o vua duoc bam nut Copy thanh cong */
   const [copiedCellKey, setCopiedCellKey] = useState('')
   /** State dieu khien popover giai thich y nghia truong bang AI */
@@ -469,7 +478,7 @@ export default function DynamicDataTable({
     onCancelInlineEdits()
   }
 
-  const selectionColumnWidth = 44
+  const selectionColumnWidth = 76
   /** Chuoi CSS Grid tinh toan tong hop toan bo do rong cac cot */
   const columnsStyle =
     `${selectionColumnWidth}px ${fieldsWithWidths
@@ -478,11 +487,12 @@ export default function DynamicDataTable({
   const tableColumnCount = fields.length + 1 + (hasNewRows ? 1 : 0)
   const selectionCellStyle = {
     minWidth: `${selectionColumnWidth}px`,
+    width: `${selectionColumnWidth}px`,
     boxSizing: 'border-box',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingInline: 0,
+    paddingInline: '4px',
     overflow: 'hidden',
   } as const
 
@@ -512,9 +522,20 @@ export default function DynamicDataTable({
             </div>
           )}
           {(createDenied || updateDenied || deleteDenied) && (
-            <Text className="tab-panel-subtitle table-data-permission-note">
-              Some actions are disabled because you do not have the required permission.
-            </Text>
+            <div className="table-pending-notice" role="status" style={{ marginTop: '0.25rem' }}>
+              <Icon name={'alert' as any} className="table-pending-notice-icon" />
+              <Text>
+                {createDenied && updateDenied && deleteDenied
+                  ? 'You have read-only access. You do not have permission to create, edit, or delete records in this table.'
+                  : `You do not have permission to ${[
+                      createDenied ? 'create' : '',
+                      updateDenied ? 'edit' : '',
+                      deleteDenied ? 'delete' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(', ')} records in this table.`}
+              </Text>
+            </div>
           )}
         </div>
         <div className="tab-panel-actions">
@@ -730,7 +751,24 @@ export default function DynamicDataTable({
                     }}
                   >
                     <TableCell className="dynamic-table-selection-cell" style={selectionCellStyle}>
-                      <CheckBox checked={row._isNew || selectedRowKeys.has(getRowKey(row, actualIndex))} disabled />
+                      <FlexBox alignItems="Center" justifyContent="Center" gap="2px" style={{ width: '100%' }}>
+                        <CheckBox checked={row._isNew || selectedRowKeys.has(getRowKey(row, actualIndex))} disabled />
+                        {!row._isNew ? (
+                          <Button
+                            design="Transparent"
+                            icon={'display' as any}
+                            title="View record details"
+                            accessibleName="View record details"
+                            style={{ width: '26px', minWidth: '26px', height: '26px' }}
+                            onClick={(e: any) => {
+                              e.stopPropagation()
+                              setDetailRow(row)
+                            }}
+                          />
+                        ) : (
+                          <div style={{ width: '26px', minWidth: '26px' }} />
+                        )}
+                      </FlexBox>
                     </TableCell>
                     {/* Duyet mang fields de sinh cac o chinh sua/hien thi tuong ung */}
                     {fieldsWithWidths.map(({ field: f, minColWidth }) => {
@@ -838,21 +876,34 @@ export default function DynamicDataTable({
                     style={selectionCellStyle}
                     onClick={(e: any) => e.stopPropagation()}
                   >
-                    <CheckBox
-                      checked={selectedRowKeys.has(getRowKey(row, rowIndex))}
-                      disabled={!!activeTableLock || pendingApproval}
-                      onChange={(e: any) => {
-                        e.stopPropagation()
-                        toggleRowSelection(getRowKey(row, rowIndex), e.target.checked)
-                      }}
-                    />
-                    {pendingApproval && (
-                      <Icon
-                        name={'locked' as any}
-                        className="dynamic-table-pending-lock"
-                        title="Waiting for ADMIN approval"
+                    <FlexBox alignItems="Center" justifyContent="Center" gap="2px" style={{ width: '100%' }}>
+                      <CheckBox
+                        checked={selectedRowKeys.has(getRowKey(row, rowIndex))}
+                        disabled={!!activeTableLock || pendingApproval}
+                        onChange={(e: any) => {
+                          e.stopPropagation()
+                          toggleRowSelection(getRowKey(row, rowIndex), e.target.checked)
+                        }}
                       />
-                    )}
+                      <Button
+                        design="Transparent"
+                        icon={'display' as any}
+                        title="View record details"
+                        accessibleName="View record details"
+                        style={{ width: '26px', minWidth: '26px', height: '26px' }}
+                        onClick={(e: any) => {
+                          e.stopPropagation()
+                          setDetailRow(row)
+                        }}
+                      />
+                      {pendingApproval && (
+                        <Icon
+                          name={'locked' as any}
+                          className="dynamic-table-pending-lock"
+                          title="Waiting for ADMIN approval"
+                        />
+                      )}
+                    </FlexBox>
                   </TableCell>
                   {fieldsWithWidths.map(({ field: f, minColWidth }) => {
                     const name = f.field_name || f.FieldName
@@ -974,6 +1025,23 @@ export default function DynamicDataTable({
           })()}
         </div>
       )}
+      {/* ── Dialog Xem chi tiet & Chinh sua truc tiep tren the cua 1 Row ── */}
+      <RecordDetailsDialog
+        open={!!detailRow}
+        configUuid={selectedTable.ConfigUuid}
+        tableName={selectedTable.TableName}
+        fields={fields}
+        row={detailRow}
+        aiDescriptions={aiDescriptions}
+        permissions={permissions}
+        disabledActions={!!activeTableLock || isEditingTable}
+        onSaveRecord={onSaveRecord}
+        onDeleteRecord={row => {
+          setDetailRow(null)
+          onDeleteRows([row])
+        }}
+        onClose={() => setDetailRow(null)}
+      />
       <div className="dynamic-table-bottom-spacer" aria-hidden="true" />
     </div>
   )

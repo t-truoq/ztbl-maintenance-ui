@@ -96,6 +96,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
     handleCancelInlineEdits,
     handleRemoveNewRow,
     handleSaveInlineEdits,
+    openEditDialog,
     openDeleteDialog,
     handleGo,
     handleClear,
@@ -163,7 +164,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
       .catch(error => {
         if (!isCancelled) {
           console.warn('Cannot load authorization settings:', error)
-          const isKnownAdmin = ['DEV-253', 'DEV-183', 'DEV-251', 'LEARN-10000', 'ADMIN', 'DEVELOPER'].includes(effectiveUsername.toUpperCase())
+          const isKnownAdmin = ['ADMIN', 'DEVELOPER'].includes(effectiveUsername.toUpperCase())
           setCanRollbackAudit(isKnownAdmin)
           setTablePermission(NO_TABLE_PERMISSION)
           setPermissionTableName(tableNameForPermission)
@@ -431,6 +432,11 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
                   if (!canDeleteTable) return
                   openDeleteDialog(rows)
                 }}
+                onEditRecord={row => {
+                  if (!canUpdateTable) return
+                  openEditDialog(row)
+                }}
+                onSaveRecord={handleSaveRecord}
                 aiDescriptions={aiDescriptions}
                 aiLoading={aiLoading}
                 onRequestAiDescriptions={() => handleLoadAiDescriptions(false)}

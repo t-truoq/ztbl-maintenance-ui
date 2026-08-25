@@ -719,10 +719,6 @@ export function useTableMaintenance({
       await onRefreshTableList()
     } catch (e: any) {
       const message = getFriendlyErrorMessage(e)
-      setIsEditingTable(false)
-      setEditedData([])
-      setInlineErrors({})
-      releaseTableLockIfHeld()
       showError(message)
     } finally {
       setDataLoading(false)
@@ -773,13 +769,29 @@ export function useTableMaintenance({
     }
   }
 
-  async function fetchRowByKey(table: TableConfig, recordKey: TableRowData) {
-    const dataResult = await getTableData(table.ConfigUuid, table.TableName)
-    const dataJson = dataResult.data_json || ''
-    const rows = parseTableDataJson(dataJson, allFields)
-    const keyStr = JSON.stringify(recordKey)
-    const row = rows.find(r => JSON.stringify(buildKeyRecord(allFields, r)) === keyStr) || null
-    return { row, dataJson }
+  async function fetchRowByKey(
+    table: TableConfig,
+    recordKey: TableRowData,
+    baselineRow: TableRowData | null = null
+  ) {
+    const targetKeyStr = buildRecordKeyString(allFields, baselineRow || recordKey)
+    try {
+      const dataResult = await getTableData(table.ConfigUuid, table.TableName)
+      const dataJson = dataResult.data_json || ''
+      const rows = parseTableDataJson(dataJson, allFields)
+      const row =
+        rows.find(r => buildRecordKeyString(allFields, r) === targetKeyStr) ||
+        data.find(r => buildRecordKeyString(allFields, r) === targetKeyStr) ||
+        baselineRow ||
+        null
+      return { row, dataJson }
+    } catch {
+      const fallbackRow =
+        data.find(r => buildRecordKeyString(allFields, r) === targetKeyStr) ||
+        baselineRow ||
+        null
+      return { row: fallbackRow, dataJson: tableDataJson }
+    }
   }
 
   async function updateRecordWithEtag(
@@ -817,11 +829,19 @@ export function useTableMaintenance({
   ): Promise<{ ok: boolean; message?: string }> {
     if (!selectedTable) return { ok: false, message: 'No table selected' }
 
-    const baseline = baselineRow || editingRow
+    const baseline =
+      baselineRow ||
+      editingRow ||
+      data.find(r => {
+        const keyA = buildRecordKeyString(allFields, r)
+        const keyB = buildRecordKeyString(allFields, formValues)
+        return keyA === keyB
+      }) ||
+      null
     if (!baseline) return { ok: false, message: 'No editing baseline' }
 
     const recordKey = buildKeyRecord(allFields, baseline)
-    const { row: freshRow, dataJson } = await fetchRowByKey(selectedTable, recordKey)
+    const { row: freshRow, dataJson } = await fetchRowByKey(selectedTable, recordKey, baseline)
     if (!freshRow) {
       const message = 'Record not found. It may have been deleted.'
       showError(message)
@@ -890,7 +910,8 @@ export function useTableMaintenance({
 
   async function handleSaveRecord(
     formValues: Record<string, any>,
-    dirtyFieldNames: string[] = []
+    dirtyFieldNames: string[] = [],
+    baselineRow: TableRowData | null = null
   ): Promise<{ ok: boolean; message?: string }> {
     if (!selectedTable) return { ok: false, message: 'No table selected' }
     try {
@@ -919,7 +940,17 @@ export function useTableMaintenance({
         return { ok: true }
       }
 
-      const editResult = await saveEditWithMerge(formValues, dirtyFieldNames)
+      const baseline =
+        baselineRow ||
+        editingRow ||
+        data.find(r => {
+          const keyA = buildKeyRecord(allFields, r)
+          const keyB = buildKeyRecord(allFields, formValues)
+          return JSON.stringify(keyA) === JSON.stringify(keyB)
+        }) ||
+        null
+
+      const editResult = await saveEditWithMerge(formValues, dirtyFieldNames, true, baseline)
       if (editResult?.ok === false && editResult.message) {
         return { ok: false, message: editResult.message }
       }
