@@ -786,7 +786,7 @@ ui5-dialog ui5-table-row,
 .field-schema-table ui5-table-header-row,
 .field-schema-table ui5-table-row {
   display: grid !important;
-  grid-template-columns: 150px 100px 85px 150px 64px 96px 64px 120px 220px minmax(220px, 1fr) !important;
+  grid-template-columns: minmax(140px, 1.2fr) 95px 75px minmax(140px, 1.2fr) 64px 85px 64px 130px minmax(200px, 1.5fr) minmax(200px, 1.5fr) !important;
 }
 
 .field-schema-table-header-row {
@@ -821,16 +821,27 @@ ui5-dialog ui5-table-row,
 .field-schema-cell {
   min-width: 0;
   align-items: center;
+  padding: 0.5rem 0.5rem;
 }
 
-.field-schema-cell ui5-text {
-  line-height: 1.35;
-  overflow-wrap: normal;
-  word-break: normal;
+.field-schema-cell ui5-text,
+.field-schema-cell > span,
+.field-schema-cell > div {
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .field-schema-cell--technical ui5-text,
-.field-schema-cell--flag ui5-text {
+.field-schema-cell--technical > span {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.field-schema-cell--flag ui5-text,
+.field-schema-cell--flag > span {
   white-space: nowrap;
 }
 
@@ -838,8 +849,11 @@ ui5-dialog ui5-table-row,
   align-items: flex-start;
 }
 
-.field-schema-cell--description ui5-text {
+.field-schema-cell--description ui5-text,
+.field-schema-cell--description > span {
   white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .field-schema-empty-row {
