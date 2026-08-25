@@ -731,8 +731,8 @@ export default function DynamicDataTable({
           {/* [INLINE CUD 1] CHE DO CHINH SUA TAI CHO (INLINE EDIT MODE) */}
           {isEditingTable ? (
             editedData.length === 0 ? (
-              <TableRow className="dynamic-table-empty-row" style={{ gridTemplateColumns: '1fr' }}>
-                <TableCell className="dynamic-table-empty-cell" {...({ colSpan: tableColumnCount } as any)}>
+              <TableRow className="dynamic-table-empty-row" style={{ display: 'flex', width: '100%', gridTemplateColumns: '1fr' }}>
+                <TableCell className="dynamic-table-empty-cell" style={{ gridColumn: '1 / -1', width: '100%' }} {...({ colSpan: tableColumnCount } as any)}>
                   <Icon name={'table-view' as any} className="dynamic-table-empty-icon" />
                   <Title level="H5">No records yet</Title>
                   <Text>Create a record to start maintaining this table.</Text>
@@ -844,8 +844,8 @@ export default function DynamicDataTable({
             )
           ) : sortedData.length === 0 ? (
             /* ── Read-only empty state ────────────────────────────────── */
-            <TableRow className="dynamic-table-empty-row" style={{ gridTemplateColumns: '1fr' }}>
-              <TableCell className="dynamic-table-empty-cell" {...({ colSpan: tableColumnCount } as any)}>
+            <TableRow className="dynamic-table-empty-row" style={{ display: 'flex', width: '100%', gridTemplateColumns: '1fr' }}>
+              <TableCell className="dynamic-table-empty-cell" style={{ gridColumn: '1 / -1', width: '100%' }} {...({ colSpan: tableColumnCount } as any)}>
                 <Icon name={'table-view' as any} className="dynamic-table-empty-icon" />
                 <Title level="H5">No records found</Title>
                 <Text>Adjust the filters or create a new record.</Text>
