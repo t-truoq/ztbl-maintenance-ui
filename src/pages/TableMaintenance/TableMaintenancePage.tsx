@@ -4,7 +4,6 @@ import {
   DynamicPageHeader,
   FlexBox,
   Title,
-  Text,
   Button,
   Input,
   MessageStrip,
@@ -42,12 +41,17 @@ import {
 import { buildAiDescriptionMap, exportDataDictionaryPdf } from '../../utils/aiDescriptions'
 import { AiDescriptionMap } from '../../types'
 
+/* ============================================================================
+ * PHAN 1: KHAI BAO PROPS VA KHOI TAO HOOK USE_TABLE_MAINTENANCE
+ * ============================================================================ */
+
 const PENDING_TABLE_PERMISSION: TablePermissionState = {
   ...FULL_TABLE_PERMISSION,
   canView: true
 }
 
 export default function TableMaintenancePage(props: TableMaintenancePageProps) {
+  // Goi Hook bo nao de lay toan bo state va cac ham xu ly CRUD
   const {
     // State
     allFields,
@@ -108,6 +112,10 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
     setEditSessionEtag,
   } = useTableMaintenance(props)
 
+  /* ============================================================================
+   * PHAN 2: QUAN LY STATE NOI BO, BO LOC DONG VA QUYEN TRUY CAP
+   * ============================================================================ */
+
   const { selectedTable, tables, username, onRefreshTableList, onSelectTable } = props
   const [showAllFilters, setShowAllFilters] = useState(false)
   const [activeTab, setActiveTab] = useState('tableData')
@@ -118,23 +126,28 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
   const [tablePermission, setTablePermission] = useState<TablePermissionState>(PENDING_TABLE_PERMISSION)
   const [permissionLoading, setPermissionLoading] = useState(true)
   const [permissionTableName, setPermissionTableName] = useState('')
+
+  // Loc danh sach cot hien thi o thanh Header (Mac dinh chi hien thi cac cot Khoa chinh Key)
   const filterFields = fields.filter(f => {
     if (showAllFilters) return true
     return f.is_key || f.IsKeyField === 'X'
   })
 
+  // Reset trang thai tab va cache AI khi chuyen sang bang khac
   useEffect(() => {
     setActiveTab('tableData')
     setAiDescriptions({})
     setAiError('')
   }, [selectedTable?.ConfigUuid])
 
+  // Tu dong tat Toast message sau 6 giay
   useEffect(() => {
     if (!toastOpen) return undefined
     const timer = window.setTimeout(() => setToastOpen(false), 6000)
     return () => window.clearTimeout(timer)
   }, [toastOpen, toastMessage, setToastOpen])
 
+  // [KIEM TRA PHAN QUYEN]: Truy van quyen han cua user tren bang hien tai
   useEffect(() => {
     let isCancelled = false
 
@@ -195,6 +208,14 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
   )
   const tableAccessPanel = isAccessDenied ? null : permissionPendingPanel
 
+  /* ============================================================================
+   * PHAN 3: XU LY MO TA AI CHO CAC TRUONG (AI FIELD DESCRIPTIONS)
+   * ============================================================================ */
+
+  /**
+   * [HAM handleLoadAiDescriptions]: Goi API getAiDescription de lay mo ta tu Gemini AI.
+   * Co co che luu cache vao sessionStorage de khong goi lai lan 2.
+   */
   const handleLoadAiDescriptions = useCallback(async (forceRefresh = false) => {
     if (!selectedTable) return
     const cacheKey = `ztbl-ai-descriptions:${selectedTable.ConfigUuid}:${selectedTable.TableName}`
@@ -234,7 +255,10 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
     exportDataDictionaryPdf(selectedTable, allFields, aiDescriptions)
   }
 
-  // ── Welcome dashboard (no table selected) ─────────────────────────────────
+  /* ============================================================================
+   * PHAN 4: RENDER WELCOME DASHBOARD KHI CHUA CHON BANG
+   * ============================================================================ */
+
   if (!selectedTable) {
     return (
       <WelcomeDashboard
@@ -246,10 +270,13 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
     )
   }
 
-  // ── Main table maintenance view ────────────────────────────────────────────
+  /* ============================================================================
+   * PHAN 5: RENDER GIAO DIEN CHINH (HEADER DYNAMICPAGE, FILTER BAR, TABCONTAINER)
+   * ============================================================================ */
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden' }}>
-      {/* Permission banner */}
+      {/* ── Banner Canh bao Chặn Quyền (Access Denied) ───────────────── */}
       {isAccessDenied && (
         <div style={{ padding: '1rem', paddingBottom: 0 }}>
           <MessageStrip design="Negative" hideCloseButton>
@@ -258,7 +285,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
         </div>
       )}
 
-      {/* Lock banner */}
+      {/* ── Banner Canh bao Bang dang bi nguoi khac Khoa ────────────── */}
       {activeTableLock && (
         <div style={{ padding: '1rem', paddingBottom: 0 }}>
           <MessageStrip design="Critical" hideCloseButton>
@@ -268,7 +295,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
         </div>
       )}
 
-      {/* Error / success strips */}
+      {/* ── Thong bao Loi / Thanh cong ──────────────────────────────── */}
       {(error) && (
         <div style={{ padding: '1rem', paddingBottom: 0 }}>
           <MessageStrip design="Negative" onClose={() => setError('')}>
@@ -291,6 +318,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
         </div>
       )}
 
+      {/* ── Thanh Tieu de Bang (Sticky Header) ───────────────────────── */}
       <div className="maintenance-sticky-title">
         <FlexBox alignItems="Center" gap="8px" className="maintenance-sticky-title-main">
           <Button
@@ -309,6 +337,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
         </FlexBox>
       </div>
 
+      {/* ── DynamicPage Fiori voi Thanh Bo Loc (Filter Bar) ─────────── */}
       <DynamicPage
         style={{ flex: 1, minHeight: 0 }}
         hidePinButton
@@ -327,7 +356,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
                 boxSizing: 'border-box',
               }}
             >
-              {/* Filter inputs */}
+              {/* Cac o nhap bo loc */}
               <FlexBox gap="16px" wrap="Wrap" alignItems="Center">
                 <FlexBox direction="Column" gap="4px">
                   <span style={{ fontSize: '0.875rem' }}>Filters</span>
@@ -339,7 +368,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
                   />
                 </FlexBox>
 
-                {/* Field filters */}
+                {/* Loc theo tung truong du lieu */}
                 {filterFields.map(f => {
                   const name = f.field_name || f.FieldName
                   const label = formatHeaderLabel(f)
@@ -359,7 +388,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
                 })}
               </FlexBox>
 
-              {/* Go / Clear buttons */}
+              {/* Nut Go / Clear */}
               <FlexBox gap="8px" alignItems="Center" style={{ marginLeft: 'auto' }}>
                 <Button design="Emphasized" onClick={handleGo}>
                   Go
@@ -378,6 +407,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
           </DynamicPageHeader>
         }
       >
+        {/* ── He thong 5 Tabs Chuc nang ──────────────────────────────── */}
         <TabContainer
           className="maintenance-tab-container"
           onTabSelect={(e: any) => {
@@ -389,6 +419,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
             else setActiveTab('tableData')
           }}
         >
+          {/* TAB 1: TABLE DATA (Grid du lieu dong) */}
           <Tab text="Table Data" selected={activeTab === 'tableData'}>
             {canViewTable ? (
               <DynamicDataTable
@@ -443,6 +474,8 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
               />
             ) : tableAccessPanel}
           </Tab>
+
+          {/* TAB 2: EXCEL PIPELINE (Import / Export) */}
           <Tab text="Excel" selected={activeTab === 'excel'}>
             {canViewTable ? (
               <ExcelPipelineTab
@@ -453,6 +486,8 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
               />
             ) : tableAccessPanel}
           </Tab>
+
+          {/* TAB 3: FIELD SCHEMA (Tu dien Schema & Xuat PDF) */}
           <Tab text="Field Schema" selected={activeTab === 'fieldSchema'}>
             {canViewTable ? (
               <FieldSchemaTab
@@ -465,11 +500,15 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
               />
             ) : tableAccessPanel}
           </Tab>
+
+          {/* TAB 4: AUDIT LOG (Vet kiem toan & Hoan tac Rollback) */}
           <Tab text="Audit Log" selected={activeTab === 'auditLog'}>
             {canViewTable ? (
               <AuditLogPanel tableName={selectedTable.TableName} canRollback={canRollbackAudit} />
             ) : tableAccessPanel}
           </Tab>
+
+          {/* TAB 5: DEPENDENCIES (Quan he phu thuoc Repository Objects) */}
           <Tab text="Dependencies" selected={activeTab === 'dependencies'}>
             {canViewTable && activeTab === 'dependencies' ? (
               <RepositoryInfoTab
@@ -481,7 +520,11 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
         </TabContainer>
       </DynamicPage>
 
-      {/* ── Dialogs ─────────────────────────────────────────────────────── */}
+      {/* ============================================================================
+       * PHAN 6: HE THONG HOP THOAI DIALOGS
+       * ============================================================================ */}
+
+      {/* Form Dialog Them / Sua 1 ban ghi */}
       <RecordDialog
         open={recordDialogOpen}
         mode={recordDialogMode}
@@ -499,6 +542,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
         }}
       />
 
+      {/* Hop thoai Xac nhan Xoa ban ghi */}
       <DeleteConfirmDialog
         open={deleteDialogOpen}
         deletingRows={deletingRows}
@@ -512,18 +556,21 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
         }}
       />
 
+      {/* Hop thoai Bao loi Xung dot ETag (Optimistic Lock) */}
       <OptimisticLockDialog
         open={optimisticLockOpen}
         onRefresh={handleOptimisticLockRefresh}
         onCancel={() => setOptimisticLockOpen(false)}
       />
 
+      {/* Hop thoai Bao loi Khoa ngoai FK (Foreign Key Reference) */}
       <FKErrorDialog
         open={fkErrorOpen}
         message={fkErrorMessage}
         onClose={() => setFkErrorOpen(false)}
       />
 
+      {/* Hop thoai Thong bao Yeu cau Phe duyet thanh cong */}
       <ApprovalSuccessDialog
         open={!!approvalInfo}
         approvalInfo={approvalInfo}

@@ -472,7 +472,7 @@ export interface TableContext {
   rows: TableRowData[];
 }
 
-export async function loadTableContext(configUuid: string, tableName: string, maxRows = 1000): Promise<TableContext> {
+export async function loadTableContext(configUuid: string, tableName: string, maxRows = 100000): Promise<TableContext> {
   const fieldMetaResult = await loadFieldMetaForTable(configUuid, tableName)
   const tableData = await getTableData(configUuid, tableName, maxRows)
   const tableDataError = tableData?.error_msg || tableData?.ErrorMsg || tableData?.ERROR_MSG || ''
@@ -584,7 +584,7 @@ export async function getFkValues(
   }
 }
 
-export async function getTableData(configUuid: string, tableName: string, maxRows = 1000): Promise<any> {
+export async function getTableData(configUuid: string, tableName: string, maxRows = 100000): Promise<any> {
   const res = await apiPostWithCsrf(
     actionUrl(configUuid, 'getTableData'),
     {
