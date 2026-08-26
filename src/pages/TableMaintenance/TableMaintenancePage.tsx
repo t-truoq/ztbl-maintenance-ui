@@ -144,7 +144,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
     const timer = window.setTimeout(() => setToastOpen(false), 6000)
     return () => window.clearTimeout(timer)
   }, [toastOpen, toastMessage, setToastOpen])
-
+  // Check user admin to rollback audit log
   useEffect(() => {
     const effectiveUsername = username || getCredentials()?.username || ''
     if (effectiveUsername) {
