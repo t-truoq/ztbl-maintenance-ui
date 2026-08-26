@@ -48,6 +48,8 @@ export function formatCellValue(field?: FieldMeta | null, value?: any): string {
  * PHAN 2: HAM DINH DANG CHUOI THOI GIAN TIMESTAMP (formatTimestampValue)
  * ============================================================================ */
 
+export const SYSTEM_TIMESTAMP_OFFSET_MS = 5 * 60 * 60 * 1000 // Cong them 5 tieng de dong bo mui gio UTC+7 VN
+
 export function formatTimestampValue(value: any, fieldName = ''): string {
   if (value === undefined || value === null || value === '') return ''
 
@@ -69,6 +71,9 @@ export function formatTimestampValue(value: any, fieldName = ''): string {
       Number(second)
     )
     if (!Number.isNaN(date.getTime())) {
+      if (isTimestampField) {
+        date.setTime(date.getTime() + SYSTEM_TIMESTAMP_OFFSET_MS)
+      }
       return date.toLocaleString(undefined, {
         year: 'numeric',
         month: '2-digit',
@@ -86,6 +91,9 @@ export function formatTimestampValue(value: any, fieldName = ''): string {
     const [, year, month, day, hour] = shortTsMatch
     const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), 0, 0)
     if (!Number.isNaN(date.getTime())) {
+      if (isTimestampField) {
+        date.setTime(date.getTime() + SYSTEM_TIMESTAMP_OFFSET_MS)
+      }
       return date.toLocaleString(undefined, {
         year: 'numeric',
         month: '2-digit',
@@ -102,6 +110,7 @@ export function formatTimestampValue(value: any, fieldName = ''): string {
     const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T')
     const date = new Date(normalized)
     if (!Number.isNaN(date.getTime())) {
+      date.setTime(date.getTime() + SYSTEM_TIMESTAMP_OFFSET_MS)
       return date.toLocaleString(undefined, {
         year: 'numeric',
         month: '2-digit',
@@ -129,7 +138,13 @@ export function isTimestampFieldName(fieldName?: string | null): boolean {
     normalizedField.includes('CHANGE_AT') ||
     normalizedField.includes('CREATED_AT') ||
     normalizedField.includes('CREATED_ON') ||
-    normalizedField.includes('TIMESTAMP')
+    normalizedField.includes('TIMESTAMP') ||
+    normalizedField.includes('LAST_CHANGED') ||
+    normalizedField.includes('MODIFIED_AT') ||
+    normalizedField.includes('TIMESTAMPL') ||
+    normalizedField === 'ERDAT' ||
+    normalizedField === 'AEDAT' ||
+    normalizedField === 'LAEDA'
   )
 }
 
