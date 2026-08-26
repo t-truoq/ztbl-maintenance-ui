@@ -233,6 +233,14 @@ export default function ExcelPipelineTab({
       })
 
       const rows = await uploadExcel(tableName, file.name, fileFormat, base64)
+      const responseMessage = rows
+        .map(row => String(row.message || '').trim())
+        .filter(Boolean)
+        .join('; ')
+      const responseHasError = rows.some(row => String(row.status || '').trim().toUpperCase() === 'ERROR')
+      if (responseMessage && responseHasError && rows.length === 1 && rows[0].row_no === 0) {
+        throw new Error(responseMessage)
+      }
       const commitRows = filterDiffForCommit(rows, tableName)
       const visibleRows = rows.filter(row => !(row.row_no === 0 || row.status === 'INFO'))
       const commitCount = commitRows.length
@@ -283,7 +291,9 @@ export default function ExcelPipelineTab({
         commitRecords: commitRecordCount
       })
     } catch (e: any) {
-      const msg = e?.message || getExcelErrorMessage(e)
+      // Axios' generic error.message (for example, "Request failed with status code 500")
+      // hides the useful SAP message. Always extract the backend response first.
+      const msg = getExcelErrorMessage(e)
       if (isPermissionMessage(msg)) setBackendPermissionDenied(true)
       console.error('[ExcelPipeline] upload failed', e)
       setError(msg)

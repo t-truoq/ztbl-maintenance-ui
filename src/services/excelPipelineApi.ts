@@ -420,15 +420,30 @@ export function downloadBase64AsXlsx(base64: string, fileName: string): void {
 }
 
 export function getExcelErrorMessage(error: any): string {
+  const data = error?.response?.data
+  const readMessage = (value: any, depth = 0): string => {
+    if (depth > 6 || value == null) return ''
+    if (typeof value === 'string' && value.trim()) return value.trim()
+    if (Array.isArray(value)) {
+      return value.map(item => readMessage(item, depth + 1)).find(Boolean) || ''
+    }
+    if (typeof value !== 'object') return ''
+
+    for (const key of [
+      'value', 'message', 'Message', 'text', 'Text', 'errortext',
+      'error', 'details', 'innererror', 'errordetails', 'SAP__Messages', 'sap-messages'
+    ]) {
+      const message = readMessage(value[key], depth + 1)
+      if (message) return message
+    }
+    return ''
+  }
+
+  const backendMessage = readMessage(data)
+  if (backendMessage) return backendMessage
+
   if (error?.response?.status === 403 && !isCsrfError(error)) {
     return 'You do not have permission to perform this Excel action. Please contact an administrator or request the required SAP authorization.'
   }
-
-  const data = error?.response?.data
-  const sapMessage = data?.error?.message
-  if (typeof sapMessage === 'string' && sapMessage.trim()) return sapMessage
-  if (sapMessage?.value) return sapMessage.value
-  if (typeof data?.message === 'string' && data.message.trim()) return data.message
-  if (typeof data === 'string' && data.trim()) return data
   return getFriendlyErrorMessage(error)
 }
