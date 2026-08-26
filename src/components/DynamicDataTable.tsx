@@ -356,9 +356,6 @@ export default function DynamicDataTable({
   const hasNewRows = isEditingTable && editedData.some(row => row._isNew)
   const allVisibleRowsSelected =
     selectableRowKeys.length > 0 && selectableRowKeys.every(key => selectedRowKeys.has(key))
-  const createDenied = !permissions.canCreate
-  const updateDenied = !permissions.canUpdate
-  const deleteDenied = !permissions.canDelete
 
   const toggleRowSelection = (rowKey: string, checked: boolean) => {
     setSelectedRowKeys(prev => {
@@ -381,13 +378,11 @@ export default function DynamicDataTable({
   }
 
   const startEditingSelectedRows = () => {
-    if (updateDenied) return
     if (selectedRowKeys.size === 0) return
     onStartEditing()
   }
 
   const deleteSelectedRow = () => {
-    if (deleteDenied) return
     if (selectedRows.length === 0) return
     onDeleteRows(selectedRows)
   }
@@ -467,7 +462,6 @@ export default function DynamicDataTable({
   }
 
   const startCreatingNewRow = () => {
-    if (createDenied) return
     setSelectedRowKeys(new Set())
     setPageIndex(0)
     onStartCreating()
@@ -521,22 +515,6 @@ export default function DynamicDataTable({
               </Text>
             </div>
           )}
-          {(createDenied || updateDenied || deleteDenied) && (
-            <div className="table-pending-notice" role="status" style={{ marginTop: '0.25rem' }}>
-              <Icon name={'alert' as any} className="table-pending-notice-icon" />
-              <Text>
-                {createDenied && updateDenied && deleteDenied
-                  ? 'You have read-only access. You do not have permission to create, edit, or delete records in this table.'
-                  : `You do not have permission to ${[
-                      createDenied ? 'create' : '',
-                      updateDenied ? 'edit' : '',
-                      deleteDenied ? 'delete' : '',
-                    ]
-                      .filter(Boolean)
-                      .join(', ')} records in this table.`}
-              </Text>
-            </div>
-          )}
         </div>
         <div className="tab-panel-actions">
           {isEditingTable ? (
@@ -568,27 +546,24 @@ export default function DynamicDataTable({
               <Button
                 design="Emphasized"
                 icon={'add' as any}
-                disabled={dataLoading || createDenied || !!activeTableLock}
+                disabled={dataLoading || !!activeTableLock}
                 onClick={startCreatingNewRow}
-                accessibleName={createDenied ? 'You do not have permission to create records.' : undefined}
               >
                 Create
               </Button>
               <Button
                 design="Default"
                 icon={'edit' as any}
-                disabled={dataLoading || updateDenied || !!activeTableLock || selectedRowCount === 0}
+                disabled={dataLoading || !!activeTableLock || selectedRowCount === 0}
                 onClick={startEditingSelectedRows}
-                accessibleName={updateDenied ? 'You do not have permission to update this record.' : undefined}
               >
                 {selectedRowCount > 0 ? `Edit (${selectedRowCount})` : 'Edit'}
               </Button>
               <Button
                 design="Transparent"
                 icon={'delete' as any}
-                disabled={dataLoading || deleteDenied || !!activeTableLock || selectedRowCount === 0}
+                disabled={dataLoading || !!activeTableLock || selectedRowCount === 0}
                 onClick={deleteSelectedRow}
-                accessibleName={deleteDenied ? 'You do not have permission to delete this record.' : undefined}
               >
                 {selectedRowCount > 1 ? `Delete (${selectedRowCount})` : 'Delete'}
               </Button>

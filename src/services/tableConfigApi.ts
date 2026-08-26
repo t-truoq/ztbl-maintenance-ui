@@ -1,3 +1,20 @@
+/**
+ * ============================================================================
+ * FILE: src/services/tableConfigApi.ts
+ * ----------------------------------------------------------------------------
+ * VAI TRO: Tang Service trung tam giao tiep OData V4 voi SAP RAP Backend.
+ * ----------------------------------------------------------------------------
+ * CAC NHIEM VU CHINH:
+ *   - 1. Truy van danh sach bang Z/Y duoc phep bao tri (getTables).
+ *   - 2. Lay Metadata dinh nghia cot (getFieldMeta, getFieldConfig, loadFieldMetaForTable).
+ *   - 3. Truy van du lieu bang (getTableData, loadTableContext).
+ *   - 4. Goi AI Google Gemini sinh mo ta y nghia truong du lieu (getAiDescription).
+ *   - 5. Ho tro Search Help tu dong: Domain Fixed Values tu DD07L (getDomainValues) & Foreign Key tu Check Table (getFkValues).
+ *   - 6. Thuc thi cac thao tac CRUD don le & Bulk: createRecord, updateRecord, deleteRecord.
+ *   - 7. Truy van vet Kiem toan Audit Log & Thuc thi Hoan tac (getAuditLog, rollbackAudit).
+ * ============================================================================
+ */
+
 import {
   api,
   apiPostWithCsrf,
@@ -22,14 +39,21 @@ import { TableConfig, FieldMeta, AuditLogEntry, AuditItemEntry, TableRowData, Ai
 import { isYesFlag } from '../utils/tableHelpers'
 import { normalizeAiDescriptions } from '../utils/aiDescriptions'
 
+/* ============================================================================
+ * PHAN 1: CAC HAM TIEN ICH DINH DANG, BAT LOI VA JSON PARSER
+ * ============================================================================ */
+
+/** Kiem tra chuoi thong bao loi co phai la loi Xung dot ETag (Optimistic Lock) */
 export function isOptimisticLockError(message: string): boolean {
   return /optimistic lock/i.test(String(message || ''))
 }
 
+/** Kiem tra chuoi thong bao loi co phai do rang buoc Khoa ngoai FK khong cho xoa */
 export function isFKReferenceError(message: string): boolean {
   return /referenced by table/i.test(String(message || ''))
 }
 
+/** Boc tach thong diep loi Khoa ngoai sang cau thong bao than thien cho nguoi dung */
 export function parseFKErrorMessage(message: string): string {
   if (!message) return 'Cannot delete this record due to related data in another table.'
   const match = String(message).match(/referenced by table\s+(\w+)/i)
@@ -82,7 +106,7 @@ export function parseTableDataJson(dataJson: string, fieldMeta: FieldMeta[] | nu
 }
 
 /* ============================================================================
- * PHAN: CAC HAM TIEN ICH DINH DANG UUID VA ACTION URL
+ * PHAN 2: CAC HAM TIEN ICH DINH DANG UUID VA ACTION URL
  * ============================================================================ */
 
 /**
@@ -129,7 +153,7 @@ function parseDomainValuesJson(valuesJson: string): Array<{ value: string; descr
 }
 
 /* ============================================================================
- * PHAN: HAM LAY DANH SACH BANG DA KICH HOAT (getTables)
+ * PHAN 3: HAM LAY DANH SACH BANG DA KICH HOAT VA PENDING APPROVAL
  * ============================================================================ */
 
 /**
@@ -263,6 +287,10 @@ function extractActionResponseBody(data: any): any {
   return data
 }
 
+/* ============================================================================
+ * PHAN 4: API GOI GOOGLE GEMINI AI DESCRIPTION VA NAP METADATA SCHEMA
+ * ============================================================================ */
+
 function parseAiDescriptionJson(resultJson: string): AiFieldDescription[] {
   if (!resultJson) return []
   try {
@@ -275,6 +303,10 @@ function parseAiDescriptionJson(resultJson: string): AiFieldDescription[] {
   }
 }
 
+/**
+ * [HAM getAiDescription]: Gui request OData Action xuong SAP RAP Backend de goi Google Gemini API
+ * sinh ra mo ta y nghia va huong dan nhap lieu cho tung truong tren bang.
+ */
 export async function getAiDescription(
   configUuid: string,
   tableName: string
@@ -299,6 +331,7 @@ export async function getAiDescription(
   return parseAiDescriptionJson(String(resultJson))
 }
 
+/** [HAM getFieldMeta]: Lay dinh nghia metadata goc tu Database SAP qua Action OData */
 export async function getFieldMeta(configUuid: string, tableName: string): Promise<FieldMeta[]> {
   const res = await apiPostWithCsrf(
     actionUrl(configUuid, 'getFieldMeta'),
@@ -318,6 +351,7 @@ export async function getFieldMeta(configUuid: string, tableName: string): Promi
   return parseFieldMetaJson(metaJson)
 }
 
+/** Lay thong tin cau hinh tuy bien cua Admin tu bang ZFLD_CONFIG */
 export async function getFieldConfig(tableName: string): Promise<FieldMeta[]> {
   const res = await api.get('/FieldConfig', {
     params: {
@@ -346,6 +380,10 @@ export async function getFieldConfig(tableName: string): Promise<FieldMeta[]> {
   )
 }
 
+/**
+ * [HAM loadFieldMetaForTable]: Hop nhat Metadata goc (DB Meta) voi Cau hinh tuy bien (Custom Config)
+ * de quyet dinh thu tu hien thi, kieu input fe_type, co mandatory, hidden, readonly.
+ */
 export async function loadFieldMetaForTable(configUuid: string, tableName: string): Promise<FieldMeta[]> {
   let dbMeta: FieldMeta[] = []
   try {
@@ -495,6 +533,14 @@ export async function loadTableContext(configUuid: string, tableName: string, ma
   return { fieldMeta, tableData, rows }
 }
 
+/* ============================================================================
+ * PHAN 5: API VALUE HELP (DOMAIN DD07L VA FOREIGN KEY CHECK TABLE)
+ * ============================================================================ */
+
+/**
+ * [HAM getDomainValues]: Goi OData Action getDomainValues de lay danh sach gia tri co dinh
+ * tu bang DD07L/DD07T cua SAP va luu vao bo nho dem domainCache.ts.
+ */
 export async function getDomainValues(configUuid: string, domainName: string, searchString = ''): Promise<Array<{ value: string; description: string }>> {
   const uuid = normalizeConfigUuid(configUuid)
   const search = (searchString || '').trim()
@@ -530,6 +576,10 @@ export async function getDomainValues(configUuid: string, domainName: string, se
   }
 }
 
+/**
+ * [HAM getFkValues]: Goi OData Action getFkValues de tra cuu danh sach ban ghi tu Check Table
+ * (Khoa ngoai) cua SAP phuc vu cho Hop thoai Search Help (F4 Dialog).
+ */
 export async function getFkValues(
   configUuid: string,
   tableName: string,
@@ -584,6 +634,11 @@ export async function getFkValues(
   }
 }
 
+/* ============================================================================
+ * PHAN 6: API TRUY VAN DU LIEU BANG VA REPOSITORY OBJECTS
+ * ============================================================================ */
+
+/** [HAM getTableData]: Gui OData Action getTableData de lay toan bo du lieu dong cua bang Z */
 export async function getTableData(configUuid: string, tableName: string, maxRows = 100000): Promise<any> {
   const res = await apiPostWithCsrf(
     actionUrl(configUuid, 'getTableData'),
@@ -644,6 +699,7 @@ export interface RepositoryInfo {
   foreignKeys: any[];
 }
 
+/** [HAM getRepositoryInfo]: Lay toan bo quan he phu thuoc Repository Objects (CDS Views, FK, Search Helps) */
 export async function getRepositoryInfo(configUuid: string, signal?: AbortSignal): Promise<RepositoryInfo> {
   const res = await apiPostWithCsrf(
     actionUrl(configUuid, 'getRepositoryInfo'),
@@ -795,6 +851,11 @@ export function parseBulkActionResults(response: any): BulkActionResult[] {
   }
 }
 
+/* ============================================================================
+ * PHAN 7: API CRUD DU LIEU DON LE VA THEO LO (CREATE / UPDATE / DELETE / BULK)
+ * ============================================================================ */
+
+/** [HAM createRecord]: Tao 1 dong moi don le tren bang */
 export async function createRecord(configUuid: string, tableName: string, recordData: any): Promise<any> {
   const res = await apiPostWithCsrf(
     actionUrl(configUuid, 'createRecord'),
@@ -811,6 +872,7 @@ export async function createRecord(configUuid: string, tableName: string, record
   return res.data
 }
 
+/** [HAM bulkCreateRecords]: Tao hang loat dong moi trong 1 request duy nhat */
 export async function bulkCreateRecords(
   configUuid: string,
   tableName: string,
@@ -831,6 +893,7 @@ export async function bulkCreateRecords(
   return res.data
 }
 
+/** [HAM bulkUpdateRecords]: Cap nhat hang loat dong cung luc */
 export async function bulkUpdateRecords(
   configUuid: string,
   tableName: string,
@@ -851,6 +914,7 @@ export async function bulkUpdateRecords(
   return res.data
 }
 
+/** [HAM updateRecord]: Cap nhat 1 dong co san kem ETag de kiem soat xung dot dong thoi */
 export async function updateRecord(
   configUuid: string,
   tableName: string,
@@ -876,6 +940,7 @@ export async function updateRecord(
   return res.data
 }
 
+/** [HAM bulkDeleteRecords]: Xoa hang loat dong theo danh sach RecordKeys */
 export async function bulkDeleteRecords(configUuid: string, tableName: string, recordKeys: any[]): Promise<any> {
   const res = await apiPostWithCsrf(
     actionUrl(configUuid, 'deleteRecord'),
@@ -892,6 +957,7 @@ export async function bulkDeleteRecords(configUuid: string, tableName: string, r
   return res.data
 }
 
+/** [HAM deleteRecord]: Xoa 1 dong don le theo RecordKey */
 export async function deleteRecord(configUuid: string, tableName: string, recordKey: any): Promise<any> {
   const res = await apiPostWithCsrf(
     actionUrl(configUuid, 'deleteRecord'),
@@ -908,6 +974,11 @@ export async function deleteRecord(configUuid: string, tableName: string, record
   return res.data
 }
 
+/* ============================================================================
+ * PHAN 8: API AUDIT LOG VA HOAN TAC ROLLBACK
+ * ============================================================================ */
+
+/** [HAM getAuditLog]: Truy van toan bo lich su Audit Log cua mot bang */
 export async function getAuditLog(tableName: string): Promise<AuditLogEntry[]> {
   try {
     const res = await api.get('/AuditLog', {
@@ -931,6 +1002,7 @@ export async function getAuditLog(tableName: string): Promise<AuditLogEntry[]> {
   }
 }
 
+/** Truy van chi tiet cac truong bi sua trong 1 ban ghi Audit */
 export async function getAuditItems(auditId: string): Promise<AuditItemEntry[]> {
   try {
     const res = await api.get('/AuditItem', {
@@ -957,6 +1029,10 @@ export async function getAuditItems(auditId: string): Promise<AuditItemEntry[]> 
   }
 }
 
+/**
+ * [HAM rollbackAudit]: Goi Action OData rollback de khoi phuc du lieu cu tu Audit Item
+ * va tao 1 ban ghi Audit moi (ActionType = 'R').
+ */
 export async function rollbackAudit(auditId: string): Promise<{ success: boolean; message: string }> {
   const url = `/AuditLog(AuditId='${encodeURIComponent(auditId)}')/com.sap.gateway.srvd.zsd_tbl_config.v0001.rollback`
   const res = await apiPostWithCsrf(url, {}, { params: { 'sap-client': SAP_CLIENT } })

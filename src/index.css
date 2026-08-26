@@ -1341,6 +1341,23 @@ ui5-toast {
   border-radius: 6px;
   background: var(--sapList_Background, #fff);
   box-sizing: border-box;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.excel-status-card--clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.excel-status-card--clickable:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-color: #a0aec0;
+}
+
+.excel-status-card--selected {
+  background: var(--sapList_SelectionBackgroundColor, #f0f7ff);
+  box-shadow: 0 0 0 2px var(--sapBrandColor, #0a6ed1);
 }
 
 .excel-status-label {
@@ -1752,6 +1769,114 @@ ui5-toast {
   color: var(--sapContent_LabelColor, #6a6d70);
   font-size: 0.6875rem;
   font-weight: 400;
+}
+
+/* ── Excel Diff Toolbar & Filter Pills ─────────────────────────────── */
+.excel-diff-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+  background: var(--sapGroup_ContentBackground, #fafafa);
+  border: 1px solid var(--sapGroup_BorderColor, #e2e8f0);
+  border-radius: 6px;
+}
+
+.excel-diff-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.excel-diff-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border-radius: 9999px;
+  border: 1px solid var(--sapField_BorderColor, #cbd5e1);
+  background: #ffffff;
+  color: var(--sapTextColor, #334155);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.excel-diff-filter-pill:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.excel-diff-filter-pill--active {
+  background: var(--sapBrandColor, #0a6ed1) !important;
+  color: #ffffff !important;
+  border-color: var(--sapBrandColor, #0a6ed1) !important;
+  font-weight: 600;
+}
+
+.excel-diff-filter-pill--new.excel-diff-filter-pill--active {
+  background: #107e3e !important;
+  border-color: #107e3e !important;
+}
+
+.excel-diff-filter-pill--changed.excel-diff-filter-pill--active {
+  background: #d97706 !important;
+  border-color: #d97706 !important;
+}
+
+.excel-diff-filter-pill--deleted.excel-diff-filter-pill--active {
+  background: #dc2626 !important;
+  border-color: #dc2626 !important;
+}
+
+.excel-diff-filter-pill--error.excel-diff-filter-pill--active {
+  background: #8e44ad !important;
+  border-color: #8e44ad !important;
+}
+
+.excel-diff-filter-count {
+  display: inline-block;
+  padding: 0.05rem 0.35rem;
+  font-size: 0.75rem;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.excel-diff-filter-pill--active .excel-diff-filter-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
+/* ── Excel Diff Pagination Bar ─────────────────────────────────────── */
+.excel-diff-pagination-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  margin-top: 0.5rem;
+  background: var(--sapGroup_ContentBackground, #fafafa);
+  border: 1px solid var(--sapGroup_BorderColor, #e2e8f0);
+  border-radius: 6px;
+  font-size: 0.8125rem;
+}
+
+.excel-diff-pagination-info {
+  color: var(--sapContent_LabelColor, #64748b);
+  font-size: 0.8125rem;
+}
+
+.excel-diff-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .excel-record-group {

@@ -4,8 +4,12 @@ import {
   Button,
   FlexBox,
   Icon,
+  Input,
+  Label,
   MessageStrip,
   ObjectStatus,
+  Option,
+  Select,
   Text,
   Title
 } from '@ui5/webcomponents-react'
@@ -45,9 +49,6 @@ interface ExcelFeedback {
   design: FeedbackDesign
 }
 
-const MAIN_DIFF_ROW_LIMIT = 200
-const PREVIEW_DIFF_ROW_LIMIT = 500
-const STORED_UNCHANGED_ROW_LIMIT = 200
 const MAX_UPLOAD_FILE_BYTES = 12 * 1024 * 1024
 const EXCEL_ERROR_IMPORT_MESSAGE = 'ERROR rows will be excluded from import. Review them before confirming the remaining records.'
 const EXCEL_ERROR_ACCENT = '#8e44ad'
@@ -82,6 +83,8 @@ export default function ExcelPipelineTab({
   const [errorDialogOpen, setErrorDialogOpen] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const [backendPermissionDenied, setBackendPermissionDenied] = useState(false)
+  const [mainActionFilter, setMainActionFilter] = useState('ALL')
+  const [modalActionFilter, setModalActionFilter] = useState('ALL')
 
   const visibleRows = useMemo(
     () => diffRows.filter(row => row.row_no !== 0 && shouldShowReviewDiffRow(row)),
@@ -131,6 +134,8 @@ export default function ExcelPipelineTab({
     setDiffDialogOpen(false)
     setErrorDialogOpen(false)
     setBackendPermissionDenied(false)
+    setMainActionFilter('ALL')
+    setModalActionFilter('ALL')
   }, [tableName])
 
   const uploadAllowed = canUpload && !backendPermissionDenied
@@ -526,8 +531,9 @@ export default function ExcelPipelineTab({
           fieldOrder={previewFieldOrder}
           exactFieldOrder={uploadedFieldOrder.length > 0}
           statusState={statusState}
-          rowLimit={MAIN_DIFF_ROW_LIMIT}
           includeAllStatuses
+          activeActionFilter={mainActionFilter}
+          onActionFilterChange={setMainActionFilter}
         />
       )}
 
@@ -590,6 +596,8 @@ export default function ExcelPipelineTab({
               commit={commitRecordCount}
               statusCounts={statusCounts}
               errorCount={errorRecordCount}
+              activeFilter={modalActionFilter}
+              onFilterChange={setModalActionFilter}
             />
             <Text className="excel-summary-note">Counts are by record; the table below shows field-level details.</Text>
 
@@ -619,9 +627,10 @@ export default function ExcelPipelineTab({
                 fieldOrder={previewFieldOrder}
                 exactFieldOrder={uploadedFieldOrder.length > 0}
                 statusState={statusState}
-                rowLimit={PREVIEW_DIFF_ROW_LIMIT}
                 compact
                 includeAllStatuses
+                activeActionFilter={modalActionFilter}
+                onActionFilterChange={setModalActionFilter}
               />
             )}
           </FlexBox>
@@ -668,13 +677,7 @@ function waitForBrowserPaint(): Promise<void> {
 }
 
 function compactRowsForUi(rows: ExcelDiffRow[]): ExcelDiffRow[] {
-  let unchangedCount = 0
-
-  return rows.filter(row => {
-    if (normalizeDiffStatus(row.status) !== 'UNCHANGED') return true
-    unchangedCount += 1
-    return unchangedCount <= STORED_UNCHANGED_ROW_LIMIT
-  })
+  return rows
 }
 
 function formatFileSize(bytes: number): string {
@@ -980,48 +983,72 @@ function StatusSummary({
   total,
   commit,
   statusCounts,
-  errorCount
+  errorCount,
+  activeFilter = 'ALL',
+  onFilterChange
 }: {
   total: number
   commit: number
   statusCounts: Record<string, number>
   errorCount: number
+  activeFilter?: string
+  onFilterChange?: (filter: string) => void
 }) {
   const items = [
-    { label: 'Total records', value: total, accent: '#5b738b' },
-    { label: 'New', value: statusCounts.NEW, accent: '#107e3e' },
-    { label: 'Updated', value: statusCounts.CHANGED, accent: '#e09d00' },
-    { label: 'Deleted', value: (statusCounts.DELETE ?? 0) + (statusCounts.DELETED ?? 0), accent: '#bb0000' },
-    { label: 'Unchanged', value: statusCounts.UNCHANGED ?? 0, accent: '#7f8c8d' },
-    { label: 'Errors', value: errorCount, accent: EXCEL_ERROR_ACCENT },
-    { label: 'Commit records', value: commit, accent: '#0a6ed1' }
+    { label: 'Total records', filterKey: 'ALL', value: total, accent: '#5b738b' },
+    { label: 'New', filterKey: 'CREATE', value: statusCounts.NEW, accent: '#107e3e' },
+    { label: 'Updated', filterKey: 'UPDATE', value: statusCounts.CHANGED, accent: '#e09d00' },
+    { label: 'Deleted', filterKey: 'DELETE', value: (statusCounts.DELETE ?? 0) + (statusCounts.DELETED ?? 0), accent: '#bb0000' },
+    { label: 'Unchanged', filterKey: 'UNCHANGED', value: statusCounts.UNCHANGED ?? 0, accent: '#7f8c8d' },
+    { label: 'Errors', filterKey: 'ERROR', value: errorCount, accent: EXCEL_ERROR_ACCENT },
+    { label: 'Commit records', filterKey: 'ALL', value: commit, accent: '#0a6ed1' }
   ]
   const additionalItems = [
-    { label: 'Warnings', value: statusCounts.WARNING ?? 0, tone: 'warning' }
+    { label: 'Warnings', filterKey: 'WARNING', value: statusCounts.WARNING ?? 0, tone: 'warning' }
   ].filter(item => item.value > 0)
 
   return (
     <>
       <div className="excel-status-summary">
-        {items.map(item => (
-          <div
-            key={item.label}
-            className="excel-status-card"
-            style={{ borderLeftColor: item.accent }}
-          >
-            <span className="excel-status-label">
-              {item.label}
-            </span>
-            <span className="excel-status-value">
-              {item.value ?? 0}
-            </span>
-          </div>
-        ))}
+        {items.map(item => {
+          const isSelected = Boolean(onFilterChange && activeFilter === item.filterKey)
+          return (
+            <div
+              key={item.label}
+              className={`excel-status-card${onFilterChange ? ' excel-status-card--clickable' : ''}${isSelected ? ' excel-status-card--selected' : ''}`}
+              style={{
+                borderLeftColor: item.accent,
+                cursor: onFilterChange ? 'pointer' : 'default'
+              }}
+              onClick={() => onFilterChange?.(item.filterKey)}
+              role={onFilterChange ? 'button' : undefined}
+              tabIndex={onFilterChange ? 0 : undefined}
+              onKeyDown={e => {
+                if (onFilterChange && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault()
+                  onFilterChange(item.filterKey)
+                }
+              }}
+            >
+              <span className="excel-status-label">
+                {item.label}
+              </span>
+              <span className="excel-status-value">
+                {item.value ?? 0}
+              </span>
+            </div>
+          )
+        })}
       </div>
       {additionalItems.length > 0 && (
         <div className="excel-status-secondary">
           {additionalItems.map(item => (
-            <span key={item.label} className={`excel-status-secondary-item excel-status-secondary-item--${item.tone}`}>
+            <span
+              key={item.label}
+              className={`excel-status-secondary-item excel-status-secondary-item--${item.tone}`}
+              style={{ cursor: onFilterChange ? 'pointer' : 'default' }}
+              onClick={() => onFilterChange?.(item.filterKey)}
+            >
               {item.label}: {item.value}
             </span>
           ))}
@@ -1056,33 +1083,139 @@ interface DiffRecordGroup {
   statuses: string[]
 }
 
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500]
+
 function DiffTable({
   rows,
   fieldOrder,
   exactFieldOrder,
   statusState,
-  rowLimit,
   compact = false,
-  includeAllStatuses = false
+  includeAllStatuses = false,
+  activeActionFilter,
+  onActionFilterChange
 }: {
   rows: ExcelDiffRow[]
   fieldOrder: string[]
   exactFieldOrder: boolean
   statusState: (status: string) => 'Positive' | 'Critical' | 'Negative' | 'Information' | 'None'
-  rowLimit?: number
   compact?: boolean
   includeAllStatuses?: boolean
+  activeActionFilter?: string
+  onActionFilterChange?: (filter: string) => void
 }) {
-  const changedRows = rows.filter(row => includeAllStatuses
-    ? ['NEW', 'CHANGED', 'DELETE', 'DELETED', 'UNCHANGED', 'INFO', 'WARNING', 'ERROR'].includes(normalizeDiffStatus(row.status))
-    : isActionableDiffStatus(row.status)
-  )
-  const changedGroups = buildDiffRecordGroups(changedRows)
-  const displayedGroups = rowLimit && changedGroups.length > rowLimit
-    ? changedGroups.slice(0, rowLimit)
-    : changedGroups
-  const fieldColumns = getDiffFieldColumns(displayedGroups, fieldOrder, exactFieldOrder)
+  const [internalActionFilter, setInternalActionFilter] = useState<string>('ALL')
+  const [searchQuery, setSearchQuery] = useState<string>('')
+  const [pageSize, setPageSize] = useState<number>(50)
+  const [pageIndex, setPageIndex] = useState<number>(0)
+  const [pageJumpInput, setPageJumpInput] = useState<string>('1')
+
+  const currentActionFilter = activeActionFilter !== undefined ? activeActionFilter : internalActionFilter
+  const handleSetActionFilter = (filter: string) => {
+    if (onActionFilterChange) {
+      onActionFilterChange(filter)
+    } else {
+      setInternalActionFilter(filter)
+    }
+    setPageIndex(0)
+  }
+
+  const changedRows = useMemo(() => {
+    return rows.filter(row => includeAllStatuses
+      ? ['NEW', 'CHANGED', 'DELETE', 'DELETED', 'UNCHANGED', 'INFO', 'WARNING', 'ERROR'].includes(normalizeDiffStatus(row.status))
+      : isActionableDiffStatus(row.status)
+    )
+  }, [rows, includeAllStatuses])
+
+  const allGroups = useMemo(() => buildDiffRecordGroups(changedRows), [changedRows])
+
+  // Count distinct records for each action type
+  const actionCounts = useMemo(() => {
+    const counts = {
+      ALL: allGroups.length,
+      CREATE: 0,
+      UPDATE: 0,
+      DELETE: 0,
+      UNCHANGED: 0,
+      ERROR: 0,
+      WARNING: 0
+    }
+    allGroups.forEach(group => {
+      const act = formatGroupAction(group)
+      const norm = normalizeDiffStatus(group.status)
+      const isError = act === 'Error' || norm === 'ERROR' || group.statuses.includes('ERROR') || group.rows.some(r => normalizeDiffStatus(r.status) === 'ERROR')
+      if (isError) {
+        counts.ERROR += 1
+      } else if (act === 'Create' || norm === 'NEW') {
+        counts.CREATE += 1
+      } else if (act === 'Update' || norm === 'CHANGED') {
+        counts.UPDATE += 1
+      } else if (act === 'Delete' || isDeleteDiffStatus(group.status)) {
+        counts.DELETE += 1
+      } else if (norm === 'WARNING' || group.statuses.includes('WARNING')) {
+        counts.WARNING += 1
+      } else {
+        counts.UNCHANGED += 1
+      }
+    })
+    return counts
+  }, [allGroups])
+
+  // Filter groups by Action filter and search query
+  const filteredGroups = useMemo(() => {
+    return allGroups.filter(group => {
+      if (currentActionFilter !== 'ALL') {
+        const act = formatGroupAction(group)
+        const norm = normalizeDiffStatus(group.status)
+        const isError = act === 'Error' || norm === 'ERROR' || group.statuses.includes('ERROR') || group.rows.some(r => normalizeDiffStatus(r.status) === 'ERROR')
+        if (currentActionFilter === 'ERROR' && !isError) return false
+        if (currentActionFilter === 'CREATE' && !(!isError && (act === 'Create' || norm === 'NEW'))) return false
+        if (currentActionFilter === 'UPDATE' && !(!isError && (act === 'Update' || norm === 'CHANGED'))) return false
+        if (currentActionFilter === 'DELETE' && !(!isError && (act === 'Delete' || isDeleteDiffStatus(group.status)))) return false
+        if (currentActionFilter === 'WARNING' && !(!isError && (norm === 'WARNING' || group.statuses.includes('WARNING')))) return false
+        if (currentActionFilter === 'UNCHANGED' && !(!isError && (norm === 'UNCHANGED' || norm === 'INFO' || act === 'Skip' || act === 'Unchanged'))) return false
+      }
+
+      if (searchQuery.trim()) {
+        const q = searchQuery.trim().toLowerCase()
+        const keyMatch = String(group.recordKey || '').toLowerCase().includes(q)
+        const rowMatch = group.rows.some(r =>
+          String(r.row_no).includes(q) ||
+          String(r.field_name || '').toLowerCase().includes(q) ||
+          String(r.old_value || '').toLowerCase().includes(q) ||
+          String(r.new_value || '').toLowerCase().includes(q) ||
+          String(r.message || '').toLowerCase().includes(q)
+        )
+        if (!keyMatch && !rowMatch) return false
+      }
+
+      return true
+    })
+  }, [allGroups, currentActionFilter, searchQuery])
+
+  const totalRecords = filteredGroups.length
+  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize))
+  const safePageIndex = Math.min(pageIndex, totalPages - 1)
+  const pageStart = totalRecords === 0 ? 0 : safePageIndex * pageSize + 1
+  const pageEnd = Math.min((safePageIndex + 1) * pageSize, totalRecords)
+
+  const displayedGroups = useMemo(() => {
+    return filteredGroups.slice(safePageIndex * pageSize, (safePageIndex + 1) * pageSize)
+  }, [filteredGroups, safePageIndex, pageSize])
+
+  const fieldColumns = useMemo(() => {
+    return getDiffFieldColumns(allGroups, fieldOrder, exactFieldOrder)
+  }, [allGroups, fieldOrder, exactFieldOrder])
+
   const listShellRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    setPageJumpInput(String(safePageIndex + 1))
+  }, [safePageIndex])
+
+  useEffect(() => {
+    setPageIndex(0)
+  }, [currentActionFilter, searchQuery, pageSize])
 
   useEffect(() => {
     const shell = listShellRef.current
@@ -1097,71 +1230,244 @@ function DiffTable({
     resizeObserver.observe(shell)
 
     return () => resizeObserver.disconnect()
-  }, [compact, displayedGroups.length, fieldColumns.length])
+  }, [compact, displayedGroups.length, fieldColumns.length, safePageIndex])
 
   return (
-    <div
-      ref={listShellRef}
-      className={`excel-record-list-shell${compact ? ' excel-record-list-shell--compact' : ''}`}
-      style={{
-        maxHeight: compact ? 'min(54vh, 560px)' : undefined,
-        padding: compact ? 0 : '0 0 1rem',
-        scrollbarGutter: compact ? 'stable' : undefined
-      }}
-    >
-      {rowLimit && changedGroups.length > rowLimit && (
-        <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '8px' }}>
-          Showing the first {displayedGroups.length} of {changedGroups.length} review records. Import counts and confirmation still use all records.
-        </MessageStrip>
-      )}
-
-      {displayedGroups.length === 0 ? (
-        <div className="excel-diff-empty-state">
-          <Text>No Excel review rows to display.</Text>
-        </div>
-      ) : (
-        <div className="excel-diff-table" role="table" aria-label="Excel review records">
-          <div
-            className="excel-diff-table-row excel-diff-table-row--header"
-            role="row"
-            style={{ gridTemplateColumns: diffTableGridTemplate(fieldColumns.length) }}
+    <div className="excel-diff-container" style={{ width: '100%' }}>
+      {/* ── Toolbar Lọc Action & Tìm kiếm ── */}
+      <div className="excel-diff-toolbar">
+        <div className="excel-diff-filter-group" role="tablist" aria-label="Filter by action">
+          <button
+            type="button"
+            className={`excel-diff-filter-pill${currentActionFilter === 'ALL' ? ' excel-diff-filter-pill--active' : ''}`}
+            onClick={() => handleSetActionFilter('ALL')}
           >
-            <div className="excel-diff-table-cell excel-diff-table-cell--flag" role="columnheader">Action</div>
-            <div className="excel-diff-table-cell" role="columnheader">Excel row</div>
-            {fieldColumns.map(field => (
-              <div className="excel-diff-table-cell" role="columnheader" key={field}>{field}</div>
-            ))}
-            <div className="excel-diff-table-cell" role="columnheader">Message</div>
-          </div>
-          {displayedGroups.map(group => {
-            const status = normalizeDiffStatus(group.status)
-            const isError = status === 'ERROR' || group.statuses.includes('ERROR') || group.rows.some(r => normalizeDiffStatus(r.status) === 'ERROR')
-            const statusClass = diffRowClass(status)
-            const rowKey = recordIdentity(group.rows[0])
+            All <span className="excel-diff-filter-count">{actionCounts.ALL.toLocaleString()}</span>
+          </button>
+          {actionCounts.CREATE > 0 && (
+            <button
+              type="button"
+              className={`excel-diff-filter-pill excel-diff-filter-pill--new${currentActionFilter === 'CREATE' ? ' excel-diff-filter-pill--active' : ''}`}
+              onClick={() => handleSetActionFilter('CREATE')}
+            >
+              Create <span className="excel-diff-filter-count">{actionCounts.CREATE.toLocaleString()}</span>
+            </button>
+          )}
+          {actionCounts.UPDATE > 0 && (
+            <button
+              type="button"
+              className={`excel-diff-filter-pill excel-diff-filter-pill--changed${currentActionFilter === 'UPDATE' ? ' excel-diff-filter-pill--active' : ''}`}
+              onClick={() => handleSetActionFilter('UPDATE')}
+            >
+              Update <span className="excel-diff-filter-count">{actionCounts.UPDATE.toLocaleString()}</span>
+            </button>
+          )}
+          {actionCounts.DELETE > 0 && (
+            <button
+              type="button"
+              className={`excel-diff-filter-pill excel-diff-filter-pill--deleted${currentActionFilter === 'DELETE' ? ' excel-diff-filter-pill--active' : ''}`}
+              onClick={() => handleSetActionFilter('DELETE')}
+            >
+              Delete <span className="excel-diff-filter-count">{actionCounts.DELETE.toLocaleString()}</span>
+            </button>
+          )}
+          {actionCounts.UNCHANGED > 0 && (
+            <button
+              type="button"
+              className={`excel-diff-filter-pill${currentActionFilter === 'UNCHANGED' ? ' excel-diff-filter-pill--active' : ''}`}
+              onClick={() => handleSetActionFilter('UNCHANGED')}
+            >
+              Unchanged <span className="excel-diff-filter-count">{actionCounts.UNCHANGED.toLocaleString()}</span>
+            </button>
+          )}
+          {actionCounts.ERROR > 0 && (
+            <button
+              type="button"
+              className={`excel-diff-filter-pill excel-diff-filter-pill--error${currentActionFilter === 'ERROR' ? ' excel-diff-filter-pill--active' : ''}`}
+              onClick={() => handleSetActionFilter('ERROR')}
+            >
+              Errors <span className="excel-diff-filter-count">{actionCounts.ERROR.toLocaleString()}</span>
+            </button>
+          )}
+          {actionCounts.WARNING > 0 && (
+            <button
+              type="button"
+              className={`excel-diff-filter-pill excel-diff-filter-pill--changed${currentActionFilter === 'WARNING' ? ' excel-diff-filter-pill--active' : ''}`}
+              onClick={() => handleSetActionFilter('WARNING')}
+            >
+              Warnings <span className="excel-diff-filter-count">{actionCounts.WARNING.toLocaleString()}</span>
+            </button>
+          )}
+        </div>
 
-            return (
-              <div
-                className={`excel-diff-table-row ${statusClass}`}
-                role="row"
-                key={rowKey}
-                style={{ gridTemplateColumns: diffTableGridTemplate(fieldColumns.length) }}
-              >
-                <div className="excel-diff-table-cell excel-diff-table-cell--flag" role="cell" data-label="Action">
-                  <Icon name={isError ? 'error' : 'flag'} className="excel-diff-flag-icon" />
-                  <ObjectStatus state={isError ? 'Negative' : statusState(status)}>{formatGroupAction(group)}</ObjectStatus>
-                </div>
-                <div className="excel-diff-table-cell excel-diff-table-cell--record" role="cell" data-label="Excel row">
-                  {Array.from(new Set(group.rows.map(row => row.row_no))).join(', ')}
-                </div>
-                {fieldColumns.map(field => (
-                  <DiffSpreadsheetFieldCell key={`${rowKey}-${field}`} group={group} field={field} />
-                ))}
-                <div className="excel-diff-table-cell" role="cell" data-label="Message">
-                  <DiffSpreadsheetMessage group={group} fields={fieldColumns} />
-                </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Input
+            placeholder="Search in diff..."
+            value={searchQuery}
+            onInput={(e: any) => setSearchQuery(e.target.value)}
+            icon={<Icon name={'search' as any} />}
+            style={{ width: '220px' }}
+          />
+          {searchQuery && (
+            <Button
+              design="Transparent"
+              icon={'decline' as any}
+              onClick={() => setSearchQuery('')}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* ── Bảng dữ liệu Grid ── */}
+      <div
+        ref={listShellRef}
+        className={`excel-record-list-shell${compact ? ' excel-record-list-shell--compact' : ''}`}
+        style={{
+          maxHeight: compact ? 'min(50vh, 520px)' : undefined,
+          padding: compact ? 0 : '0 0 1rem',
+          scrollbarGutter: compact ? 'stable' : undefined
+        }}
+      >
+        {displayedGroups.length === 0 ? (
+          <div className="excel-diff-empty-state" style={{ padding: '2rem', textAlign: 'center' }}>
+            <Text>No Excel review rows match the current filter.</Text>
+            {(currentActionFilter !== 'ALL' || searchQuery) && (
+              <div style={{ marginTop: '0.75rem' }}>
+                <Button
+                  design="Transparent"
+                  onClick={() => {
+                    handleSetActionFilter('ALL')
+                    setSearchQuery('')
+                  }}
+                >
+                  Reset filters
+                </Button>
               </div>
-            )
-          })}
+            )}
+          </div>
+        ) : (
+          <div className="excel-diff-table" role="table" aria-label="Excel review records">
+            <div
+              className="excel-diff-table-row excel-diff-table-row--header"
+              role="row"
+              style={{ gridTemplateColumns: diffTableGridTemplate(fieldColumns.length) }}
+            >
+              <div className="excel-diff-table-cell excel-diff-table-cell--flag" role="columnheader">Action</div>
+              <div className="excel-diff-table-cell" role="columnheader">Excel row</div>
+              {fieldColumns.map(field => (
+                <div className="excel-diff-table-cell" role="columnheader" key={field}>{field}</div>
+              ))}
+              <div className="excel-diff-table-cell" role="columnheader">Message</div>
+            </div>
+            {displayedGroups.map(group => {
+              const status = normalizeDiffStatus(group.status)
+              const isError = status === 'ERROR' || group.statuses.includes('ERROR') || group.rows.some(r => normalizeDiffStatus(r.status) === 'ERROR')
+              const statusClass = diffRowClass(status)
+              const rowKey = recordIdentity(group.rows[0])
+
+              return (
+                <div
+                  className={`excel-diff-table-row ${statusClass}`}
+                  role="row"
+                  key={rowKey}
+                  style={{ gridTemplateColumns: diffTableGridTemplate(fieldColumns.length) }}
+                >
+                  <div className="excel-diff-table-cell excel-diff-table-cell--flag" role="cell" data-label="Action">
+                    <Icon name={isError ? 'error' : 'flag'} className="excel-diff-flag-icon" />
+                    <ObjectStatus state={isError ? 'Negative' : statusState(status)}>{formatGroupAction(group)}</ObjectStatus>
+                  </div>
+                  <div className="excel-diff-table-cell excel-diff-table-cell--record" role="cell" data-label="Excel row">
+                    {Array.from(new Set(group.rows.map(row => row.row_no))).join(', ')}
+                  </div>
+                  {fieldColumns.map(field => (
+                    <DiffSpreadsheetFieldCell key={`${rowKey}-${field}`} group={group} field={field} />
+                  ))}
+                  <div className="excel-diff-table-cell" role="cell" data-label="Message">
+                    <DiffSpreadsheetMessage group={group} fields={fieldColumns} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Thanh Phân trang (Pagination) ── */}
+      {totalRecords > 0 && (
+        <div className="excel-diff-pagination-bar">
+          <div className="excel-diff-pagination-info">
+            Showing <strong>{pageStart.toLocaleString()}</strong> – <strong>{pageEnd.toLocaleString()}</strong> of <strong>{totalRecords.toLocaleString()}</strong> records
+            {totalRecords !== allGroups.length && (
+              <span> (filtered from {allGroups.length.toLocaleString()} total)</span>
+            )}
+          </div>
+
+          <div className="excel-diff-pagination-controls">
+            <Label style={{ fontSize: '0.8125rem' }}>Rows:</Label>
+            <Select
+              value={String(pageSize)}
+              onChange={(e: any) => {
+                const newSize = Number(e.detail.selectedOption.value)
+                setPageSize(newSize)
+                setPageIndex(0)
+              }}
+              style={{ minWidth: '70px' }}
+            >
+              {PAGE_SIZE_OPTIONS.map(size => (
+                <Option key={size} value={String(size)}>{size}</Option>
+              ))}
+            </Select>
+
+            <Button
+              design="Transparent"
+              icon={'collapse-group' as any}
+              disabled={safePageIndex === 0}
+              onClick={() => setPageIndex(0)}
+              accessibleName="First page"
+            />
+            <Button
+              design="Transparent"
+              icon={'navigation-left-arrow' as any}
+              disabled={safePageIndex === 0}
+              onClick={() => setPageIndex(prev => Math.max(0, prev - 1))}
+              accessibleName="Previous page"
+            />
+
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', margin: '0 4px' }}>
+              <span>Page</span>
+              <Input
+                value={pageJumpInput}
+                onInput={(e: any) => setPageJumpInput(e.target.value)}
+                onKeyDown={(e: any) => {
+                  if (e.key === 'Enter') {
+                    const target = parseInt(pageJumpInput, 10)
+                    if (!isNaN(target) && target >= 1 && target <= totalPages) {
+                      setPageIndex(target - 1)
+                    } else {
+                      setPageJumpInput(String(safePageIndex + 1))
+                    }
+                  }
+                }}
+                style={{ width: '48px', textAlign: 'center' }}
+              />
+              <span>of <strong>{totalPages}</strong></span>
+            </span>
+
+            <Button
+              design="Transparent"
+              icon={'navigation-right-arrow' as any}
+              disabled={safePageIndex >= totalPages - 1}
+              onClick={() => setPageIndex(prev => Math.min(totalPages - 1, prev + 1))}
+              accessibleName="Next page"
+            />
+            <Button
+              design="Transparent"
+              icon={'expand-group' as any}
+              disabled={safePageIndex >= totalPages - 1}
+              onClick={() => setPageIndex(totalPages - 1)}
+              accessibleName="Last page"
+            />
+          </div>
         </div>
       )}
     </div>

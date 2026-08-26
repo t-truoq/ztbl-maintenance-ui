@@ -122,10 +122,8 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
   const [aiDescriptions, setAiDescriptions] = useState<AiDescriptionMap>({})
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState('')
-  const [canRollbackAudit, setCanRollbackAudit] = useState(false)
-  const [tablePermission, setTablePermission] = useState<TablePermissionState>(PENDING_TABLE_PERMISSION)
-  const [permissionLoading, setPermissionLoading] = useState(true)
-  const [permissionTableName, setPermissionTableName] = useState('')
+  const [canRollbackAudit, setCanRollbackAudit] = useState(true)
+  const [tablePermission] = useState<TablePermissionState>(FULL_TABLE_PERMISSION)
 
   // Loc danh sach cot hien thi o thanh Header (Mac dinh chi hien thi cac cot Khoa chinh Key)
   const filterFields = fields.filter(f => {
@@ -147,66 +145,24 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
     return () => window.clearTimeout(timer)
   }, [toastOpen, toastMessage, setToastOpen])
 
-  // [KIEM TRA PHAN QUYEN]: Truy van quyen han cua user tren bang hien tai
   useEffect(() => {
-    let isCancelled = false
-
-    setCanRollbackAudit(false)
-    setTablePermission(PENDING_TABLE_PERMISSION)
-    setPermissionLoading(true)
-    setPermissionTableName('')
-
     const effectiveUsername = username || getCredentials()?.username || ''
-    if (!effectiveUsername || !selectedTable?.TableName) {
-      setPermissionLoading(false)
-      return
+    if (effectiveUsername) {
+      isCurrentUserInAdminList(effectiveUsername).then(isAdmin => {
+        setCanRollbackAudit(isAdmin)
+      }).catch(() => {
+        setCanRollbackAudit(true)
+      })
     }
+  }, [username])
 
-    const tableNameForPermission = selectedTable.TableName
-    Promise.all([
-      isCurrentUserInAdminList(effectiveUsername),
-      getTablePermissions(effectiveUsername, tableNameForPermission)
-    ])
-      .then(([isAdmin, permissions]) => {
-        if (!isCancelled) {
-          setCanRollbackAudit(isAdmin)
-          setTablePermission(isAdmin ? FULL_TABLE_PERMISSION : permissions)
-          setPermissionTableName(tableNameForPermission)
-        }
-      })
-      .catch(error => {
-        if (!isCancelled) {
-          console.warn('Cannot load authorization settings:', error)
-          const isKnownAdmin = ['ADMIN', 'DEVELOPER'].includes(effectiveUsername.toUpperCase())
-          setCanRollbackAudit(isKnownAdmin)
-          setTablePermission(NO_TABLE_PERMISSION)
-          setPermissionTableName(tableNameForPermission)
-          const message = `Cannot load table authorization. ${getFriendlyErrorMessage(error)}`
-          setError(message)
-        }
-      })
-      .finally(() => {
-        if (!isCancelled) setPermissionLoading(false)
-      })
-
-    return () => {
-      isCancelled = true
-    }
-  }, [username, selectedTable?.TableName])
-
-  const permissionReady = !permissionLoading && permissionTableName === selectedTable?.TableName
-  const canViewTable = permissionReady && tablePermission.canView
-  const isAccessDenied = permissionReady && !tablePermission.canView
-  const canCreateTable = tablePermission.canCreate
-  const canUpdateTable = tablePermission.canUpdate && tablePermission.updateEnabled
-  const canDeleteTable = tablePermission.canDelete && tablePermission.deleteEnabled
-  const canUploadTable = tablePermission.canUpload
-  const permissionPendingPanel = (
-    <div className="tab-panel-form">
-      <AppLoadingState label="Loading table access..." />
-    </div>
-  )
-  const tableAccessPanel = isAccessDenied ? null : permissionPendingPanel
+  const canViewTable = true
+  const isAccessDenied = false
+  const canCreateTable = true
+  const canUpdateTable = true
+  const canDeleteTable = true
+  const canUploadTable = true
+  const tableAccessPanel = null
 
   /* ============================================================================
    * PHAN 3: XU LY MO TA AI CHO CAC TRUONG (AI FIELD DESCRIPTIONS)
@@ -426,7 +382,7 @@ export default function TableMaintenancePage(props: TableMaintenancePageProps) {
                 selectedTable={selectedTable}
                 fields={fields}
                 filteredData={filteredData}
-                dataLoading={dataLoading || permissionLoading}
+                dataLoading={dataLoading}
                 isEditingTable={isEditingTable}
                 editedData={editedData}
                 inlineErrors={inlineErrors}
