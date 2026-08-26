@@ -48,7 +48,7 @@ export function formatCellValue(field?: FieldMeta | null, value?: any): string {
  * PHAN 2: HAM DINH DANG CHUOI THOI GIAN TIMESTAMP (formatTimestampValue)
  * ============================================================================ */
 
-export const SYSTEM_TIMESTAMP_OFFSET_MS = 5 * 60 * 60 * 1000 // Cong them 5 tieng de dong bo mui gio UTC+7 VN
+export const SYSTEM_TIMESTAMP_OFFSET_MS = 7 * 60 * 60 * 1000 // Cong them 5 tieng de dong bo mui gio UTC+7 VN
 
 export function formatTimestampValue(value: any, fieldName = ''): string {
   if (value === undefined || value === null || value === '') return ''
