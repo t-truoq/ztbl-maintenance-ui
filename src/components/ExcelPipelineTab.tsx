@@ -238,7 +238,7 @@ export default function ExcelPipelineTab({
         .filter(Boolean)
         .join('; ')
       const responseHasError = rows.some(row => String(row.status || '').trim().toUpperCase() === 'ERROR')
-      if (responseMessage && responseHasError && rows.length === 1 && rows[0].row_no === 0) {
+      if (responseMessage && responseHasError && rows.length === 1 && Number(rows[0].row_no) === 0) {
         throw new Error(responseMessage)
       }
       const commitRows = filterDiffForCommit(rows, tableName)

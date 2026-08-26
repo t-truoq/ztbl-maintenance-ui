@@ -243,6 +243,7 @@ export function normalizeExcelDiffRows(rows: ExcelDiffRow[], tableName?: string)
     .filter(row => rowBelongsToTable(row, tableName))
     .map(row => ({
       ...row,
+      row_no: Number(row.row_no) || 0,
       table_name: row.table_name || tableName || '',
       status: normalizeStatus(row.status),
       message: translateExcelMessage(row.message)
